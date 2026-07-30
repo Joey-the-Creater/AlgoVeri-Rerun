@@ -1,0 +1,1 @@
+Your task is to implement the Insertion Sort algorithm and verify its correctness in Lean. Given a list of integers, return a sorted permutation of the list. Postconditions: (1) Output is sorted. (2) Output is a permutation of input. Preconditions: None. Implementation: Recursive or iterative insertion sort. Insert each element into the sorted prefix.

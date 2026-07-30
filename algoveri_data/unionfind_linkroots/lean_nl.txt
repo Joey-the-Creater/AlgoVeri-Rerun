@@ -1,0 +1,1 @@
+Your task is to implement the link_roots operation for a Union-Find data structure and verify its correctness in Lean. This operation merges two sets given their roots, using union-by-rank. Postconditions: The two roots now have the same representative, rank invariant is preserved, and other disjoint sets are unaffected.

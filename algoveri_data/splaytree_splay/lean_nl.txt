@@ -1,0 +1,1 @@
+Your task is to implement the Splay operation in a splay tree and verify its correctness in Lean. Splaying moves a target node (or the last accessed node) to the root via rotations (Zig, Zig-Zig, Zig-Zag). Postconditions: Result is BST, set of values is unchanged, and if v is in the tree, result.val = v.

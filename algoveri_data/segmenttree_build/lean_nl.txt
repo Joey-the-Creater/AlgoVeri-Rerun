@@ -1,0 +1,1 @@
+Your task is to implement the build operation for a Range Maximum Segment Tree and verify its correctness in Lean. The operation builds a tree for range [l, r) initialized to 0. Postconditions: Result is a valid Segment Tree, covers range [l, r), and all values in view are 0. Invariants: Node value is max of children, ranges match children ranges.

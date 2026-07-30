@@ -1,0 +1,1 @@
+Your task is to implement the Pop Max operation for a binary max-heap and verify its correctness in Lean. The operation removes the root (max element), moves the last element to the root, and bubbles it down. Postconditions: Returns max element, heap size decreases by 1, multiset view is view - {max}, and heap invariant is preserved.

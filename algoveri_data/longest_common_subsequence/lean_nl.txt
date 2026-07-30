@@ -1,0 +1,1 @@
+Your task is to implement the Longest Common Subsequence (LCS) algorithm and verify its correctness in Lean. Given two strings (or sequences of characters), find the length of the longest subsequence present in both. Postconditions: Result equals the value defined by the standard recursive LCS specification.

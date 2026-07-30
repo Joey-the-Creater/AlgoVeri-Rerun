@@ -1,0 +1,50 @@
+# Configuration for algoveri
+
+# Global Output Directory
+results_dir: "test_results"
+
+# Verus Configuration
+verus:
+  # Execution method: 'apptainer', 'docker' (future), or 'local'
+  method: "apptainer"
+  timeout: 60
+
+  # Apptainer Specific Settings
+  apptainer:
+    # Path to the .sif image file
+    image_path: "YOUR_WOKRING_DIR/apptainer_imgs/verus.sif"
+    
+    # The host folder containing 'cargo' and 'toolchains'
+    rust_home: "YOUR_WOKRING_DIR/apptainer_imgs/rust_home"
+    
+    # Where to mount rust_home inside the container (arbitrary, but must match env vars)
+    container_mount_point: "/rust_env"
+
+  # Local Fallback Settings
+  local:
+    bin_path: "/usr/local/bin/verus"
+
+lean:
+  method: "local"
+  timeout: 300 # Lean + Mathlib can be slow to initialize
+
+  # Paths are resolved relative to the repository root. Run
+  # scripts/local_setup/lean.sh once to create this environment.
+  local:
+    lake_path: "lean_env/lean_bin/bin/lake"
+    project_path: "lean_env/lean_project"
+  
+  apptainer:
+    image_path: "YOUR_WOKRING_DIR/apptainer_imgs/lean.sif"
+    
+    # The folder containing the toolchains (folders like .elan, toolchains, update-hashes)
+    elan_home: "YOUR_WOKRING_DIR/apptainer_imgs/elan_home"
+    
+    # The pre-built project folder (must contain lakefile.lean)
+    project_path: "YOUR_WOKRING_DIR/apptainer_imgs/lean_project"
+  
+dafny:
+  timeout: 60
+  method: apptainer # or 'local'
+  apptainer:
+    image_path: "YOUR_WOKRING_DIR/apptainer_test/dafny.sif" # The image we just pulled

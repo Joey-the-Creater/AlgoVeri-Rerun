@@ -1,0 +1,1 @@
+Your task is to implement the Insert operation for a Ternary Search Tree (TST) and verify its correctness in Lean. Postconditions: Functional Correctness (view(result) = view(tree) + {key}) and Invariant Preservation (result satisfies well-formedness). Insertion combines BST insertion (left/right) with Trie extension (mid). If path doesn't exist, create new chain.

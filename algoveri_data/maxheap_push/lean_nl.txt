@@ -1,0 +1,1 @@
+Your task is to implement the Push operation for a binary max-heap and verify its correctness in Lean. The operation inserts a new value at the end and bubbles it up to restore the heap property. Postconditions: Multiset view includes the new element (view = old_view + {v}), heap size increases by 1, and the heap invariant is preserved (parent ≥ child).

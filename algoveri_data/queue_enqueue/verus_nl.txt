@@ -1,0 +1,1 @@
+Your task is to implement a Queue and verify its First-In, First-Out correctness. The queue is modeled as a sequence where elements enter at the "back" and exit from the "front." Now you should implement and verify the enqueue (push) operation. Enqueue (Push): Verify that the item is appended to the end of the model sequence, preserving the order of all existing elements.

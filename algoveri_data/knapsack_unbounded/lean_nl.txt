@@ -1,0 +1,1 @@
+Your task is to implement the Unbounded Knapsack algorithm and verify its correctness in Lean. Given weights and values for n items and a capacity W, determine the maximum total value of items that can be selected (with replacement) without exceeding W. Postconditions: Upper Bound and Existence of a valid strategy (counts of items). Weights are strictly positive.

@@ -1,0 +1,9 @@
+import Lake
+open Lake DSL
+
+package "algoveri" where
+
+lean_lib «AlgoVeri» where
+
+require mathlib from git
+  "https://github.com/leanprover-community/mathlib4" @ "@MATHLIB_VERSION@"

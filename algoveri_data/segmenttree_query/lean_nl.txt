@@ -1,0 +1,1 @@
+Your task is to implement the query operation for a Range Maximum Segment Tree and verify its correctness in Lean. The operation queries the maximum value in range [ql, qr). Postconditions: Correctness (result ≥ all values in range), Tightness (result exists in range). Invariant: Node is a valid segment tree.

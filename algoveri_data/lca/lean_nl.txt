@@ -1,0 +1,1 @@
+Your task is to implement the Lowest Common Ancestor (LCA) algorithm and verify its correctness in Lean. Given a binary tree with distinct values and two target values p and q that exist in the tree, find the lowest common ancestor node. Postconditions: Result is an ancestor of both p and q, and is the deepest such ancestor. Distinct values are assumed.

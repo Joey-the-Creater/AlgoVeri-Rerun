@@ -1,0 +1,10 @@
+jinja2
+openai
+anthropic
+requests
+# token counting helper used when available
+tiktoken
+# optional: vllm (for local model hosting)
+# vllm
+# YAML parsing for config
+pyyaml

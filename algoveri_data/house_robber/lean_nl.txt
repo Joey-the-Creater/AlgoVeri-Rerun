@@ -1,0 +1,1 @@
+Your task is to implement the House Robber algorithm and verify its correctness in Lean. Given a list of house values, maximize the total loot without robbing adjacent houses. Postconditions: Result is the value of some valid non-adjacent robbery plan, and no valid plan yields a higher value. Values are non-negative.
