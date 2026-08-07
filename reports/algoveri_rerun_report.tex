@@ -62,7 +62,11 @@ Lean artifact to preserving the requested algorithm under an extensional formal
 contract.  On a controlled 65-task subset without teacher-provided proof holes, a
 constrained Claude Code + Opus 5 agent compiles 63/65 tasks and passes 53/65 under
 GPT-5.4 and 55/65 under GPT-5.6-sol at temperature zero, compared with 39/65 and
-44/65 for the strongest complete direct condition.
+44/65 for the strongest complete direct condition.  We contextualize these outcomes
+against open systems.  The original open-weight end-to-end conditions peak at 14.3\%
+full marks, whereas Goedel-Code-Prover-8B reports 62.3\% proof completion on AlgoVeri.
+The latter solves a different, proof-only task over GPT-5.2-generated, manually checked
+implementations and therefore is complementary rather than directly rank-comparable.
 
 These results confirm AlgoVeri's algorithmic-fidelity gap, extend its finding that
 frontier systems exploit iterative repair, and revise the characterization of Lean's
@@ -106,7 +110,7 @@ a stable optimization pressure toward brute-force solvers, classical choice, and
 verified fallbacks.  Meanwhile, evaluator defects introduce measurement error precisely
 where scores are becoming large enough for reliable ranking to matter.
 
-This paper makes five contributions:
+This paper makes six contributions:
 
 \begin{enumerate}[leftmargin=*,itemsep=2pt]
   \item We extend AlgoVeri's Lean evaluation with four direct frontier-model conditions
@@ -117,6 +121,9 @@ This paper makes five contributions:
         independent verification.
   \item We show a bottleneck shift: current frontier models largely overcome Lean
         compilation, while algorithm identity becomes the dominant source of failure.
+  \item We compare against both general open-weight end-to-end generators and
+        purpose-trained open neural provers, identifying task definition and inference
+        budget as essential axes of any AlgoVeri comparison.
   \item We audit every compiler failure, every coding-agent semantic rejection, every
         judge disagreement, and all task-level outcomes.  The complete matrix appears
         in Appendix~\ref{tab:complete-matrix}; machine-readable analyses are released
@@ -166,6 +173,26 @@ answer uses a compiler trick.  This is an instance of model-based evaluation, wh
 scalability comes with known sensitivity to judge and prompt\cite{zheng2023llmjudge}.
 We retain the benchmark prompt while explicitly measuring that sensitivity.
 
+\subsection{Open and open-weight systems}
+
+AlgoVeri's original evaluation includes four general open-weight model families:
+GPT-OSS-120B, Qwen3-235B-A22B-Instruct, Qwen3-Next-80B-A3B-Thinking, and
+Devstral-2-123B-Instruct\cite{zhao2026algoveri}.  These systems face the full task:
+generate the requested implementation and proof, repair compiler errors, and pass the
+semantic filter.  They are therefore methodologically close to our direct conditions,
+although model versions, sampling multiplicity, and infrastructure differ.
+
+Goedel-Code-Prover takes a different route\cite{li2026goedelcodeprover}.  Its open 8B
+policy recursively decomposes a verification theorem, checks candidate lemmas through
+proof reconstruction and QuickCheck, and iteratively completes the leaves with Lean
+feedback.  On AlgoVeri and CLEVER, however, the implementation is not generated as part
+of the reported proving trial: GPT-5.2 first generates code that the authors manually
+verify, after which the system synthesizes the remaining proof.  Its baselines include
+Kimina-Prover-72B, DeepSeek-Prover-V2-671B, Goedel-Prover-V2-32B, and
+BFS-Prover-V2-32B at pass@128.  This proof-only formulation isolates proof search and
+cannot measure the algorithmic-fidelity failures central to AlgoVeri's original full-
+mark metric.
+
 \section{Extending AlgoVeri's Findings}
 \label{sec:extension-framework}
 
@@ -195,6 +222,11 @@ complete direct conditions continue gaining compilation successes after the firs
 round; the agent moves from 15 to 62 successes by its fifth Lean check. & Tool-mediated
 repair remains valuable, but compiler feedback optimizes formal acceptance rather than
 algorithm identity. \\
+General open models saturate under additional sampling. & Original open-weight
+end-to-end systems peak at 14.29\% full marks; the specialized open 8B
+Goedel-Code-Prover reports 62.3\% proof-only success on fixed implementations. &
+Training and hierarchical decomposition can transform proof search, but proof-only and
+end-to-end rates answer different questions. \\
 Lean combines search and reasoning barriers. & Final direct compilation failures are
 few, while semantic failures use wrong algorithms, oracles, and fallbacks. & The
 bottleneck shifts from proof search toward specification alignment and algorithmic
@@ -206,7 +238,7 @@ Task curation must be complemented by executable preflight and evaluator calibra
 \end{tabularx}
 \end{table*}
 
-We organize the empirical study around five research questions:
+We organize the empirical study around six research questions:
 
 \begin{description}[leftmargin=3.2em,style=nextline]
   \item[RQ1] How far has the Lean capability frontier moved relative to AlgoVeri's
@@ -219,6 +251,8 @@ We organize the empirical study around five research questions:
              changes?
   \item[RQ5] Which task, prompt, and evaluator defects threaten the validity of the
              measured score, and how should the protocol change?
+  \item[RQ6] How do general open-weight generators and specialized open proof systems
+             compare once task definition and inference budget are made explicit?
 \end{description}
 
 \section{Experimental Design}
@@ -234,6 +268,20 @@ pinned local Lake environment rather than treating the container runtime as esse
 and it adds an agentic treatment plus three judge configurations.  We therefore compare
 the \emph{shape} of the findings and report original numbers as context, but reserve
 paired statistical tests for conditions evaluated on the same tasks in this artifact.
+
+\subsection{External open-system comparisons}
+
+We transcribe external comparison values from the published AlgoVeri v2 table and
+Goedel-Code-Prover v2 experiment figure and setup\cite{zhao2026algoveri,li2026goedelcodeprover}.
+They were not rerun in our environment.  We partition them by task definition:
+\emph{end-to-end generation} requires synthesizing both implementation and proof and
+then applying AlgoVeri's semantic filter; \emph{proof-only completion} supplies a fixed,
+manually checked implementation and measures whether the remaining theorem is proved.
+For original open-weight models we report the strongest published $10\times15$ setting
+(10 independent passes, each with up to 15 repairs).  For proof-only neural baselines we
+report pass@128.  Goedel-Code-Prover instead uses hierarchical search with up to 128
+decomposition and 128 completion iterations.  We do not run statistical tests across
+these incompatible protocols.
 
 \subsection{Task scopes}
 
@@ -430,6 +478,58 @@ early checks, a semantic self-audit, a preserved-workspace repair pass, exact ve
 feedback, and final independent verification, the broader enhanced condition reaches
 63/65 compilation and 53/65 5.4-T1 semantic success.  Because task selection and several
 settings changed, this is an engineering progression rather than an ablation.
+
+\subsection{Open-system comparison}
+\label{sec:open-comparison}
+
+Table~\ref{tab:open-comparison} answers RQ6 by separating two evaluation regimes.
+Panel~A contains the strongest published settings for AlgoVeri's general open-weight
+models.  These are the closest external comparison because they generate implementation
+and proof and then face the semantic filter.  GPT-OSS-120B is strongest at 25.97\%
+compiler verification and 14.29\% full marks under $10\times15$ sampling.  The Qwen and
+Devstral conditions remain below 7\% full marks.  Although not a controlled temporal
+comparison, these results place the 31.2--57.1\% full-scope direct rates in this study
+well above the original general open-weight frontier.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Published open/open-weight AlgoVeri comparisons.  Panel A evaluates the
+original end-to-end task.  Panel B supplies GPT-5.2-generated, manually checked
+implementations and evaluates proof completion only.  ``Full mark'' is therefore not
+available for Panel B.  Values are transcribed from the respective papers.}
+\label{tab:open-comparison}
+\begin{tabular}{llrrr}
+\toprule
+System & Published protocol & Parameters & Lean verified/proved & Full mark \\
+\midrule
+\multicolumn{5}{l}{\emph{A. End-to-end implementation + proof + semantic filter (AlgoVeri)}} \\
+GPT-OSS & $10\times15$ & 120B & 25.97\% & 14.29\% \\
+Qwen3-235B-A22B-Instruct & $10\times15$ & 235B / 22B active & 6.49\% & 6.49\% \\
+Qwen3-Next-80B-A3B-Thinking & $10\times15$ & 80B / 3B active & 5.19\% & 5.19\% \\
+Devstral-2-Instruct & $10\times15$ & 123B & 6.49\% & 6.49\% \\
+\midrule
+\multicolumn{5}{l}{\emph{B. Proof-only completion over fixed, manually checked implementations (Goedel-Code-Prover)}} \\
+Kimina-Prover & pass@128 & 72B & 15/77 (19.5\%) & n/a \\
+DeepSeek-Prover-V2 & pass@128 & 671B & 18/77 (23.4\%) & n/a \\
+Goedel-Prover-V2 & pass@128 & 32B & 17/77 (22.1\%) & n/a \\
+BFS-Prover-V2 & pass@128 & 32B & 16/77 (20.8\%) & n/a \\
+Goedel-Code-Prover & hierarchical search & 8B & 48/77 (62.3\%) & n/a \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Goedel-Code-Prover's 48/77 is a strong result for \emph{proof synthesis}: an 8B
+domain-trained policy with hierarchical decomposition substantially exceeds much larger
+open neural provers\cite{li2026goedelcodeprover}.  It should not be read as 62.3\%
+AlgoVeri full marks.  The implementation has already been generated by GPT-5.2 and
+manually checked, proof search uses a much larger iterative budget, and no AlgoVeri
+semantic-judge score is reported.  Conversely, our conditions must choose the algorithm,
+write its implementation, and prove it; their dominant failures often occur in the
+first two steps.  The results are thus complementary: Goedel-Code-Prover demonstrates
+that explicit lemma decomposition can address the proof-search barrier once a suitable
+implementation is fixed, while our study shows that end-to-end agents still need
+machine-checkable controls for algorithm identity.
 
 \subsection{Frontier repair remains effective but misaligned}
 
@@ -726,6 +826,9 @@ leaderboard field.
   \item \textbf{Evaluate agents as a separate treatment.}  Publish tool policy,
         compiler-call counts, budgets, final independent verification, and costs; do
         not merge agentic scores with direct prompting.
+  \item \textbf{Separate proof-only from end-to-end tasks.}  State whether the system
+        receives a fixed implementation or must generate it, and never place prove rate
+        and semantic full-mark rate in one undifferentiated leaderboard column.
 \end{enumerate}
 
 \section{Limitations and Threats to Validity}
@@ -744,6 +847,14 @@ flips demonstrate residual label uncertainty.
 Provider reasoning controls and token accounting are not directly comparable.  The
 coding agent receives tools, more interaction, and a monetary budget.  Its result is an
 upper-level system comparison, not an isolated Opus model effect.
+
+\paragraph{Externally reported open-system results.}
+We did not independently rerun the open/open-weight conditions.  Original AlgoVeri
+values use different sampling multiplicities, and the Goedel-Code-Prover comparison
+uses fixed manually checked implementations and a substantially larger proof-search
+budget.  Its 62.3\% prove rate is neither an end-to-end generation rate nor a semantic
+full-mark rate.  The comparison supports qualitative decomposition of capabilities,
+not a common-condition ranking.
 
 \paragraph{Adaptive-thinking attrition.}
 The 49 returned adaptive-thinking outputs are not a random subset of 77.  Conditional
@@ -775,6 +886,8 @@ The principal immutable directories are:
         \texttt{\_semantic\_gpt56\_temp0} directories for the three judges;
   \item \texttt{reports/data/result\_summary.json} and
         \texttt{reports/data/case\_results.csv}: recomputed aggregate and case-level data;
+  \item \path{reports/data/external_open_systems.csv}: published open-system values,
+        task definitions, budgets, and comparability annotations;
   \item \texttt{config/dashboard\_experiments.json}: the canonical experiment catalog.
 \end{itemize}
 
@@ -811,11 +924,15 @@ algorithm under contracts that admit extensionally correct substitutes.
 A constrained coding agent raises full-mark performance to 82--85\% on the clean
 65-task scope, demonstrating that persistent tools and verifier feedback materially
 advance the frontier.  Its residual oracle and fallback solutions also show why agentic
-compute alone does not solve algorithmic fidelity.  Finally, scaffold, ownership, and
-judge-disagreement findings extend benchmark quality control beyond specification
-curation.  Future vericoding benchmarks should treat formal verification, algorithm
-identity, provenance, output coverage, and evaluator robustness as distinct measurable
-objects.
+compute alone does not solve algorithmic fidelity.  Open-system results sharpen this
+decomposition: general open-weight end-to-end models originally peak at 14.3\% full
+marks, while Goedel-Code-Prover-8B reaches 62.3\% on the narrower task of proving a
+fixed, manually checked implementation.  Specialized hierarchical proof search can
+therefore solve much of the proof bottleneck without answering the end-to-end algorithm-
+generation question.  Finally, scaffold, ownership, and judge-disagreement findings
+extend benchmark quality control beyond specification curation.  Future vericoding
+benchmarks should treat implementation synthesis, proof completion, algorithm identity,
+provenance, output coverage, and evaluator robustness as distinct measurable objects.
 
 \section*{Impact Statement}
 

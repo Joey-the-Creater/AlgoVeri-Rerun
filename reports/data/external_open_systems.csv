@@ -1,0 +1,10 @@
+source,system,task_definition,scope,budget,parameters,lean_verified_count,lean_verified_percent,full_mark_count,full_mark_percent,comparability_note
+AlgoVeri v2,GPT-OSS-120B,end-to-end implementation and proof,77,10x15,120B,20,25.97,11,14.29,Original AlgoVeri semantic filter
+AlgoVeri v2,Qwen3-235B-A22B-Instruct,end-to-end implementation and proof,77,10x15,235B total / 22B active,5,6.49,5,6.49,Original AlgoVeri semantic filter
+AlgoVeri v2,Qwen3-Next-80B-A3B-Thinking,end-to-end implementation and proof,77,10x15,80B total / 3B active,4,5.19,4,5.19,Original AlgoVeri semantic filter
+AlgoVeri v2,Devstral-2-123B-Instruct,end-to-end implementation and proof,77,10x15,123B,5,6.49,5,6.49,Original AlgoVeri semantic filter
+Goedel-Code-Prover v2,Kimina-Prover-72B,proof-only over fixed manually checked implementation,77,pass@128,72B,15,19.48,,,No AlgoVeri semantic full-mark evaluation
+Goedel-Code-Prover v2,DeepSeek-Prover-V2-671B,proof-only over fixed manually checked implementation,77,pass@128,671B,18,23.38,,,No AlgoVeri semantic full-mark evaluation
+Goedel-Code-Prover v2,Goedel-Prover-V2-32B,proof-only over fixed manually checked implementation,77,pass@128,32B,17,22.08,,,No AlgoVeri semantic full-mark evaluation
+Goedel-Code-Prover v2,BFS-Prover-V2-32B,proof-only over fixed manually checked implementation,77,pass@128,32B,16,20.78,,,No AlgoVeri semantic full-mark evaluation
+Goedel-Code-Prover v2,Goedel-Code-Prover-8B,proof-only over fixed manually checked implementation,77,hierarchical search up to 128 decomposition and 128 completion iterations,8B,48,62.34,,,No AlgoVeri semantic full-mark evaluation

@@ -2,7 +2,9 @@
 
 The report presents the rerun as a direct extension of the findings in the original
 ICML 2026 AlgoVeri paper. It uses the official ICML 2026 preprint format and is
-self-contained and ready to upload to Overleaf:
+self-contained and ready to upload to Overleaf. It also separates comparisons with
+general open-weight AlgoVeri generators from Goedel-Code-Prover and other open neural
+provers, whose published AlgoVeri evaluation is proof-only:
 
 - `algoveri_rerun_report.tex`: main paper source
 - `references.bib`: bibliography
@@ -10,6 +12,7 @@ self-contained and ready to upload to Overleaf:
 - `generated/case_tables.tex`: generated 77-task matrix and judge disagreements
 - `data/result_summary.json`: aggregate statistics and task inventories
 - `data/case_results.csv`: every condition/task outcome and full judge analysis
+- `data/external_open_systems.csv`: published open-system comparisons with protocol provenance
 - `algoveri_rerun_report.pdf`: compiled conference-style paper
 
 Compile with a standard TeX Live installation:
