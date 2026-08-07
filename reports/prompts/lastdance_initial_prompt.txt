@@ -1,0 +1,32 @@
+Solve the AlgoVeri Lean 4 task <TASK_NAME> in this directory.
+
+Start by reading TASK.md and Solution.lean. You may also inspect Original.lean,
+Merged.lean, and check.sh, but edit only Solution.lean and change content only
+inside these four marker pairs: auxcode, code, lemma, and proof. Preserve every
+marker. Do not edit Original.lean, TASK.md, check.sh, or Merged.lean.
+
+Implement the exact algorithm described in TASK.md and prove its stated
+postcondition. Semantic correctness matters: do not substitute a different
+algorithm, a specification oracle, brute-force enumeration, sorting when a
+different algorithm is requested, Nat.find, Classical.choose, or decide over the
+target property. Do not use sorry, admit, axioms, constants, partial, unsafe,
+extern, or implemented_by in an editable section. Teacher-provided sorry outside
+the four editable sections is permitted and must remain unchanged.
+
+Your budget is limited. Produce a coherent candidate without leaving editable
+`sorry` placeholders and run ./check.sh early, before extended proof polishing.
+Use its Lean errors to revise Solution.lean, and repeat until it prints LEAN
+VERIFIED. A prior successful check is invalid after another edit: re-run it.
+
+Before declaring success, perform a semantic audit against every requirement in
+TASK.md. In particular, verify that all named preconditions and edge cases are
+implemented, that you did not weaken the requested problem or allow an easier
+variant, and that every mathematical helper/specification is genuine rather than
+a placeholder such as an unjustified `:= 0` or `:= True`. For nonempty-input
+problems, explicitly consider adversarial inputs such as all-negative values.
+After any audit-driven edit, run ./check.sh again.
+
+Do not use network access, Git, package installation, or shell commands other
+than ./check.sh and safe workspace inspection (`pwd`, `ls`, or `ls -la`). Stop
+when verification succeeds and the semantic audit is complete, or when you
+genuinely cannot make further progress.

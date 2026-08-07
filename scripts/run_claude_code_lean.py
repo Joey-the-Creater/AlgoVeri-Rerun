@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run AlgoVeri Lean tasks with Claude Code as a tool-using coding agent."""
+"""Run LastDance, the constrained Claude Code toolchain for AlgoVeri Lean."""
 
 from __future__ import annotations
 

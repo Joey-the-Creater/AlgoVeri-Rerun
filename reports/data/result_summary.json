@@ -200,7 +200,7 @@
     },
     {
       "id": "claude-code-opus5-enhanced",
-      "label": "Claude Code + Opus 5 (enhanced)",
+      "label": "LastDance (Claude Code + Opus 5)",
       "scope": 65,
       "outputs": 65,
       "missing": 0,
@@ -688,7 +688,7 @@
       },
       {
         "condition": "claude-code-opus5-enhanced",
-        "label": "Claude Code + Opus 5 (enhanced)",
+        "label": "LastDance (Claude Code + Opus 5)",
         "scope": 65,
         "outputs": 65,
         "compile_success": 63,
@@ -700,6 +700,477 @@
       }
     ]
   },
+  "algorithm_categories": [
+    {
+      "category": "Basic DS",
+      "native_scope": 15,
+      "common_scope": 12,
+      "conditions": [
+        {
+          "condition": "gpt-5.5",
+          "label": "GPT-5.5",
+          "scope": 12,
+          "outputs": 12,
+          "compile_success": 12,
+          "semantic_passes": {
+            "original": 11,
+            "gpt54_t0": 11,
+            "gpt56_t0": 12
+          }
+        },
+        {
+          "condition": "gpt-5.6-sol",
+          "label": "GPT-5.6-sol",
+          "scope": 12,
+          "outputs": 12,
+          "compile_success": 12,
+          "semantic_passes": {
+            "original": 10,
+            "gpt54_t0": 11,
+            "gpt56_t0": 11
+          }
+        },
+        {
+          "condition": "opus-5-thinking",
+          "label": "Opus 5 (thinking)",
+          "scope": 12,
+          "outputs": 12,
+          "compile_success": 12,
+          "semantic_passes": {
+            "original": 12,
+            "gpt54_t0": 12,
+            "gpt56_t0": 12
+          }
+        },
+        {
+          "condition": "opus-5-no-thinking",
+          "label": "Opus 5 (no thinking)",
+          "scope": 12,
+          "outputs": 12,
+          "compile_success": 12,
+          "semantic_passes": {
+            "original": 12,
+            "gpt54_t0": 12,
+            "gpt56_t0": 12
+          }
+        },
+        {
+          "condition": "claude-code-opus5-enhanced",
+          "label": "LastDance (Claude Code + Opus 5)",
+          "scope": 12,
+          "outputs": 12,
+          "compile_success": 12,
+          "semantic_passes": {
+            "original": 12,
+            "gpt54_t0": 12,
+            "gpt56_t0": 12
+          }
+        }
+      ]
+    },
+    {
+      "category": "Advanced DS",
+      "native_scope": 16,
+      "common_scope": 7,
+      "conditions": [
+        {
+          "condition": "gpt-5.5",
+          "label": "GPT-5.5",
+          "scope": 7,
+          "outputs": 7,
+          "compile_success": 7,
+          "semantic_passes": {
+            "original": 2,
+            "gpt54_t0": 2,
+            "gpt56_t0": 2
+          }
+        },
+        {
+          "condition": "gpt-5.6-sol",
+          "label": "GPT-5.6-sol",
+          "scope": 7,
+          "outputs": 7,
+          "compile_success": 5,
+          "semantic_passes": {
+            "original": 2,
+            "gpt54_t0": 2,
+            "gpt56_t0": 3
+          }
+        },
+        {
+          "condition": "opus-5-thinking",
+          "label": "Opus 5 (thinking)",
+          "scope": 7,
+          "outputs": 4,
+          "compile_success": 4,
+          "semantic_passes": {
+            "original": 2,
+            "gpt54_t0": 2,
+            "gpt56_t0": 3
+          }
+        },
+        {
+          "condition": "opus-5-no-thinking",
+          "label": "Opus 5 (no thinking)",
+          "scope": 7,
+          "outputs": 7,
+          "compile_success": 7,
+          "semantic_passes": {
+            "original": 3,
+            "gpt54_t0": 3,
+            "gpt56_t0": 4
+          }
+        },
+        {
+          "condition": "claude-code-opus5-enhanced",
+          "label": "LastDance (Claude Code + Opus 5)",
+          "scope": 7,
+          "outputs": 7,
+          "compile_success": 7,
+          "semantic_passes": {
+            "original": 4,
+            "gpt54_t0": 5,
+            "gpt56_t0": 5
+          }
+        }
+      ]
+    },
+    {
+      "category": "Sorting",
+      "native_scope": 7,
+      "common_scope": 7,
+      "conditions": [
+        {
+          "condition": "gpt-5.5",
+          "label": "GPT-5.5",
+          "scope": 7,
+          "outputs": 7,
+          "compile_success": 7,
+          "semantic_passes": {
+            "original": 1,
+            "gpt54_t0": 1,
+            "gpt56_t0": 1
+          }
+        },
+        {
+          "condition": "gpt-5.6-sol",
+          "label": "GPT-5.6-sol",
+          "scope": 7,
+          "outputs": 7,
+          "compile_success": 7,
+          "semantic_passes": {
+            "original": 4,
+            "gpt54_t0": 4,
+            "gpt56_t0": 4
+          }
+        },
+        {
+          "condition": "opus-5-thinking",
+          "label": "Opus 5 (thinking)",
+          "scope": 7,
+          "outputs": 7,
+          "compile_success": 7,
+          "semantic_passes": {
+            "original": 5,
+            "gpt54_t0": 5,
+            "gpt56_t0": 5
+          }
+        },
+        {
+          "condition": "opus-5-no-thinking",
+          "label": "Opus 5 (no thinking)",
+          "scope": 7,
+          "outputs": 7,
+          "compile_success": 7,
+          "semantic_passes": {
+            "original": 5,
+            "gpt54_t0": 5,
+            "gpt56_t0": 5
+          }
+        },
+        {
+          "condition": "claude-code-opus5-enhanced",
+          "label": "LastDance (Claude Code + Opus 5)",
+          "scope": 7,
+          "outputs": 7,
+          "compile_success": 7,
+          "semantic_passes": {
+            "original": 7,
+            "gpt54_t0": 6,
+            "gpt56_t0": 7
+          }
+        }
+      ]
+    },
+    {
+      "category": "DP & Algo",
+      "native_scope": 10,
+      "common_scope": 10,
+      "conditions": [
+        {
+          "condition": "gpt-5.5",
+          "label": "GPT-5.5",
+          "scope": 10,
+          "outputs": 10,
+          "compile_success": 10,
+          "semantic_passes": {
+            "original": 5,
+            "gpt54_t0": 4,
+            "gpt56_t0": 3
+          }
+        },
+        {
+          "condition": "gpt-5.6-sol",
+          "label": "GPT-5.6-sol",
+          "scope": 10,
+          "outputs": 10,
+          "compile_success": 10,
+          "semantic_passes": {
+            "original": 4,
+            "gpt54_t0": 5,
+            "gpt56_t0": 4
+          }
+        },
+        {
+          "condition": "opus-5-thinking",
+          "label": "Opus 5 (thinking)",
+          "scope": 10,
+          "outputs": 6,
+          "compile_success": 6,
+          "semantic_passes": {
+            "original": 3,
+            "gpt54_t0": 4,
+            "gpt56_t0": 4
+          }
+        },
+        {
+          "condition": "opus-5-no-thinking",
+          "label": "Opus 5 (no thinking)",
+          "scope": 10,
+          "outputs": 10,
+          "compile_success": 10,
+          "semantic_passes": {
+            "original": 8,
+            "gpt54_t0": 9,
+            "gpt56_t0": 9
+          }
+        },
+        {
+          "condition": "claude-code-opus5-enhanced",
+          "label": "LastDance (Claude Code + Opus 5)",
+          "scope": 10,
+          "outputs": 10,
+          "compile_success": 10,
+          "semantic_passes": {
+            "original": 10,
+            "gpt54_t0": 10,
+            "gpt56_t0": 10
+          }
+        }
+      ]
+    },
+    {
+      "category": "Graph",
+      "native_scope": 13,
+      "common_scope": 13,
+      "conditions": [
+        {
+          "condition": "gpt-5.5",
+          "label": "GPT-5.5",
+          "scope": 13,
+          "outputs": 13,
+          "compile_success": 13,
+          "semantic_passes": {
+            "original": 0,
+            "gpt54_t0": 0,
+            "gpt56_t0": 0
+          }
+        },
+        {
+          "condition": "gpt-5.6-sol",
+          "label": "GPT-5.6-sol",
+          "scope": 13,
+          "outputs": 13,
+          "compile_success": 10,
+          "semantic_passes": {
+            "original": 0,
+            "gpt54_t0": 0,
+            "gpt56_t0": 1
+          }
+        },
+        {
+          "condition": "opus-5-thinking",
+          "label": "Opus 5 (thinking)",
+          "scope": 13,
+          "outputs": 3,
+          "compile_success": 3,
+          "semantic_passes": {
+            "original": 0,
+            "gpt54_t0": 0,
+            "gpt56_t0": 2
+          }
+        },
+        {
+          "condition": "opus-5-no-thinking",
+          "label": "Opus 5 (no thinking)",
+          "scope": 13,
+          "outputs": 13,
+          "compile_success": 13,
+          "semantic_passes": {
+            "original": 1,
+            "gpt54_t0": 3,
+            "gpt56_t0": 5
+          }
+        },
+        {
+          "condition": "claude-code-opus5-enhanced",
+          "label": "LastDance (Claude Code + Opus 5)",
+          "scope": 13,
+          "outputs": 13,
+          "compile_success": 11,
+          "semantic_passes": {
+            "original": 7,
+            "gpt54_t0": 7,
+            "gpt56_t0": 7
+          }
+        }
+      ]
+    },
+    {
+      "category": "Math",
+      "native_scope": 11,
+      "common_scope": 11,
+      "conditions": [
+        {
+          "condition": "gpt-5.5",
+          "label": "GPT-5.5",
+          "scope": 11,
+          "outputs": 11,
+          "compile_success": 11,
+          "semantic_passes": {
+            "original": 3,
+            "gpt54_t0": 4,
+            "gpt56_t0": 4
+          }
+        },
+        {
+          "condition": "gpt-5.6-sol",
+          "label": "GPT-5.6-sol",
+          "scope": 11,
+          "outputs": 11,
+          "compile_success": 11,
+          "semantic_passes": {
+            "original": 3,
+            "gpt54_t0": 3,
+            "gpt56_t0": 5
+          }
+        },
+        {
+          "condition": "opus-5-thinking",
+          "label": "Opus 5 (thinking)",
+          "scope": 11,
+          "outputs": 10,
+          "compile_success": 10,
+          "semantic_passes": {
+            "original": 5,
+            "gpt54_t0": 4,
+            "gpt56_t0": 3
+          }
+        },
+        {
+          "condition": "opus-5-no-thinking",
+          "label": "Opus 5 (no thinking)",
+          "scope": 11,
+          "outputs": 11,
+          "compile_success": 11,
+          "semantic_passes": {
+            "original": 5,
+            "gpt54_t0": 5,
+            "gpt56_t0": 7
+          }
+        },
+        {
+          "condition": "claude-code-opus5-enhanced",
+          "label": "LastDance (Claude Code + Opus 5)",
+          "scope": 11,
+          "outputs": 11,
+          "compile_success": 11,
+          "semantic_passes": {
+            "original": 10,
+            "gpt54_t0": 10,
+            "gpt56_t0": 11
+          }
+        }
+      ]
+    },
+    {
+      "category": "String",
+      "native_scope": 5,
+      "common_scope": 5,
+      "conditions": [
+        {
+          "condition": "gpt-5.5",
+          "label": "GPT-5.5",
+          "scope": 5,
+          "outputs": 5,
+          "compile_success": 5,
+          "semantic_passes": {
+            "original": 2,
+            "gpt54_t0": 2,
+            "gpt56_t0": 2
+          }
+        },
+        {
+          "condition": "gpt-5.6-sol",
+          "label": "GPT-5.6-sol",
+          "scope": 5,
+          "outputs": 5,
+          "compile_success": 5,
+          "semantic_passes": {
+            "original": 2,
+            "gpt54_t0": 2,
+            "gpt56_t0": 1
+          }
+        },
+        {
+          "condition": "opus-5-thinking",
+          "label": "Opus 5 (thinking)",
+          "scope": 5,
+          "outputs": 5,
+          "compile_success": 5,
+          "semantic_passes": {
+            "original": 2,
+            "gpt54_t0": 2,
+            "gpt56_t0": 2
+          }
+        },
+        {
+          "condition": "opus-5-no-thinking",
+          "label": "Opus 5 (no thinking)",
+          "scope": 5,
+          "outputs": 5,
+          "compile_success": 5,
+          "semantic_passes": {
+            "original": 2,
+            "gpt54_t0": 2,
+            "gpt56_t0": 2
+          }
+        },
+        {
+          "condition": "claude-code-opus5-enhanced",
+          "label": "LastDance (Claude Code + Opus 5)",
+          "scope": 5,
+          "outputs": 5,
+          "compile_success": 5,
+          "semantic_passes": {
+            "original": 3,
+            "gpt54_t0": 3,
+            "gpt56_t0": 3
+          }
+        }
+      ]
+    }
+  ],
   "teacher_owned_sorry": {
     "count": 12,
     "tasks": [
@@ -789,7 +1260,161 @@
         "5": 67,
         "10": 75,
         "15": 75
-      }
+      },
+      "try_curve": [
+        {
+          "try": 1,
+          "successes": 21,
+          "rate": 0.2727272727272727
+        },
+        {
+          "try": 2,
+          "successes": 43,
+          "rate": 0.5584415584415584
+        },
+        {
+          "try": 3,
+          "successes": 57,
+          "rate": 0.7402597402597403
+        },
+        {
+          "try": 4,
+          "successes": 65,
+          "rate": 0.8441558441558441
+        },
+        {
+          "try": 5,
+          "successes": 67,
+          "rate": 0.8701298701298701
+        },
+        {
+          "try": 6,
+          "successes": 72,
+          "rate": 0.935064935064935
+        },
+        {
+          "try": 7,
+          "successes": 72,
+          "rate": 0.935064935064935
+        },
+        {
+          "try": 8,
+          "successes": 73,
+          "rate": 0.948051948051948
+        },
+        {
+          "try": 9,
+          "successes": 74,
+          "rate": 0.961038961038961
+        },
+        {
+          "try": 10,
+          "successes": 75,
+          "rate": 0.974025974025974
+        },
+        {
+          "try": 11,
+          "successes": 75,
+          "rate": 0.974025974025974
+        },
+        {
+          "try": 12,
+          "successes": 75,
+          "rate": 0.974025974025974
+        },
+        {
+          "try": 13,
+          "successes": 75,
+          "rate": 0.974025974025974
+        },
+        {
+          "try": 14,
+          "successes": 75,
+          "rate": 0.974025974025974
+        },
+        {
+          "try": 15,
+          "successes": 75,
+          "rate": 0.974025974025974
+        }
+      ],
+      "common_try_curve": [
+        {
+          "try": 1,
+          "successes": 19,
+          "rate": 0.2923076923076923
+        },
+        {
+          "try": 2,
+          "successes": 41,
+          "rate": 0.6307692307692307
+        },
+        {
+          "try": 3,
+          "successes": 53,
+          "rate": 0.8153846153846154
+        },
+        {
+          "try": 4,
+          "successes": 61,
+          "rate": 0.9384615384615385
+        },
+        {
+          "try": 5,
+          "successes": 63,
+          "rate": 0.9692307692307692
+        },
+        {
+          "try": 6,
+          "successes": 64,
+          "rate": 0.9846153846153847
+        },
+        {
+          "try": 7,
+          "successes": 64,
+          "rate": 0.9846153846153847
+        },
+        {
+          "try": 8,
+          "successes": 64,
+          "rate": 0.9846153846153847
+        },
+        {
+          "try": 9,
+          "successes": 65,
+          "rate": 1.0
+        },
+        {
+          "try": 10,
+          "successes": 65,
+          "rate": 1.0
+        },
+        {
+          "try": 11,
+          "successes": 65,
+          "rate": 1.0
+        },
+        {
+          "try": 12,
+          "successes": 65,
+          "rate": 1.0
+        },
+        {
+          "try": 13,
+          "successes": 65,
+          "rate": 1.0
+        },
+        {
+          "try": 14,
+          "successes": 65,
+          "rate": 1.0
+        },
+        {
+          "try": 15,
+          "successes": 65,
+          "rate": 1.0
+        }
+      ]
     },
     {
       "condition": "gpt-5.6-sol",
@@ -810,7 +1435,161 @@
         "5": 63,
         "10": 70,
         "15": 71
-      }
+      },
+      "try_curve": [
+        {
+          "try": 1,
+          "successes": 19,
+          "rate": 0.24675324675324675
+        },
+        {
+          "try": 2,
+          "successes": 37,
+          "rate": 0.4805194805194805
+        },
+        {
+          "try": 3,
+          "successes": 53,
+          "rate": 0.6883116883116883
+        },
+        {
+          "try": 4,
+          "successes": 57,
+          "rate": 0.7402597402597403
+        },
+        {
+          "try": 5,
+          "successes": 63,
+          "rate": 0.8181818181818182
+        },
+        {
+          "try": 6,
+          "successes": 67,
+          "rate": 0.8701298701298701
+        },
+        {
+          "try": 7,
+          "successes": 69,
+          "rate": 0.8961038961038961
+        },
+        {
+          "try": 8,
+          "successes": 70,
+          "rate": 0.9090909090909091
+        },
+        {
+          "try": 9,
+          "successes": 70,
+          "rate": 0.9090909090909091
+        },
+        {
+          "try": 10,
+          "successes": 70,
+          "rate": 0.9090909090909091
+        },
+        {
+          "try": 11,
+          "successes": 70,
+          "rate": 0.9090909090909091
+        },
+        {
+          "try": 12,
+          "successes": 71,
+          "rate": 0.922077922077922
+        },
+        {
+          "try": 13,
+          "successes": 71,
+          "rate": 0.922077922077922
+        },
+        {
+          "try": 14,
+          "successes": 71,
+          "rate": 0.922077922077922
+        },
+        {
+          "try": 15,
+          "successes": 71,
+          "rate": 0.922077922077922
+        }
+      ],
+      "common_try_curve": [
+        {
+          "try": 1,
+          "successes": 18,
+          "rate": 0.27692307692307694
+        },
+        {
+          "try": 2,
+          "successes": 36,
+          "rate": 0.5538461538461539
+        },
+        {
+          "try": 3,
+          "successes": 51,
+          "rate": 0.7846153846153846
+        },
+        {
+          "try": 4,
+          "successes": 55,
+          "rate": 0.8461538461538461
+        },
+        {
+          "try": 5,
+          "successes": 59,
+          "rate": 0.9076923076923077
+        },
+        {
+          "try": 6,
+          "successes": 60,
+          "rate": 0.9230769230769231
+        },
+        {
+          "try": 7,
+          "successes": 60,
+          "rate": 0.9230769230769231
+        },
+        {
+          "try": 8,
+          "successes": 60,
+          "rate": 0.9230769230769231
+        },
+        {
+          "try": 9,
+          "successes": 60,
+          "rate": 0.9230769230769231
+        },
+        {
+          "try": 10,
+          "successes": 60,
+          "rate": 0.9230769230769231
+        },
+        {
+          "try": 11,
+          "successes": 60,
+          "rate": 0.9230769230769231
+        },
+        {
+          "try": 12,
+          "successes": 60,
+          "rate": 0.9230769230769231
+        },
+        {
+          "try": 13,
+          "successes": 60,
+          "rate": 0.9230769230769231
+        },
+        {
+          "try": 14,
+          "successes": 60,
+          "rate": 0.9230769230769231
+        },
+        {
+          "try": 15,
+          "successes": 60,
+          "rate": 0.9230769230769231
+        }
+      ]
     },
     {
       "condition": "opus-5-thinking",
@@ -831,7 +1610,161 @@
         "5": 49,
         "10": 49,
         "15": 49
-      }
+      },
+      "try_curve": [
+        {
+          "try": 1,
+          "successes": 33,
+          "rate": 0.42857142857142855
+        },
+        {
+          "try": 2,
+          "successes": 45,
+          "rate": 0.5844155844155844
+        },
+        {
+          "try": 3,
+          "successes": 49,
+          "rate": 0.6363636363636364
+        },
+        {
+          "try": 4,
+          "successes": 49,
+          "rate": 0.6363636363636364
+        },
+        {
+          "try": 5,
+          "successes": 49,
+          "rate": 0.6363636363636364
+        },
+        {
+          "try": 6,
+          "successes": 49,
+          "rate": 0.6363636363636364
+        },
+        {
+          "try": 7,
+          "successes": 49,
+          "rate": 0.6363636363636364
+        },
+        {
+          "try": 8,
+          "successes": 49,
+          "rate": 0.6363636363636364
+        },
+        {
+          "try": 9,
+          "successes": 49,
+          "rate": 0.6363636363636364
+        },
+        {
+          "try": 10,
+          "successes": 49,
+          "rate": 0.6363636363636364
+        },
+        {
+          "try": 11,
+          "successes": 49,
+          "rate": 0.6363636363636364
+        },
+        {
+          "try": 12,
+          "successes": 49,
+          "rate": 0.6363636363636364
+        },
+        {
+          "try": 13,
+          "successes": 49,
+          "rate": 0.6363636363636364
+        },
+        {
+          "try": 14,
+          "successes": 49,
+          "rate": 0.6363636363636364
+        },
+        {
+          "try": 15,
+          "successes": 49,
+          "rate": 0.6363636363636364
+        }
+      ],
+      "common_try_curve": [
+        {
+          "try": 1,
+          "successes": 33,
+          "rate": 0.5076923076923077
+        },
+        {
+          "try": 2,
+          "successes": 45,
+          "rate": 0.6923076923076923
+        },
+        {
+          "try": 3,
+          "successes": 47,
+          "rate": 0.7230769230769231
+        },
+        {
+          "try": 4,
+          "successes": 47,
+          "rate": 0.7230769230769231
+        },
+        {
+          "try": 5,
+          "successes": 47,
+          "rate": 0.7230769230769231
+        },
+        {
+          "try": 6,
+          "successes": 47,
+          "rate": 0.7230769230769231
+        },
+        {
+          "try": 7,
+          "successes": 47,
+          "rate": 0.7230769230769231
+        },
+        {
+          "try": 8,
+          "successes": 47,
+          "rate": 0.7230769230769231
+        },
+        {
+          "try": 9,
+          "successes": 47,
+          "rate": 0.7230769230769231
+        },
+        {
+          "try": 10,
+          "successes": 47,
+          "rate": 0.7230769230769231
+        },
+        {
+          "try": 11,
+          "successes": 47,
+          "rate": 0.7230769230769231
+        },
+        {
+          "try": 12,
+          "successes": 47,
+          "rate": 0.7230769230769231
+        },
+        {
+          "try": 13,
+          "successes": 47,
+          "rate": 0.7230769230769231
+        },
+        {
+          "try": 14,
+          "successes": 47,
+          "rate": 0.7230769230769231
+        },
+        {
+          "try": 15,
+          "successes": 47,
+          "rate": 0.7230769230769231
+        }
+      ]
     },
     {
       "condition": "opus-5-no-thinking",
@@ -852,7 +1785,161 @@
         "5": 69,
         "10": 75,
         "15": 76
-      }
+      },
+      "try_curve": [
+        {
+          "try": 1,
+          "successes": 24,
+          "rate": 0.3116883116883117
+        },
+        {
+          "try": 2,
+          "successes": 43,
+          "rate": 0.5584415584415584
+        },
+        {
+          "try": 3,
+          "successes": 58,
+          "rate": 0.7532467532467533
+        },
+        {
+          "try": 4,
+          "successes": 63,
+          "rate": 0.8181818181818182
+        },
+        {
+          "try": 5,
+          "successes": 69,
+          "rate": 0.8961038961038961
+        },
+        {
+          "try": 6,
+          "successes": 73,
+          "rate": 0.948051948051948
+        },
+        {
+          "try": 7,
+          "successes": 74,
+          "rate": 0.961038961038961
+        },
+        {
+          "try": 8,
+          "successes": 75,
+          "rate": 0.974025974025974
+        },
+        {
+          "try": 9,
+          "successes": 75,
+          "rate": 0.974025974025974
+        },
+        {
+          "try": 10,
+          "successes": 75,
+          "rate": 0.974025974025974
+        },
+        {
+          "try": 11,
+          "successes": 76,
+          "rate": 0.987012987012987
+        },
+        {
+          "try": 12,
+          "successes": 76,
+          "rate": 0.987012987012987
+        },
+        {
+          "try": 13,
+          "successes": 76,
+          "rate": 0.987012987012987
+        },
+        {
+          "try": 14,
+          "successes": 76,
+          "rate": 0.987012987012987
+        },
+        {
+          "try": 15,
+          "successes": 76,
+          "rate": 0.987012987012987
+        }
+      ],
+      "common_try_curve": [
+        {
+          "try": 1,
+          "successes": 23,
+          "rate": 0.35384615384615387
+        },
+        {
+          "try": 2,
+          "successes": 40,
+          "rate": 0.6153846153846154
+        },
+        {
+          "try": 3,
+          "successes": 53,
+          "rate": 0.8153846153846154
+        },
+        {
+          "try": 4,
+          "successes": 56,
+          "rate": 0.8615384615384616
+        },
+        {
+          "try": 5,
+          "successes": 59,
+          "rate": 0.9076923076923077
+        },
+        {
+          "try": 6,
+          "successes": 62,
+          "rate": 0.9538461538461539
+        },
+        {
+          "try": 7,
+          "successes": 63,
+          "rate": 0.9692307692307692
+        },
+        {
+          "try": 8,
+          "successes": 64,
+          "rate": 0.9846153846153847
+        },
+        {
+          "try": 9,
+          "successes": 64,
+          "rate": 0.9846153846153847
+        },
+        {
+          "try": 10,
+          "successes": 64,
+          "rate": 0.9846153846153847
+        },
+        {
+          "try": 11,
+          "successes": 65,
+          "rate": 1.0
+        },
+        {
+          "try": 12,
+          "successes": 65,
+          "rate": 1.0
+        },
+        {
+          "try": 13,
+          "successes": 65,
+          "rate": 1.0
+        },
+        {
+          "try": 14,
+          "successes": 65,
+          "rate": 1.0
+        },
+        {
+          "try": 15,
+          "successes": 65,
+          "rate": 1.0
+        }
+      ]
     },
     {
       "condition": "claude-code-opus5-enhanced",
@@ -873,16 +1960,170 @@
         "5": 62,
         "10": 63,
         "15": 63
-      }
+      },
+      "try_curve": [
+        {
+          "try": 1,
+          "successes": 15,
+          "rate": 0.23076923076923078
+        },
+        {
+          "try": 2,
+          "successes": 37,
+          "rate": 0.5692307692307692
+        },
+        {
+          "try": 3,
+          "successes": 45,
+          "rate": 0.6923076923076923
+        },
+        {
+          "try": 4,
+          "successes": 55,
+          "rate": 0.8461538461538461
+        },
+        {
+          "try": 5,
+          "successes": 62,
+          "rate": 0.9538461538461539
+        },
+        {
+          "try": 6,
+          "successes": 62,
+          "rate": 0.9538461538461539
+        },
+        {
+          "try": 7,
+          "successes": 62,
+          "rate": 0.9538461538461539
+        },
+        {
+          "try": 8,
+          "successes": 62,
+          "rate": 0.9538461538461539
+        },
+        {
+          "try": 9,
+          "successes": 62,
+          "rate": 0.9538461538461539
+        },
+        {
+          "try": 10,
+          "successes": 63,
+          "rate": 0.9692307692307692
+        },
+        {
+          "try": 11,
+          "successes": 63,
+          "rate": 0.9692307692307692
+        },
+        {
+          "try": 12,
+          "successes": 63,
+          "rate": 0.9692307692307692
+        },
+        {
+          "try": 13,
+          "successes": 63,
+          "rate": 0.9692307692307692
+        },
+        {
+          "try": 14,
+          "successes": 63,
+          "rate": 0.9692307692307692
+        },
+        {
+          "try": 15,
+          "successes": 63,
+          "rate": 0.9692307692307692
+        }
+      ],
+      "common_try_curve": [
+        {
+          "try": 1,
+          "successes": 15,
+          "rate": 0.23076923076923078
+        },
+        {
+          "try": 2,
+          "successes": 37,
+          "rate": 0.5692307692307692
+        },
+        {
+          "try": 3,
+          "successes": 45,
+          "rate": 0.6923076923076923
+        },
+        {
+          "try": 4,
+          "successes": 55,
+          "rate": 0.8461538461538461
+        },
+        {
+          "try": 5,
+          "successes": 62,
+          "rate": 0.9538461538461539
+        },
+        {
+          "try": 6,
+          "successes": 62,
+          "rate": 0.9538461538461539
+        },
+        {
+          "try": 7,
+          "successes": 62,
+          "rate": 0.9538461538461539
+        },
+        {
+          "try": 8,
+          "successes": 62,
+          "rate": 0.9538461538461539
+        },
+        {
+          "try": 9,
+          "successes": 62,
+          "rate": 0.9538461538461539
+        },
+        {
+          "try": 10,
+          "successes": 63,
+          "rate": 0.9692307692307692
+        },
+        {
+          "try": 11,
+          "successes": 63,
+          "rate": 0.9692307692307692
+        },
+        {
+          "try": 12,
+          "successes": 63,
+          "rate": 0.9692307692307692
+        },
+        {
+          "try": 13,
+          "successes": 63,
+          "rate": 0.9692307692307692
+        },
+        {
+          "try": 14,
+          "successes": 63,
+          "rate": 0.9692307692307692
+        },
+        {
+          "try": 15,
+          "successes": 63,
+          "rate": 0.9692307692307692
+        }
+      ]
     }
   ],
   "pilot_claude_code": [
     {
       "id": "claude-code-hard10",
-      "label": "Claude Code \u00b7 hard 10",
-      "group": "Claude Code \u00b7 Opus 5",
+      "label": "LastDance \u00b7 pilot hard 10",
+      "group": "LastDance",
       "comparison_default": false,
-      "condition": "Opus 5 coding agent \u00b7 $2/task cap",
+      "condition": "LastDance / Opus 5 \u00b7 $2/task cap",
       "provider": "Anthropic",
       "model": "claude-code-opus-5",
       "judge_model": null,
@@ -995,10 +2236,10 @@
     },
     {
       "id": "claude-code-opus5-nonthinking20",
-      "label": "Non-thinking failures \u00b7 remaining 20",
-      "group": "Claude Code \u00b7 Opus 5",
+      "label": "LastDance \u00b7 pilot remaining 20",
+      "group": "LastDance",
       "comparison_default": false,
-      "condition": "Opus 5 coding agent \u00b7 $2/task cap",
+      "condition": "LastDance / Opus 5 \u00b7 $2/task cap",
       "provider": "Anthropic",
       "model": "claude-code-opus-5",
       "judge_model": null,
@@ -1111,10 +2352,10 @@
     },
     {
       "id": "claude-code-opus5-combined",
-      "label": "Claude Code \u00b7 all 30 cases",
-      "group": "Claude Code",
+      "label": "LastDance \u00b7 combined 30 cases",
+      "group": "LastDance",
       "comparison_default": false,
-      "condition": "Opus 5 coding agent \u00b7 combined batches",
+      "condition": "LastDance / Opus 5 \u00b7 combined batches",
       "provider": "Anthropic",
       "model": "claude-code-opus-5",
       "judge_model": null,

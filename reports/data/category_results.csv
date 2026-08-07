@@ -1,0 +1,36 @@
+category,native_scope,common_scope,condition,outputs,compile_success,gpt54_temp0_semantic_passes,gpt54_temp0_full_mark_rate
+Basic DS,15,12,gpt-5.5,12,12,11,0.9166666666666666
+Basic DS,15,12,gpt-5.6-sol,12,12,11,0.9166666666666666
+Basic DS,15,12,opus-5-thinking,12,12,12,1.0
+Basic DS,15,12,opus-5-no-thinking,12,12,12,1.0
+Basic DS,15,12,claude-code-opus5-enhanced,12,12,12,1.0
+Advanced DS,16,7,gpt-5.5,7,7,2,0.2857142857142857
+Advanced DS,16,7,gpt-5.6-sol,7,5,2,0.2857142857142857
+Advanced DS,16,7,opus-5-thinking,4,4,2,0.2857142857142857
+Advanced DS,16,7,opus-5-no-thinking,7,7,3,0.42857142857142855
+Advanced DS,16,7,claude-code-opus5-enhanced,7,7,5,0.7142857142857143
+Sorting,7,7,gpt-5.5,7,7,1,0.14285714285714285
+Sorting,7,7,gpt-5.6-sol,7,7,4,0.5714285714285714
+Sorting,7,7,opus-5-thinking,7,7,5,0.7142857142857143
+Sorting,7,7,opus-5-no-thinking,7,7,5,0.7142857142857143
+Sorting,7,7,claude-code-opus5-enhanced,7,7,6,0.8571428571428571
+DP & Algo,10,10,gpt-5.5,10,10,4,0.4
+DP & Algo,10,10,gpt-5.6-sol,10,10,5,0.5
+DP & Algo,10,10,opus-5-thinking,6,6,4,0.4
+DP & Algo,10,10,opus-5-no-thinking,10,10,9,0.9
+DP & Algo,10,10,claude-code-opus5-enhanced,10,10,10,1.0
+Graph,13,13,gpt-5.5,13,13,0,0.0
+Graph,13,13,gpt-5.6-sol,13,10,0,0.0
+Graph,13,13,opus-5-thinking,3,3,0,0.0
+Graph,13,13,opus-5-no-thinking,13,13,3,0.23076923076923078
+Graph,13,13,claude-code-opus5-enhanced,13,11,7,0.5384615384615384
+Math,11,11,gpt-5.5,11,11,4,0.36363636363636365
+Math,11,11,gpt-5.6-sol,11,11,3,0.2727272727272727
+Math,11,11,opus-5-thinking,10,10,4,0.36363636363636365
+Math,11,11,opus-5-no-thinking,11,11,5,0.45454545454545453
+Math,11,11,claude-code-opus5-enhanced,11,11,10,0.9090909090909091
+String,5,5,gpt-5.5,5,5,2,0.4
+String,5,5,gpt-5.6-sol,5,5,2,0.4
+String,5,5,opus-5-thinking,5,5,2,0.4
+String,5,5,opus-5-no-thinking,5,5,2,0.4
+String,5,5,claude-code-opus5-enhanced,5,5,3,0.6

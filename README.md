@@ -1,8 +1,8 @@
 # AlgoVeri Lean Rerun Results
 
 This repository contains a rerun of AlgoVeri's 77-case Lean benchmark using
-GPT-5.5, GPT-5.6 Sol, Claude Opus 5, and a Claude Code + Opus 5 coding-agent
-condition. The local modifications remove the Lean runner's dependency on
+GPT-5.5, GPT-5.6 Sol, Claude Opus 5, and **LastDance**, a constrained Claude
+Code + Opus 5 coding-agent toolchain. The local modifications remove the Lean runner's dependency on
 Apptainer, add OpenAI and Anthropic model runners, preserve three independent
 semantic-judge views, and provide a result-audit dashboard.
 
@@ -38,7 +38,7 @@ estimate over multiple random seeds.
 | GPT-5.6 Sol | 77/77 | 71/77 (92.21%) | 25/77 | 27/77 | 30/77 |
 | Claude Opus 5, adaptive thinking | 49/77 | 49/77 (63.64%) | 29/77 | 29/77 | 31/77 |
 | Claude Opus 5, thinking disabled | 77/77 | 76/77 (98.70%) | 36/77 | 39/77 | 44/77 |
-| Claude Code + Opus 5, enhanced 65-task scope | 65/65 | 63/65 (96.92%) | 53/65 | 53/65 | 55/65 |
+| LastDance (Claude Code + Opus 5), 65-task scope | 65/65 | 63/65 (96.92%) | 53/65 | 53/65 | 55/65 |
 
 Adaptive-thinking Opus repeatedly exhausted its output budget on thinking
 without returning Lean text. A one-attempt pass over its missing cases raised
@@ -129,7 +129,7 @@ See `BASELINE_GPT55_GPT56.md` for environment setup and runner usage.
 
 ## Coding-agent condition
 
-An additional runner uses Claude Code with Opus 5 as a tool-using coding agent.
+LastDance uses Claude Code with Opus 5 as a tool-using coding agent.
 It gives each benchmark case an isolated `Solution.lean` file and a constrained
 Lean check command, then independently validates and recompiles the final
 candidate. The enhanced default uses a $2 initial session and, only after an
@@ -149,6 +149,8 @@ python3 scripts/analyze_rerun_results.py \
   --json-output reports/data/result_summary.json \
   --csv-output reports/data/case_results.csv \
   --latex-output reports/generated/case_tables.tex
+python3 scripts/export_lastdance_prompts.py
+python3 scripts/generate_report_figures.py
 
 cd reports
 latexmk -pdf algoveri_rerun_report.tex

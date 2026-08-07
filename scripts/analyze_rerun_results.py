@@ -45,7 +45,7 @@ CONDITIONS = {
         "gpt56_t0": "opus-5-no-thinking-judge-gpt56-temp0",
     },
     "claude-code-opus5-enhanced": {
-        "label": "Claude Code + Opus 5 (enhanced)",
+        "label": "LastDance (Claude Code + Opus 5)",
         "original": "claude-code-opus5-enhanced",
         "gpt54_t0": "claude-code-opus5-enhanced-temp0",
         "gpt56_t0": "claude-code-opus5-enhanced-judge-gpt56-temp0",
@@ -56,6 +56,55 @@ JUDGE_LABELS = {
     "original": "GPT-5.4, temperature 1",
     "gpt54_t0": "GPT-5.4, temperature 0",
     "gpt56_t0": "GPT-5.6-sol, temperature 0, reasoning none",
+}
+
+# This is the seven-way taxonomy used by Figures 2--3 of the original
+# AlgoVeri paper.  Keeping the membership explicit makes the report's
+# category analysis reproducible and prevents accidental inference from names.
+ALGORITHM_CATEGORIES = {
+    "Basic DS": [
+        "bst_search", "bst_delete", "bst_insert", "bst_zig", "bst_zigzig",
+        "bst_zigzag", "stack_push", "stack_pop", "queue_enqueue",
+        "queue_dequeue", "ringbuffer_enqueue", "ringbuffer_dequeue",
+        "trie_search", "trie_insert", "trie_delete",
+    ],
+    "Advanced DS": [
+        "maxheap_push", "maxheap_popmax", "unionfind_find",
+        "unionfind_linkroots", "splaytree_splay", "ternarysearchtree_search",
+        "ternarysearchtree_insert", "ternarysearchtree_delete",
+        "segmenttree_query", "segmenttree_modify", "segmenttree_build",
+        "llrbt_delete", "llrbt_insert", "llrbt_rotateleft",
+        "llrbt_rotateright", "llrbt_flipcolor",
+    ],
+    "Sorting": [
+        "binary_search", "linear_search", "bubble_sort", "insertion_sort",
+        "merge_sort", "quick_sort", "k_smallest",
+    ],
+    "DP & Algo": [
+        "longest_common_subsequence", "coin_change", "jump_game",
+        "knapsack_01", "knapsack_unbounded", "longest_increasing_subsequence",
+        "maximum_subarray_sum", "rod_cutting", "lca", "house_robber",
+    ],
+    "Graph": [
+        "dfs", "bfs", "cycle_detection", "bipartite_check",
+        "topological_sort", "dijkstra", "bellman_ford", "prim", "kruskal",
+        "max_matching", "edmond_karp", "push_relabel", "scc_tarjan",
+    ],
+    "Math": [
+        "integer_exponential", "fast_exponential", "trial_division_naive",
+        "trial_division_optimized", "sieve_method", "polymul_naive",
+        "polymul_karatsuba", "discrete_logarithm", "linearsys_gf2", "gcd",
+        "matrix_multiplication",
+    ],
+    "String": [
+        "bracket_matching", "longest_palindrome_substring",
+        "string_search_naive", "kmp", "ac_automata",
+    ],
+}
+CATEGORY_BY_TASK = {
+    task: category
+    for category, tasks in ALGORITHM_CATEGORIES.items()
+    for task in tasks
 }
 
 
@@ -127,6 +176,14 @@ def build_analysis(catalog: ExperimentCatalog) -> tuple[dict[str, Any], list[dic
     if no_teacher_sorry_scope is None:
         raise ValueError("Catalog is missing the enhanced Claude Code experiment")
     common_tasks = no_teacher_sorry_scope.task_names
+    benchmark_tasks = sorted(
+        path.parent.name
+        for path in (REPO_ROOT / "algoveri_data").glob("*/lean_spec.lean")
+    )
+    if sorted(CATEGORY_BY_TASK) != benchmark_tasks:
+        missing = sorted(set(benchmark_tasks) - set(CATEGORY_BY_TASK))
+        extra = sorted(set(CATEGORY_BY_TASK) - set(benchmark_tasks))
+        raise ValueError(f"Category taxonomy mismatch: missing={missing}, extra={extra}")
     teacher_sorry_tasks = sorted(
         path.parent.name
         for path in (REPO_ROOT / "algoveri_data").glob("*/lean_spec.lean")
@@ -182,10 +239,13 @@ def build_analysis(catalog: ExperimentCatalog) -> tuple[dict[str, Any], list[dic
                     "condition": condition_id,
                     "model": configured["label"],
                     "task": task,
+                    "category": CATEGORY_BY_TASK[task],
                     "in_no_teacher_sorry_scope": task in common_tasks,
                     "teacher_owned_sorry": task in teacher_sorry_tasks,
                     "output_present": generation["output_present"],
                     "compile_success": generation["compile_success"],
+                    "success_try": generation["success_try"],
+                    "check_attempts": generation["check_attempts"],
                     "gpt54_temp1_pass": items["original"]["semantic_success"],
                     "gpt54_temp0_pass": items["gpt54_t0"]["semantic_success"],
                     "gpt56_temp0_pass": items["gpt56_t0"]["semantic_success"],
@@ -203,6 +263,7 @@ def build_analysis(catalog: ExperimentCatalog) -> tuple[dict[str, Any], list[dic
         )
 
     common_scope = []
+    category_breakdown = []
     teacher_sorry_results = []
     efficiency = []
     for condition_id, configured in CONDITIONS.items():
@@ -253,6 +314,7 @@ def build_analysis(catalog: ExperimentCatalog) -> tuple[dict[str, Any], list[dic
             if isinstance(item.get("duration_ms"), (int, float))
         ]
         summary = original.summary()
+        common_summary = original.summary(common_tasks)
         try_counts = {row["try"]: row["successes"] for row in summary["try_curve"]}
         efficiency.append(
             {
@@ -267,8 +329,46 @@ def build_analysis(catalog: ExperimentCatalog) -> tuple[dict[str, Any], list[dic
                     str(number): try_counts.get(number, summary["compile_success"])
                     for number in (1, 2, 3, 5, 10, 15)
                 },
+                "try_curve": summary["try_curve"],
+                "common_try_curve": common_summary["try_curve"],
             }
         )
+
+    for category, category_tasks in ALGORITHM_CATEGORIES.items():
+        scoped_tasks = [task for task in category_tasks if task in common_tasks]
+        category_item = {
+            "category": category,
+            "native_scope": len(category_tasks),
+            "common_scope": len(scoped_tasks),
+            "conditions": [],
+        }
+        for condition_id, configured in CONDITIONS.items():
+            typed = {
+                judge: catalog.get(configured[judge])
+                for judge in JUDGE_LABELS
+            }
+            if any(experiment is None for experiment in typed.values()):
+                raise ValueError(f"Catalog is missing an experiment for {condition_id}")
+            summaries = {
+                judge: experiment.summary(scoped_tasks)
+                for judge, experiment in typed.items()
+                if experiment is not None
+            }
+            original_summary = summaries["original"]
+            category_item["conditions"].append(
+                {
+                    "condition": condition_id,
+                    "label": configured["label"],
+                    "scope": len(scoped_tasks),
+                    "outputs": original_summary["outputs"],
+                    "compile_success": original_summary["compile_success"],
+                    "semantic_passes": {
+                        judge: summary["semantic_success"]
+                        for judge, summary in summaries.items()
+                    },
+                }
+            )
+        category_breakdown.append(category_item)
 
     pilot_ids = [
         "claude-code-hard10",
@@ -286,6 +386,7 @@ def build_analysis(catalog: ExperimentCatalog) -> tuple[dict[str, Any], list[dic
             "tasks": common_tasks,
             "conditions": common_scope,
         },
+        "algorithm_categories": category_breakdown,
         "teacher_owned_sorry": {
             "count": len(teacher_sorry_tasks),
             "tasks": teacher_sorry_tasks,
@@ -350,12 +451,12 @@ def write_latex(path: Path, analysis: dict[str, Any], rows: list[dict[str, Any]]
         r"\begin{longtable}{@{}lccccc@{}}",
         r"\caption{Complete case-level outcome matrix. A cell is \texttt{C:abc} when Lean compiles; $a$, $b$, and $c$ are semantic outcomes for GPT-5.4 at temperature 1, GPT-5.4 at temperature 0, and GPT-5.6-sol at temperature 0, respectively (\texttt{P}=pass, \texttt{F}=fail). \texttt{X} denotes a saved output that does not compile, \texttt{M} a missing output, and -- an out-of-scope case.}\label{tab:complete-matrix}\\",
         r"\toprule",
-        r"Task & GPT-5.5 & GPT-5.6-sol & Opus think & Opus no-think & Claude Code \\",
+        r"Task & GPT-5.5 & GPT-5.6-sol & Opus think & Opus no-think & LastDance \\",
         r"\midrule",
         r"\endfirsthead",
         r"\multicolumn{6}{c}{\tablename\ \thetable{} -- continued}\\",
         r"\toprule",
-        r"Task & GPT-5.5 & GPT-5.6-sol & Opus think & Opus no-think & Claude Code \\",
+        r"Task & GPT-5.5 & GPT-5.6-sol & Opus think & Opus no-think & LastDance \\",
         r"\midrule",
         r"\endhead",
         r"\midrule \multicolumn{6}{r}{Continued on next page}\\",

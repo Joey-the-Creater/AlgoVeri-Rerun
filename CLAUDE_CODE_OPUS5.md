@@ -1,6 +1,6 @@
-# Claude Code + Opus 5 Lean runner
+# LastDance: Claude Code + Opus 5 Lean toolchain
 
-This runner uses Claude Code as a coding agent rather than calling the Anthropic
+**LastDance** uses Claude Code as a coding agent rather than calling the Anthropic
 Messages API through AlgoVeri's original chat-and-revision loop. Each task gets
 an isolated working directory containing `TASK.md`, `Original.lean`, and an
 editable `Solution.lean`. Claude can inspect the task/scaffold/checker files,
@@ -168,7 +168,7 @@ nohup env DASHBOARD_PORT=8765 \
 disown
 ```
 
-The default dashboard experiment is **Claude Code · enhanced**. It reads
+The default dashboard experiment is **LastDance · enhanced**. It reads
 `.agent_runs/claude_code_opus5`, `results/claude_code_opus5`,
 `results/claude_code_opus5_semantic`, and `logs/claude_code_opus5.pid`, using
 the exact filtered 65-case scope. No manual result import is required.

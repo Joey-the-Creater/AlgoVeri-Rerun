@@ -3,6 +3,7 @@
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage{microtype}
+\usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{longtable}
 \usepackage{tabularx}
@@ -20,6 +21,7 @@
 \newcommand{\yes}{\textcolor{green!50!black}{\textbf{pass}}}
 \newcommand{\no}{\textcolor{red!65!black}{\textbf{fail}}}
 \newcommand{\artifact}{\url{https://github.com/Joey-the-Creater/AlgoVeri-Rerun}}
+\newcommand{\lastdance}{\textsc{LastDance}}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 \lstset{
   basicstyle=\ttfamily\footnotesize,
@@ -30,19 +32,19 @@
   showstringspaces=false
 }
 
-\icmltitlerunning{Extending AlgoVeri's Lean Evaluation}
+\icmltitlerunning{LastDance: Extending AlgoVeri's Lean Evaluation}
 
 \begin{document}
 
 \twocolumn[
-  \icmltitle{Beyond the 7.8\% Lean Baseline:\\
-  Extending AlgoVeri with Frontier Models, Coding Agents, and Evaluator Audits}
+  \icmltitle{\lastdance: Beyond the 7.8\% Lean Baseline with\\
+  Frontier Models, Agentic Repair, and Evaluator Audits}
 
   \begin{icmlauthorlist}
     \icmlauthor{Joey Li}{ind}
   \end{icmlauthorlist}
-  \icmlaffiliation{ind}{Independent Researcher}
-  \icmlcorrespondingauthor{Joey Li}{joeyli.shsid@gmail.com}
+  \icmlaffiliation{ind}{University of Toronto, Toronto, Canada}
+  \icmlcorrespondingauthor{Joey Li}{joeyyizhi.li@mail.utoronto.ca}
   \icmlkeywords{verified code generation, Lean, coding agents, benchmark evaluation,
   LLM-as-a-judge, ICML}
   \vskip 0.3in
@@ -54,19 +56,25 @@
 AlgoVeri established a challenging baseline for verified code generation on 77 aligned
 classical algorithms: its strongest reported Lean system achieved 9.1\% compiler
 verification and 7.8\% full marks after semantic filtering.  We extend that study along
-three axes: newer frontier models, a compiler-using coding agent, and an audit of the
-evaluation pipeline.  Complete-output direct conditions now compile 92.2--98.7\% of
+three axes: newer frontier models, \lastdance---a constrained Claude Code + Opus 5
+toolchain---and an audit of the evaluation pipeline.  Complete-output direct conditions
+now compile 92.2--98.7\% of
 the Lean tasks, but only 31.2--57.1\% receive full marks, depending on generator and
 semantic judge.  Thus, the dominant bottleneck shifts from constructing a compiling
 Lean artifact to preserving the requested algorithm under an extensional formal
 contract.  On a controlled 65-task subset without teacher-provided proof holes, a
-constrained Claude Code + Opus 5 agent compiles 63/65 tasks and passes 53/65 under
+\lastdance compiles 63/65 tasks and passes 53/65 under
 GPT-5.4 and 55/65 under GPT-5.6-sol at temperature zero, compared with 39/65 and
 44/65 for the strongest complete direct condition.  We contextualize these outcomes
 against open systems.  The original open-weight end-to-end conditions peak at 14.3\%
 full marks, whereas Goedel-Code-Prover-8B reports 62.3\% proof completion on AlgoVeri.
 The latter solves a different, proof-only task over GPT-5.2-generated, manually checked
 implementations and therefore is complementary rather than directly rank-comparable.
+Using AlgoVeri's original seven categories, \lastdance obtains 100\% full marks on
+Basic Data Structures and DP/Algo but 54\% on Graph tasks, extending rather than
+eliminating the original complexity cliff.  Cumulative compilation rises from 23\% at
+the first observed Lean check to 95\% by the fifth, directly exposing the return from
+compiler-grounded repair.
 
 These results confirm AlgoVeri's algorithmic-fidelity gap, extend its finding that
 frontier systems exploit iterative repair, and revise the characterization of Lean's
@@ -105,7 +113,7 @@ agent into the same Lean task suite.  The answer is not simply that scores incre
 Compilation rises above 92\% for every complete direct condition, yet semantic success
 lags by 42--66 percentage points.  The capability frontier has therefore moved across
 the compiler boundary without eliminating the benchmark's central fidelity problem.
-A constrained coding agent closes much of this gap, but its remaining failures reveal
+\lastdance closes much of this gap, but its remaining failures reveal
 a stable optimization pressure toward brute-force solvers, classical choice, and
 verified fallbacks.  Meanwhile, evaluator defects introduce measurement error precisely
 where scores are becoming large enough for reliable ranking to matter.
@@ -116,15 +124,15 @@ This paper makes six contributions:
   \item We extend AlgoVeri's Lean evaluation with four direct frontier-model conditions
         and three semantic-judge conditions, placing every result against the original
         paper's capability, fidelity, and repair findings.
-  \item We implement and evaluate an isolated Claude Code condition with constrained
-        compiler access, adaptive repair, source ownership enforcement, and final
-        independent verification.
+  \item We introduce \lastdance, an isolated Claude Code + Opus 5 toolchain with
+        constrained compiler access, adaptive repair, source-ownership enforcement,
+        and final independent verification.
   \item We show a bottleneck shift: current frontier models largely overcome Lean
         compilation, while algorithm identity becomes the dominant source of failure.
   \item We compare against both general open-weight end-to-end generators and
         purpose-trained open neural provers, identifying task definition and inference
         budget as essential axes of any AlgoVeri comparison.
-  \item We audit every compiler failure, every coding-agent semantic rejection, every
+  \item We audit every compiler failure, every \lastdance semantic rejection, every
         judge disagreement, and all task-level outcomes.  The complete matrix appears
         in Appendix~\ref{tab:complete-matrix}; machine-readable analyses are released
         with the artifact\cite{rerunrepo}.
@@ -157,6 +165,20 @@ termination, and algorithm-specific invariants.  DafnyBench\cite{loughridge2024d
 and the multi-language vericoding benchmark\cite{bursuc2025vericoding} demonstrate the
 growing interest in this broader setting.  AlgoVeri contributes aligned classical
 algorithm tasks across verification paradigms\cite{zhao2026algoveri}.
+
+The broader open-mathematics frontier spans increasingly demanding task definitions.
+PutnamBench supplies hand-constructed, multilingual formalizations of undergraduate
+competition theorems and can separate answer discovery from proof completion
+\cite{tsoukalas2024putnambench}.  OpenChallenge-style, evolving collections such as
+Formal Conjectures move toward active research mathematics, including open statements
+designed to limit contamination~\cite{firsching2026formalconjectures}; the living
+Erd\H{o}s Problems catalogue provides another prominent source of long-horizon open
+questions~\cite{erdosproblems}.  These settings are not interchangeable with AlgoVeri:
+they emphasize mathematical discovery or proof synthesis, whereas AlgoVeri jointly
+tests implementation choice, executable code, proof construction, and algorithmic
+fidelity.  Nevertheless, their shared need for persistent decomposition, verifier
+feedback, provenance, and auditable stopping criteria motivates studying whether an
+agent harness such as \lastdance transfers beyond textbook algorithms.
 
 \subsection{AlgoVeri's two-stage Lean metric}
 
@@ -245,7 +267,7 @@ We organize the empirical study around six research questions:
              original 9.09\% verified and 7.79\% full-mark reference point?
   \item[RQ2] Does AlgoVeri's algorithmic-fidelity gap persist after compilation becomes
              common rather than exceptional?
-  \item[RQ3] Does a constrained compiler-using coding agent improve end-to-end semantic
+  \item[RQ3] Does \lastdance improve end-to-end semantic
              performance relative to direct API generation?
   \item[RQ4] How stable are semantic conclusions under temperature and judge-model
              changes?
@@ -290,7 +312,7 @@ The full scope contains all 77 Lean tasks in the public AlgoVeri repository
 thinking Opus run produced only 49 saved outputs; missing outputs remain failures under
 the end-to-end denominator and are also reported conditionally.
 
-The enhanced coding-agent experiment uses a deterministic source-aware filter that
+The \lastdance experiment uses a deterministic source-aware filter that
 excludes the 12 tasks containing teacher-owned \texttt{sorry} outside all four editable
 regions.  Its scope is therefore 65 tasks.  We evaluate every generator on this same
 65-task set for fair comparisons.  No generation result is selected or discarded based
@@ -310,10 +332,10 @@ After a failed attempt, the stock Lean revision prompt asks for a complete stand
 file that addresses the compiler errors.  Section~\ref{sec:prompt-audit} discusses the
 semantic information lost in this shorter revision instruction.
 
-\subsection{Enhanced coding-agent condition}
+\subsection{The \lastdance coding-agent condition}
 
-The coding-agent condition uses Claude Code 2.1.220 with \model{Opus 5}, medium effort,
-and an isolated workspace per task.  The agent may read task files, edit only
+\lastdance uses Claude Code 2.1.220 with \model{Opus 5}, medium effort, and an isolated
+workspace per task.  The agent may read task files, edit only
 \texttt{Solution.lean}, and invoke only a constrained \texttt{./check.sh}; network,
 Git, package installation, and arbitrary shell commands are blocked.  Candidate content
 is copied only from the four editable regions into the original scaffold.  The harness
@@ -326,9 +348,22 @@ alternative algorithms, specification oracles, brute-force enumeration, sorting 
 substitute, \texttt{Nat.find}, \texttt{Classical.choose}, and \texttt{decide} over the
 target property.  It also requires an early Lean check and a final requirement-by-
 requirement semantic audit.  The final saved result is always independently checked;
-the agent's claim of success is not trusted.
+the agent's claim of success is not trusted.  Figure~\ref{fig:lastdance-pipeline}
+summarizes this trust boundary and the two feedback paths.
 
-Before this enhanced run, two targeted pilot batches covered 10 and 20 cases that prior
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/lastdance_pipeline.pdf}
+  \caption{The \lastdance pipeline.  Claude Code can modify only the candidate marker
+  regions and interact with Lean through a restricted checker.  Compiler diagnostics
+  drive within-session repair.  After marker-aware merging and policy validation, a
+  separate Lean invocation rechecks the final candidate; failure can trigger one fresh,
+  preserved-workspace repair session.  Semantic judges run only after generation and
+  do not guide the reported condition.}
+  \label{fig:lastdance-pipeline}
+\end{figure*}
+
+Before the final \lastdance run, two targeted pilot batches covered 10 and 20 cases that prior
 direct conditions had failed.  Those pilots are reported separately because their
 selection and prompt differ from the final 65-task condition.
 
@@ -396,7 +431,7 @@ GPT-5.5 & 77/77 & 75/77 (97.4\%) & 24/77 (31.2\%) & 24/77 (31.2\%) & 24/77 (31.2
 GPT-5.6-sol & 77/77 & 71/77 (92.2\%) & 25/77 (32.5\%) & 27/77 (35.1\%) & 30/77 (39.0\%) \\
 Opus 5, thinking & 49/77 & 49/77 (63.6\%) & 29/77 (37.7\%) & 29/77 (37.7\%) & 31/77 (40.3\%) \\
 Opus 5, no thinking & 77/77 & 76/77 (98.7\%) & 36/77 (46.8\%) & 39/77 (50.6\%) & 44/77 (57.1\%) \\
-Claude Code + Opus 5 & 65/65 & 63/65 (96.9\%) & 53/65 (81.5\%) & 53/65 (81.5\%) & 55/65 (84.6\%) \\
+\lastdance & 65/65 & 63/65 (96.9\%) & 53/65 (81.5\%) & 53/65 (81.5\%) & 55/65 (84.6\%) \\
 \bottomrule
 \end{tabular}
 \end{table*}
@@ -440,7 +475,7 @@ under 5.4-T0 and 44/65 under 5.6-T0.
 \centering
 \small
 \caption{Common 65-task scope with no teacher-owned \texttt{sorry}.  This table should
-be used for comparisons with the enhanced coding agent.}
+be used for comparisons with \lastdance.}
 \label{tab:common-results}
 \begin{tabular}{lrrrrr}
 \toprule
@@ -450,14 +485,24 @@ GPT-5.5 & 65 & 65 & 24 (36.9\%) & 24 (36.9\%) & 24 (36.9\%) \\
 GPT-5.6-sol & 65 & 60 & 25 (38.5\%) & 27 (41.5\%) & 29 (44.6\%) \\
 Opus 5, thinking & 47 & 47 & 29 (44.6\%) & 29 (44.6\%) & 31 (47.7\%) \\
 Opus 5, no thinking & 65 & 65 & 36 (55.4\%) & 39 (60.0\%) & 44 (67.7\%) \\
-Claude Code + Opus 5 & 65 & 63 & 53 (81.5\%) & 53 (81.5\%) & 55 (84.6\%) \\
+\lastdance & 65 & 63 & 53 (81.5\%) & 53 (81.5\%) & 55 (84.6\%) \\
 \bottomrule
 \end{tabular}
 \end{table*}
 
-\subsection{Coding-agent gains}
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=0.76\textwidth]{figures/outcome_breakdown.pdf}
+  \caption{Four-state outcome decomposition on the common 65-task scope under the
+  GPT-5.4 temperature-zero semantic judge.  Compilation alone hides a large fidelity
+  gap for every direct condition.  Missing adaptive-thinking outputs are retained as
+  failures; no result is silently dropped.}
+  \label{fig:outcome-breakdown}
+\end{figure*}
 
-The enhanced coding agent answers RQ3.  It compiles 63/65 and passes 53/65 under both
+\subsection{\lastdance gains}
+
+\lastdance answers RQ3.  It compiles 63/65 and passes 53/65 under both
 GPT-5.4 conditions and 55/65 under GPT-5.6-sol.  Its 5.6-T0 semantic rate is \pct{84.6}
 (Wilson 95\% CI [\pct{73.9}, \pct{91.4}]), versus \pct{67.7}
 ([\pct{55.6}, \pct{77.8}]) for no-thinking Opus on the same tasks.  The agent has 13
@@ -465,7 +510,7 @@ unique passes against two unique passes for no-thinking Opus under 5.6-T0 (exact
 McNemar $p=0.0074$).  The corresponding discordances are 18--1 under 5.4-T1
 ($p=7.6\times10^{-5}$) and 16--2 under 5.4-T0 ($p=0.0013$).
 
-This is an agentic condition, not a like-for-like model replacement.  It receives tool
+This is an agentic condition, not a like-for-like model replacement.  \lastdance receives tool
 access, multiple turns, persistent files, explicit semantic reminders, and an adaptive
 budget.  The observed gain therefore estimates the whole harness treatment.  The final
 65-task run costs USD~70.26 in recorded Claude Code charges (mean USD~1.08 per task) and
@@ -475,9 +520,41 @@ and cannot be compared.
 The earlier targeted pilots compiled 4/10 and 13/20, respectively; combined, 17/30
 compiled and 14/30 passed the 5.4-T1 judge at a recorded cost of USD~41.48.  After adding
 early checks, a semantic self-audit, a preserved-workspace repair pass, exact verifier
-feedback, and final independent verification, the broader enhanced condition reaches
+feedback, and final independent verification, the broader \lastdance condition reaches
 63/65 compilation and 53/65 5.4-T1 semantic success.  Because task selection and several
 settings changed, this is an engineering progression rather than an ablation.
+
+\subsection{Performance by algorithm category}
+\label{sec:category-breakdown}
+
+Figure~\ref{fig:category-breakdown} reproduces the seven-way organization used in
+AlgoVeri's original category radar plot: Basic Data Structures, Advanced Data
+Structures, Sorting, DP \& Algo, Graph, Math, and String\cite{zhao2026algoveri}.  The
+original category sizes are 15, 16, 7, 10, 13, 11, and 5 tasks.  Because the controlled
+comparison removes teacher-owned \texttt{sorry}, the corresponding common-scope sizes
+are 12, 7, 7, 10, 13, 11, and 5.  We report GPT-5.4 temperature-zero full marks so the
+generator varies while task scope and judge remain fixed.
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/category_breakdown.pdf}
+  \caption{Performance breakdown by the original AlgoVeri algorithm categories on the
+  common 65-task scope.  Panel (a) mirrors the original radar presentation for the four
+  complete-output conditions; panel (b) shows exact counts and includes
+  adaptive-thinking Opus, whose missing outputs remain in each denominator.  Full mark
+  denotes compilation plus acceptance by GPT-5.4 at temperature zero.}
+  \label{fig:category-breakdown}
+\end{figure*}
+
+The original complexity cliff persists but shifts upward.  Basic Data Structures are
+nearly saturated: GPT-5.5 and GPT-5.6-sol each pass 11/12, while both Opus variants
+and \lastdance pass 12/12.  \lastdance also passes all 10 DP/Algo tasks,
+10/11 Math tasks, 6/7 Sorting tasks, and 5/7 controlled Advanced Data Structure tasks.
+Graph remains the clearest frontier: GPT-5.5, GPT-5.6-sol, and returned thinking-Opus
+answers pass 0/13; no-thinking Opus reaches 3/13, and \lastdance reaches 7/13.  String
+tasks remain mixed at 3/5 for \lastdance.  Thus agentic compiler interaction narrows the
+category gap without eliminating the global-invariant difficulty highlighted by the
+original paper.
 
 \subsection{Open-system comparison}
 \label{sec:open-comparison}
@@ -533,35 +610,29 @@ machine-checkable controls for algorithm identity.
 
 \subsection{Frontier repair remains effective but misaligned}
 
-\begin{table*}[t]
-\centering
-\small
-\caption{Cumulative compilation success by attempt/check count.  Direct runs count LLM
-generation attempts; Claude Code counts observed \texttt{./check.sh} invocations, so the
-curves are descriptive rather than directly cost-equivalent.}
-\label{tab:repair-curves}
-\begin{tabular}{lrrrrrr}
-\toprule
-Condition & 1 & 2 & 3 & 5 & 10 & 15 \\
-\midrule
-GPT-5.5 & 21 & 43 & 57 & 67 & 75 & 75 \\
-GPT-5.6-sol & 19 & 37 & 53 & 63 & 70 & 71 \\
-Opus, thinking & 33 & 45 & 49 & 49 & 49 & 49 \\
-Opus, no thinking & 24 & 43 & 58 & 69 & 75 & 76 \\
-Claude Code & 15 & 37 & 45 & 62 & 63 & 63 \\
-\bottomrule
-\end{tabular}
-\end{table*}
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=0.76\textwidth]{figures/repair_curves.pdf}
+  \caption{Cumulative Lean verification pass rate versus repair depth on the common
+  65-task scope.  Direct runs count generation attempts; \lastdance counts observed
+  \texttt{./check.sh} invocations.  The horizontal axis therefore measures interaction
+  depth, not equal tokens or dollars, and the curves are not pass@$k$ over independent
+  samples.}
+  \label{fig:repair-curves}
+\end{figure*}
 
-Iterative compiler feedback matters: only 19--24 of 77 full-output direct conditions
-compile on the first attempt, rising to 63--69 by attempt five.  GPT-5.5 gains no further
-success after attempt ten, and GPT-5.6-sol gains one.  The coding agent reaches 62/65 by
-its fifth observed Lean check and one more by its tenth.  These are cumulative
-success-at-repair curves, not pass@$k$ estimates from independent samples.
+Figure~\ref{fig:repair-curves} directly demonstrates the return from compiler feedback.
+At the first attempt/check, GPT-5.5, GPT-5.6-sol, no-thinking Opus, and \lastdance verify
+19/65, 18/65, 23/65, and 15/65 tasks, respectively.  By depth five those counts reach
+63, 59, 59, and 62.  At depth 15 they reach 65, 60, 65, and 63.  Thinking Opus begins
+at 33/65 and plateaus at 47/65 by its third attempt because 18 common-scope tasks never
+return an output.  The semantic judge was applied only to final candidates, so this
+artifact supports a per-round \emph{verification} curve, not a retrospectively inferred
+per-round semantic curve.
 
 This pattern extends AlgoVeri's distinction between frontier repair and early
 saturation.  The evaluated frontier systems continue converting Lean feedback into
-compilation gains, and the coding-agent workspace makes that feedback operationally
+compilation gains, and the \lastdance workspace makes that feedback operationally
 effective.  However, compiler feedback contains no signal about whether a different
 algorithm or guarded fallback violates the natural-language request.  Repair is thus
 effective for the formal objective while remaining partially misaligned with the full-
@@ -636,7 +707,7 @@ The small number of final compilation failures fall into four distinct classes.
         tactic and recursion-depth errors.  GPT-5.6-sol's \task{llrbt\_insert} leaves
         type mismatches and unsolved goals, while \task{prim} references an undefined
         helper theorem.
-  \item \textbf{Prohibited generated placeholder.}  The enhanced agent's two failures,
+  \item \textbf{Prohibited generated placeholder.}  \lastdance's two failures,
         \task{dijkstra} and \task{kruskal}, reach final candidate validation with an
         editable proof section still containing \texttt{sorry}.  The harness correctly
         records these attempts as failures rather than silently omitting files.
@@ -673,7 +744,7 @@ exposes contracts that specify \emph{what} result is correct but cannot encode
 \emph{which} algorithm computed it.
 
 \paragraph{Guarded fallback.}
-The enhanced agent often implements a plausible target algorithm but protects it with a
+\lastdance often implements a plausible target algorithm but protects it with a
 verified reference solver.  The exported function returns the candidate only if a
 certificate succeeds; otherwise it rebuilds or brute-forces a correct answer.  Such
 fallbacks maximize theorem completion while transferring correctness away from the
@@ -685,7 +756,7 @@ weak/vacuous precondition, may compile without providing the intended developmen
 judges differ on whether an unused placeholder alone warrants rejection, contributing
 to the disagreement in Section~\ref{tab:judge-agreement-summary}.
 
-\subsection{Residual coding-agent failures}
+\subsection{Residual \lastdance failures}
 
 The two temperature-zero judges agree on eight semantic rejections among the 63 compiled
 agent outputs:
@@ -787,7 +858,7 @@ semantic judge applies the stricter algorithmic criterion.
 
 The observed failures are consistent with this incentive: extensive repairs converge
 to classical choice, exhaustive solvers, alternate algorithms, or guarded fallbacks.
-The enhanced agent restates semantic constraints during both initial and repair phases
+\lastdance restates semantic constraints during both initial and repair phases
 and performs substantially better, although tool access and budget confound a causal
 attribution to prompt design alone.  A controlled ablation is needed to measure the
 prompt effect.
@@ -845,7 +916,7 @@ flips demonstrate residual label uncertainty.
 
 \paragraph{Unequal treatments.}
 Provider reasoning controls and token accounting are not directly comparable.  The
-coding agent receives tools, more interaction, and a monetary budget.  Its result is an
+\lastdance receives tools, more interaction, and a monetary budget.  Its result is an
 upper-level system comparison, not an isolated Opus model effect.
 
 \paragraph{Externally reported open-system results.}
@@ -868,7 +939,7 @@ scaffolds, other Lean/Mathlib releases, other languages in AlgoVeri, or future e
 revisions.
 
 \paragraph{Cost accounting.}
-Only Claude Code reports dollar cost in the saved records.  Token fields differ by
+Only \lastdance/Claude Code reports dollar cost in the saved records.  Token fields differ by
 provider (for example, Anthropic thinking is not stored in the same field as OpenAI
 reasoning), so we release raw counters but avoid a cross-provider efficiency ranking.
 
@@ -886,8 +957,13 @@ The principal immutable directories are:
         \texttt{\_semantic\_gpt56\_temp0} directories for the three judges;
   \item \texttt{reports/data/result\_summary.json} and
         \texttt{reports/data/case\_results.csv}: recomputed aggregate and case-level data;
+  \item \path{reports/data/category_results.csv},
+        \path{reports/data/repair_curves.csv}, and
+        \path{reports/data/outcome_breakdown.csv}: exact values behind the figures;
   \item \path{reports/data/external_open_systems.csv}: published open-system values,
         task definitions, budgets, and comparability annotations;
+  \item \path{reports/figures} and \path{reports/prompts}: reproducible vector figures
+        and the exact rendered \lastdance prompt templates;
   \item \texttt{config/dashboard\_experiments.json}: the canonical experiment catalog.
 \end{itemize}
 
@@ -898,6 +974,8 @@ python3 scripts/analyze_rerun_results.py \
   --json-output reports/data/result_summary.json \
   --csv-output reports/data/case_results.csv \
   --latex-output reports/generated/case_tables.tex
+python3 scripts/export_lastdance_prompts.py
+python3 scripts/generate_report_figures.py
 \end{lstlisting}
 
 Compile the paper locally or in Overleaf with:
@@ -921,7 +999,7 @@ compile more than 92\% of tasks, yet attain only 31--57\% full marks.  The princ
 bottleneck has shifted from reaching the Lean compiler boundary to preserving the named
 algorithm under contracts that admit extensionally correct substitutes.
 
-A constrained coding agent raises full-mark performance to 82--85\% on the clean
+A constrained coding agent, \lastdance, raises full-mark performance to 82--85\% on the clean
 65-task scope, demonstrating that persistent tools and verifier feedback materially
 advance the frontier.  Its residual oracle and fallback solutions also show why agentic
 compute alone does not solve algorithmic fidelity.  Open-system results sharpen this
@@ -929,7 +1007,10 @@ decomposition: general open-weight end-to-end models originally peak at 14.3\% f
 marks, while Goedel-Code-Prover-8B reaches 62.3\% on the narrower task of proving a
 fixed, manually checked implementation.  Specialized hierarchical proof search can
 therefore solve much of the proof bottleneck without answering the end-to-end algorithm-
-generation question.  Finally, scaffold, ownership, and judge-disagreement findings
+generation question.  Category results preserve AlgoVeri's complexity cliff---Graph
+reaches only 7/13 under \lastdance versus 12/12 Basic Data Structures---and the repair
+curve shows that most verification gains arrive by the fifth compiler interaction.
+Finally, scaffold, ownership, and judge-disagreement findings
 extend benchmark quality control beyond specification curation.  Future vericoding
 benchmarks should treat implementation synthesis, proof completion, algorithm identity,
 provenance, output coverage, and evaluator robustness as distinct measurable objects.
@@ -964,7 +1045,7 @@ semantic labels therefore remains necessary in safety-critical deployment.
 \paragraph{No-thinking Opus compilation failures (1).}
 \task{trie\_search}.
 
-\paragraph{Enhanced Claude Code compilation failures (2).}
+\paragraph{\lastdance compilation failures (2).}
 \task{dijkstra}, \task{kruskal}.
 
 \paragraph{Thinking-Opus missing outputs (28).}
@@ -977,6 +1058,29 @@ semantic labels therefore remains necessary in safety-critical deployment.
 \task{ternarysearchtree\_search}, \task{topological\_sort},
 \task{trial\_division\_optimized}, \task{trie\_delete}, \task{trie\_insert},
 \task{trie\_search}, \task{unionfind\_find}, \task{unionfind\_linkroots}.
+
+\section{\lastdance Prompt Templates}
+\label{app:lastdance-prompts}
+
+The following listings are generated directly from the runner functions used for the
+reported condition.  \texttt{<TASK\_NAME>} denotes the task-directory name.  The second
+listing shows repair pass 2, the only optional fresh repair session in the reported
+adaptive configuration; the placeholder between feedback delimiters is replaced by the
+verbatim independent verifier response.  Task-specific natural language and the Lean
+scaffold are supplied as workspace files rather than interpolated into these prompts.
+These are the complete harness-supplied user prompts; Claude Code's vendor-managed
+system instructions are external to the repository and are identified indirectly by
+the recorded CLI version.
+
+\lstinputlisting[
+  caption={Initial \lastdance prompt template.},
+  label={lst:lastdance-initial}
+]{prompts/lastdance_initial_prompt.txt}
+
+\lstinputlisting[
+  caption={Independent-verifier repair prompt template.},
+  label={lst:lastdance-repair}
+]{prompts/lastdance_repair_prompt.txt}
 
 \input{generated/case_tables.tex}
 

@@ -1,0 +1,6 @@
+condition,scope,compiled_and_semantic_pass,compiled_semantic_fail,compile_fail,missing_output
+gpt-5.5,65,24,41,0,0
+gpt-5.6-sol,65,27,33,5,0
+opus-5-thinking,65,29,18,0,18
+opus-5-no-thinking,65,39,26,0,0
+claude-code-opus5-enhanced,65,53,10,2,0

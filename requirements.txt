@@ -8,3 +8,5 @@ tiktoken
 # vllm
 # YAML parsing for config
 pyyaml
+# report figure generation
+matplotlib

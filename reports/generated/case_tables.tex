@@ -5,12 +5,12 @@
 \begin{longtable}{@{}lccccc@{}}
 \caption{Complete case-level outcome matrix. A cell is \texttt{C:abc} when Lean compiles; $a$, $b$, and $c$ are semantic outcomes for GPT-5.4 at temperature 1, GPT-5.4 at temperature 0, and GPT-5.6-sol at temperature 0, respectively (\texttt{P}=pass, \texttt{F}=fail). \texttt{X} denotes a saved output that does not compile, \texttt{M} a missing output, and -- an out-of-scope case.}\label{tab:complete-matrix}\\
 \toprule
-Task & GPT-5.5 & GPT-5.6-sol & Opus think & Opus no-think & Claude Code \\
+Task & GPT-5.5 & GPT-5.6-sol & Opus think & Opus no-think & LastDance \\
 \midrule
 \endfirsthead
 \multicolumn{6}{c}{\tablename\ \thetable{} -- continued}\\
 \toprule
-Task & GPT-5.5 & GPT-5.6-sol & Opus think & Opus no-think & Claude Code \\
+Task & GPT-5.5 & GPT-5.6-sol & Opus think & Opus no-think & LastDance \\
 \midrule
 \endhead
 \midrule \multicolumn{6}{r}{Continued on next page}\\
@@ -123,7 +123,7 @@ Opus 5 (thinking) & 5.4 T1 vs 5.4 T0 & 49 & 47 & 0.916 & 2 & longest\_common\_su
 Opus 5 (thinking) & 5.4 T0 vs 5.6 T0 & 49 & 45 & 0.828 & 4 & bipartite\_check (R), fast\_exponential (L), llrbt\_rotateright (R), max\_matching (R) \\
 Opus 5 (no thinking) & 5.4 T1 vs 5.4 T0 & 76 & 73 & 0.921 & 3 & bellman\_ford (R), bipartite\_check (R), jump\_game (R) \\
 Opus 5 (no thinking) & 5.4 T0 vs 5.6 T0 & 76 & 71 & 0.868 & 5 & cycle\_detection (R), fast\_exponential (R), llrbt\_rotateright (R), max\_matching (R), polymul\_naive (R) \\
-Claude Code + Opus 5 (enhanced) & 5.4 T1 vs 5.4 T0 & 63 & 61 & 0.881 & 2 & bubble\_sort (L), llrbt\_rotateright (R) \\
-Claude Code + Opus 5 (enhanced) & 5.4 T0 vs 5.6 T0 & 63 & 61 & 0.871 & 2 & bubble\_sort (R), polymul\_naive (R) \\
+LastDance (Claude Code + Opus 5) & 5.4 T1 vs 5.4 T0 & 63 & 61 & 0.881 & 2 & bubble\_sort (L), llrbt\_rotateright (R) \\
+LastDance (Claude Code + Opus 5) & 5.4 T0 vs 5.6 T0 & 63 & 61 & 0.871 & 2 & bubble\_sort (R), polymul\_naive (R) \\
 \end{longtable}
 \end{landscape}

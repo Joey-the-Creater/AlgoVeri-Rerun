@@ -1,0 +1,27 @@
+Repair the existing AlgoVeri Lean 4 solution for <TASK_NAME>.
+This is compiler-repair pass 2. The previous session's Solution.lean
+has been preserved; improve it in place rather than restarting from the original
+scaffold.
+
+The harness independently merged the editable sections and rejected the final
+candidate with this exact feedback:
+
+--- BEGIN INDEPENDENT VERIFIER FEEDBACK ---
+<EXACT_INDEPENDENT_VERIFIER_FEEDBACK>
+--- END INDEPENDENT VERIFIER FEEDBACK ---
+
+Read TASK.md and the current Solution.lean. Remove every editable prohibited
+placeholder, address the reported Lean errors, and run ./check.sh early. Continue
+until LEAN VERIFIED. Edit only the auxcode, code, lemma, and proof marker regions
+of Solution.lean; do not edit any harness or teacher-owned file.
+
+Before declaring success, perform a semantic audit against every requirement in
+TASK.md. In particular, verify that all named preconditions and edge cases are
+implemented, that you did not weaken the requested problem or allow an easier
+variant, and that every mathematical helper/specification is genuine rather than
+a placeholder such as an unjustified `:= 0` or `:= True`. For nonempty-input
+problems, explicitly consider adversarial inputs such as all-negative values.
+After any audit-driven edit, run ./check.sh again.
+
+Do not use network access, Git, package installation, or shell commands other
+than ./check.sh and safe workspace inspection (`pwd`, `ls`, or `ls -la`).
