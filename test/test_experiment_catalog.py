@@ -1,0 +1,221 @@
+from __future__ import annotations
+
+import unittest
+from pathlib import Path
+
+from src.agent.experiment_catalog import (
+    ExperimentCatalog,
+    first_semantic_pass,
+    first_success_pass,
+    first_success_try,
+)
+
+
+class ExperimentMetricTests(unittest.TestCase):
+    def test_success_metrics_distinguish_repair_try_and_pass(self) -> None:
+        attempts = [
+            {"verified": False, "details": {"rounds": 14}},
+            {
+                "verified": True,
+                "parsed": True,
+                "verdict": True,
+                "details": {"rounds": 2},
+            },
+        ]
+        self.assertEqual(first_success_try(attempts), 3)
+        self.assertEqual(first_success_pass(attempts), 2)
+        self.assertEqual(first_semantic_pass(attempts), 2)
+
+
+class PublishedExperimentCatalogTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.repo = Path(__file__).resolve().parents[1]
+        cls.catalog = ExperimentCatalog(
+            cls.repo,
+            cls.repo / "config" / "dashboard_experiments.json",
+            cls.repo / "algoveri_data",
+        )
+        cls.summaries = {item["id"]: item for item in cls.catalog.list()}
+
+    def test_completed_baseline_totals(self) -> None:
+        expected = {
+            "gpt-5.5": (77, 77, 75, 24, 77, 21),
+            "gpt-5.6-sol": (77, 77, 71, 25, 77, 19),
+            "opus-5-thinking": (77, 49, 49, 29, 49, 33),
+            "opus-5-no-thinking": (77, 77, 76, 36, 77, 24),
+        }
+        for run_id, values in expected.items():
+            summary = self.summaries[run_id]
+            actual = (
+                summary["total"],
+                summary["outputs"],
+                summary["compile_success"],
+                summary["semantic_success"],
+                summary["semantic_evaluated"],
+                summary["try_curve"][0]["successes"],
+            )
+            self.assertEqual(actual, values, run_id)
+
+    def test_success_curves_are_cumulative(self) -> None:
+        for summary in self.summaries.values():
+            successes = [point["successes"] for point in summary["try_curve"]]
+            self.assertEqual(successes, sorted(successes), summary["id"])
+            self.assertLessEqual(successes[-1], summary["compile_success"])
+
+    def test_common_scope_applies_to_summary_and_matrix(self) -> None:
+        comparison = self.catalog.compare(
+            ["gpt-5.5", "claude-code-hard10"], scope_mode="common"
+        )
+        self.assertEqual(comparison["scope_count"], 10)
+        self.assertEqual(len(comparison["matrix"]), 10)
+        self.assertTrue(all(item["total"] == 10 for item in comparison["experiments"]))
+
+    def test_native_scope_preserves_each_experiment_scope(self) -> None:
+        comparison = self.catalog.compare(
+            ["gpt-5.5", "claude-code-hard10"], scope_mode="native"
+        )
+        totals = {item["id"]: item["total"] for item in comparison["experiments"]}
+        self.assertEqual(totals, {"gpt-5.5": 77, "claude-code-hard10": 10})
+        self.assertEqual(len(comparison["matrix"]), 77)
+
+    def test_matrix_uses_exactly_four_colored_outcomes(self) -> None:
+        comparison = self.catalog.compare(
+            ["gpt-5.5", "gpt-5.6-sol", "opus-5-no-thinking"],
+            scope_mode="common",
+        )
+        allowed = {
+            "semantic_success",
+            "compiled_no_semantic_pass",
+            "compile_failed",
+            "missing",
+        }
+        states = {
+            value["state"]
+            for row in comparison["matrix"]
+            for value in row["models"].values()
+        }
+        self.assertTrue(states <= allowed)
+        self.assertIn("semantic_success", states)
+        self.assertIn("compiled_no_semantic_pass", states)
+        self.assertIn("compile_failed", states)
+
+    def test_live_run_state_merges_semantic_results(self) -> None:
+        state = self.catalog.get("claude-code-hard10").dashboard_state()
+        self.assertEqual(state["summary"]["semantic_success"], 3)
+        self.assertEqual(state["summary"]["semantic_evaluated"], 10)
+        tasks = {item["name"]: item for item in state["tasks"]}
+        self.assertEqual(tasks["gcd"]["outcome_state"], "semantic_success")
+        self.assertEqual(
+            tasks["llrbt_rotateright"]["outcome_state"],
+            "compiled_no_semantic_pass",
+        )
+        detail = self.catalog.get("claude-code-hard10").dashboard_detail("gcd")
+        self.assertTrue(detail["summary"]["semantic_success"])
+        semantic_event = detail["timeline"][-1]
+        self.assertEqual(semantic_event["title"], "Semantic judge accepted")
+        self.assertEqual(semantic_event["status"], "verified")
+
+        rejected = self.catalog.get("claude-code-hard10").dashboard_detail(
+            "llrbt_rotateright"
+        )
+        semantic_event = rejected["timeline"][-1]
+        self.assertEqual(semantic_event["title"], "Semantic judge rejected")
+        self.assertEqual(semantic_event["status"], "failed")
+        self.assertTrue(semantic_event["body"])
+
+    def test_historical_run_trace_uses_semantic_outcome_colors(self) -> None:
+        state = self.catalog.get("gpt-5.5").dashboard_state()
+        tasks = {item["name"]: item for item in state["tasks"]}
+        self.assertEqual(
+            tasks["ac_automata"]["outcome_state"],
+            "compiled_no_semantic_pass",
+        )
+        self.assertEqual(tasks["trie_search"]["outcome_state"], "compile_failed")
+        self.assertEqual(
+            state["summary"]["compiled_no_semantic_pass"],
+            state["summary"]["verified"] - state["summary"]["semantic_success"],
+        )
+
+    def test_combined_claude_code_view_spans_batches(self) -> None:
+        visible = {item["id"] for item in self.catalog.list()}
+        self.assertIn("claude-code-opus5-combined", visible)
+        self.assertNotIn("claude-code-hard10", visible)
+        self.assertNotIn("claude-code-opus5-nonthinking20", visible)
+
+        experiment = self.catalog.get("claude-code-opus5-combined")
+        summary = experiment.summary()
+        self.assertEqual(
+            (
+                summary["total"],
+                summary["outputs"],
+                summary["compile_success"],
+                summary["semantic_success"],
+                summary["semantic_evaluated"],
+            ),
+            (30, 30, 17, 14, 30),
+        )
+        self.assertEqual(
+            experiment.dashboard_detail("gcd")["timeline"][-1]["title"],
+            "Semantic judge accepted",
+        )
+        self.assertEqual(
+            experiment.dashboard_detail("bfs")["timeline"][-1]["title"],
+            "Semantic judge accepted",
+        )
+
+    def test_enhanced_run_tracks_clean_65_case_scope(self) -> None:
+        experiment = self.catalog.get("claude-code-opus5-enhanced")
+        summary = experiment.summary()
+        self.assertEqual(summary["total"], 65)
+        self.assertNotIn("trie_search", experiment.task_names)
+        self.assertIn("stack_push", experiment.task_names)
+
+    def test_temperature_zero_dashboard_condition_is_separate(self) -> None:
+        expected = {
+            "gpt-5.5-temp0",
+            "gpt-5.6-sol-temp0",
+            "opus-5-thinking-temp0",
+            "opus-5-no-thinking-temp0",
+            "claude-code-opus5-enhanced-temp0",
+        }
+        self.assertTrue(expected <= self.summaries.keys())
+        self.assertTrue(
+            all(
+                self.summaries[run_id]["judge_temperature"] == 0
+                and self.summaries[run_id]["judge_model"] == "gpt-5.4"
+                for run_id in expected
+            )
+        )
+        enhanced = self.catalog.get("claude-code-opus5-enhanced-temp0")
+        self.assertEqual(enhanced.summary()["total"], 65)
+        self.assertNotEqual(
+            enhanced.semantic_root,
+            self.catalog.get("claude-code-opus5-enhanced").semantic_root,
+        )
+
+    def test_gpt56_temperature_zero_judge_is_separate(self) -> None:
+        expected = {
+            "gpt-5.5-judge-gpt56-temp0",
+            "gpt-5.6-sol-judge-gpt56-temp0",
+            "opus-5-thinking-judge-gpt56-temp0",
+            "opus-5-no-thinking-judge-gpt56-temp0",
+            "claude-code-opus5-enhanced-judge-gpt56-temp0",
+        }
+        self.assertTrue(expected <= self.summaries.keys())
+        self.assertTrue(
+            all(
+                self.summaries[run_id]["judge_model"] == "gpt-5.6-sol"
+                and self.summaries[run_id]["judge_temperature"] == 0
+                and self.summaries[run_id]["judge_reasoning_effort"] == "none"
+                for run_id in expected
+            )
+        )
+        gpt56 = self.catalog.get("claude-code-opus5-enhanced-judge-gpt56-temp0")
+        gpt54 = self.catalog.get("claude-code-opus5-enhanced-temp0")
+        self.assertEqual(gpt56.summary()["total"], 65)
+        self.assertNotEqual(gpt56.semantic_root, gpt54.semantic_root)
+
+
+if __name__ == "__main__":
+    unittest.main()

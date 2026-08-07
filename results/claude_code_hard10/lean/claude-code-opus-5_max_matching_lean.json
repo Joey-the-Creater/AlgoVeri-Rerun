@@ -1,0 +1,37 @@
+{
+  "verified": false,
+  "details": {
+    "rounds": 11,
+    "llm_response": {
+      "code": "",
+      "comment": "I stopped without reaching `LEAN VERIFIED`. Here's the honest state.\n\n## What I did\n\nIn `Solution.lean` (`auxcode` + `code` markers only), I implemented Kuhn's augmenting-path algorithm:\n\n- `MMmatch := Nat \u2192 Option Nat` \u2014 the match array, keyed by right vertex (a function rather than an `Array`, to keep proofs free of index-bound reasoning).\n- `MMfind` \u2014 DFS for an augmenting path from a free left vertex, threading an `unvis : Finset Nat` of usable right vertices; returns the path as an edge list. Termination is by lexicographic `(unvis.card, nbrs.length)`.\n- `MMapply` \u2014 flips the matching along a returned path.\n- `MMloop` \u2014 processes left vertices `0 \u2026 left_size-1`, augmenting when a path is found.\n- Result: `MMsize graph (MMloop graph graph.left_size (fun _ => none))`, the number of matched right vertices.\n\nThe `proof` marker still contains the teacher's original `sorry`, so **the file does not verify**.\n\n## Why I stopped\n\nTwo things:\n\n1. **No incremental verification is possible.** `check.sh` validates before running Lean and aborts on any `sorry` in an editable section, so I could not even type-check the algorithm's termination proof separately \u2014 a full, `sorry`-free proof is required for Lean to run at all. (Also, the banned-word scan is substring-based over comments: a docstring saying \"A partial matching\" tripped the `partial` ban.)\n\n2. **Budget.** The postcondition demands optimality: `\u2200 m, is_matching g m \u2192 m.size \u2264 result`. The tractable route is a K\u00f6nig vertex-cover certificate, which needs roughly: soundness of `MMfind` (returns a genuine alternating path), completeness of `MMfind` (failure \u21d2 no augmenting path, including a walk-to-simple-path pruning lemma), that `MMapply` preserves validity/injectivity and raises the size by exactly one, a \"matching size \u2264 cover card\" injection lemma, the failure-case cover construction `C' = (C \\ Z_L) \u222a N(Z_L)` with `|C'| \u2264 |C|`, and the loop invariant `\u2203 C, C covers all edges from lefts < k \u2227 C.card \u2264 MMsize`. That is on the order of a thousand lines of Mathlib proof, written blind per point 1. With ~$0.75 of the $2 budget left, a single blind attempt would land dozens of errors and no budget to fix them, which is a worse deliverable than a clearly-labelled stopping point.\n\n## If you want to continue\n\nThe design above is what I'd carry forward, and the `auxcode` definitions are already shaped for it (function-valued matching, `Finset`-based visited set, size as a `Finset.card`). It needs a substantially larger budget, and ideally a way to compile with `sorry` placeholders while the proof is built up."
+    },
+    "verifier_response": {
+      "verified": false,
+      "feedback": "Candidate validation failed: candidate 'proof' section contains prohibited term 'sorry'",
+      "raw": null
+    },
+    "history": [],
+    "tokens": {
+      "input": 313742,
+      "output": 35217,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "e410bf34-c915-4641-b09b-d7647661533a",
+      "subtype": "success",
+      "is_error": false,
+      "total_cost_usd": 1.30577375,
+      "duration_ms": 479228,
+      "duration_api_ms": 480010,
+      "num_turns": 12,
+      "returncode": 0,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_hard10/max_matching/agent_events.jsonl"
+    }
+  }
+}

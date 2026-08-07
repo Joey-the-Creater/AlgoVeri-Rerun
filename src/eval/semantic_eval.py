@@ -11,10 +11,11 @@ class SemanticEval:
     languages (Dafny, Lean, Rust).
     """
 
-    def __init__(self, llm_client, max_rounds: int = 5):
+    def __init__(self, llm_client, max_rounds: int = 5, temperature: float = 1.0):
         # llm_client is a provider
         self.llm_client = llm_client
         self.max_rounds = max_rounds
+        self.temperature = temperature
     
     def make_sys_prompt(self) -> str:
         return SEMANTIC_SYS_PROMPT
@@ -63,7 +64,7 @@ class SemanticEval:
 
         for round_i in range(self.max_rounds):
             # send messages to LLM and receive response
-            response = mt_chat.send_message(prompt)['text']
+            response = mt_chat.send_message(prompt, temperature=self.temperature)['text']
             parsed = self.parse_llm_response(response, formal_code)
 
             if debug:

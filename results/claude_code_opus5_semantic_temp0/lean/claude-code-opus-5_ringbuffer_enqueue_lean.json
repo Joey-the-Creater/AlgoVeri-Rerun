@@ -1,0 +1,107 @@
+{
+    "verified": true,
+    "details": {
+        "rounds": 14,
+        "llm_response": {
+            "code": "import Mathlib\n\nstructure RingBuffer (T : Type) where\n  capacity : Nat\n  view : List T\n\ndef RingBuffer.is_valid {T} (rb : RingBuffer T) : Prop :=\n  rb.capacity > 0 \u2227 rb.view.length \u2264 rb.capacity\n\n-- Precondition definitions\n@[reducible, simp]\ndef enqueue_precond {T} (rb : RingBuffer T) (v : T) : Prop :=\n  -- !benchmark @start precond\n  rb.is_valid\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef enqueue {T} (rb : RingBuffer T) (v : T)\n    (h_precond : enqueue_precond rb v) : RingBuffer T :=\n  -- !benchmark @start code\n  if rb.view.length < rb.capacity then\n    { capacity := rb.capacity, view := rb.view ++ [v] }\n  else\n    { capacity := rb.capacity, view := rb.view.drop 1 ++ [v] }\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef enqueue_postcond {T} (rb : RingBuffer T) (v : T) (result : RingBuffer T)\n    (_ : enqueue_precond rb v) : Prop :=\n  -- !benchmark @start postcond\n  result.is_valid \u2227\n  result.capacity = rb.capacity \u2227\n  (rb.view.length < rb.capacity \u2192 result.view = rb.view ++ [v]) \u2227\n  (rb.view.length = rb.capacity \u2192 result.view = rb.view.drop 1 ++ [v])\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem enqueue_postcond_satisfied {T} (rb : RingBuffer T) (v : T)\n    (h_precond : enqueue_precond rb v) :\n    enqueue_postcond rb v (enqueue rb v h_precond) h_precond := by\n  -- !benchmark @start proof\n  obtain \u27e8hcap, hlen\u27e9 := h_precond\n  unfold enqueue\n  by_cases h : rb.view.length < rb.capacity\n  \u00b7 simp only [h, if_true]\n    refine \u27e8\u27e8hcap, ?_\u27e9, rfl, fun _ => rfl, fun heq => absurd heq (by omega)\u27e9\n    simp only [List.length_append, List.length_singleton]\n    omega\n  \u00b7 have heq : rb.view.length = rb.capacity := by omega\n    simp only [h, if_false]\n    refine \u27e8\u27e8hcap, ?_\u27e9, rfl, fun hlt => absurd hlt h, fun _ => rfl\u27e9\n    simp only [List.length_append, List.length_singleton, List.length_drop]\n    omega\n  -- !benchmark @end proof\n",
+            "comment": "**LEAN VERIFIED** (only pre-existing linter warnings about unused binders in the teacher-provided signatures).\n\n## Implementation (`code` marker)\n\n```lean\nif rb.view.length < rb.capacity then\n  { capacity := rb.capacity, view := rb.view ++ [v] }\nelse\n  { capacity := rb.capacity, view := rb.view.drop 1 ++ [v] }\n```\n\n## Proof (`proof` marker)\n\nCase split on `rb.view.length < rb.capacity`; in the full branch `omega` derives `length = capacity` from the precondition's `length \u2264 capacity`. Validity in each branch follows from the length arithmetic (`length_append`, `length_drop`); the two contradictory implications are discharged by `absurd`.\n\n## Semantic audit against TASK.md\n\n- **Not-full case**: element appended, `view = rb.view ++ [v]` \u2014 matches the third conjunct.\n- **Full case**: oldest element (head) discarded via `drop 1`, then new element appended \u2014 `view = rb.view.drop 1 ++ [v]`, matching the fourth conjunct. FIFO-with-overwrite order is preserved (head dropped, tail retained in order).\n- **Fixed capacity**: `capacity := rb.capacity` in both branches, so `result.capacity = rb.capacity`.\n- **Precondition use**: `capacity > 0` is genuinely needed \u2014 it's what gives `result.is_valid` in the full branch (`capacity - 1 + 1 \u2264 capacity` requires `capacity > 0`), and it's carried through to `result.is_valid`. `length \u2264 capacity` is what lets the `else` branch conclude `length = capacity` rather than `length > capacity`.\n- **Edge cases**: `capacity = 1` with `view = [x]` \u2192 result `view = [v]`, length `1 \u2264 1`, valid. Empty `view` with `capacity \u2265 1` takes the append branch. The `drop 1` branch is never reached with an empty view (that would need `capacity = 0`, excluded by the precondition), so no silent misbehavior there.\n- No `sorry`/`admit`/axioms/`decide`/`Nat.find`/`Classical.choose` in editable sections; `auxcode` and `lemma` markers left empty and all four marker pairs preserved. The algorithm is computed directly, not read off the specification."
+        },
+        "verifier_response": {
+            "verified": true,
+            "feedback": "Verified successfully.",
+            "raw": {
+                "stdout": "claude_code_ringbuffer_enqueue_final_1785925838426.lean:12:45: warning: unused variable `v`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_ringbuffer_enqueue_final_1785925838426.lean:22:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+                "stderr": "",
+                "returncode": 0
+            }
+        },
+        "history": [
+            {
+                "compiler_pass": 1,
+                "verified": true,
+                "verifier_response": {
+                    "verified": true,
+                    "feedback": "Verified successfully.",
+                    "raw": {
+                        "stdout": "claude_code_ringbuffer_enqueue_final_1785925838426.lean:12:45: warning: unused variable `v`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_ringbuffer_enqueue_final_1785925838426.lean:22:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+                        "stderr": "",
+                        "returncode": 0
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "36d13ae4-1eaa-4503-88d6-6c5bebe66c8a",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.21754049999999997,
+                    "duration_ms": 69921,
+                    "duration_api_ms": 61537,
+                    "num_turns": 15,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/ringbuffer_enqueue/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "budget_usd": 2.0
+                }
+            }
+        ],
+        "tokens": {
+            "input": 126964,
+            "output": 3688,
+            "reasoning": 0
+        },
+        "agent": {
+            "kind": "claude-code",
+            "cli_version": "2.1.220 (Claude Code)",
+            "model": "claude-opus-5",
+            "effort": "medium",
+            "session_id": "36d13ae4-1eaa-4503-88d6-6c5bebe66c8a",
+            "subtype": "success",
+            "is_error": false,
+            "total_cost_usd": 0.21754049999999997,
+            "duration_ms": 69921,
+            "duration_api_ms": 61537,
+            "num_turns": 15,
+            "returncode": 0,
+            "timed_out": false,
+            "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/ringbuffer_enqueue/agent_events.jsonl",
+            "pass_number": 1,
+            "prompt_kind": "initial",
+            "budget_usd": 2.0,
+            "compiler_passes": 1,
+            "sessions": [
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "36d13ae4-1eaa-4503-88d6-6c5bebe66c8a",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.21754049999999997,
+                    "duration_ms": 69921,
+                    "duration_api_ms": 61537,
+                    "num_turns": 15,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/ringbuffer_enqueue/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "budget_usd": 2.0
+                }
+            ]
+        }
+    },
+    "parsed": true,
+    "verdict": true,
+    "analysis": "The student\u2019s implementation matches the required ring-buffer enqueue behavior in the natural language description.\n\nWhat the problem requires:\n- Functional ring buffer state update.\n- Fixed capacity.\n- If not full: append the new element.\n- If full: discard the oldest element (the head), then append the new element.\n- Maintain FIFO-with-overwrite behavior.\n\nWhat the student implemented:\n- A `RingBuffer` with:\n  - `capacity : Nat`\n  - `view : List T`\n- Validity requires:\n  - positive capacity\n  - `view.length \u2264 capacity`\n- `enqueue` does:\n  - if `rb.view.length < rb.capacity`, return same capacity and `rb.view ++ [v]`\n  - else return same capacity and `rb.view.drop 1 ++ [v]`\n\nThis is exactly the intended algorithm:\n- \u201cnot full\u201d case appends the element.\n- \u201cfull\u201d case removes the first/oldest element via `drop 1` and appends the new one.\n- Capacity is preserved in the returned structure.\n\nAbout cheating / tricks:\n- No use of `sorry`, `admit`, placeholders, axioms, or empty bodies.\n- No use of external built-in ring-buffer enqueue operation.\n- The implementation is explicit and from scratch.\n- The proof is also explicit.\n\nPotential subtlety:\n- The `else` branch triggers when `length \u2265 capacity`, but under the validity precondition `length \u2264 capacity`, this means exactly `length = capacity`. So semantically this is the full-buffer case as required.\n\nTherefore, the student satisfies the semantic requirements of the problem.",
+    "semantic_judge": {
+        "model": "gpt-5.4",
+        "temperature": 0.0,
+        "reasoning_effort": "medium"
+    }
+}

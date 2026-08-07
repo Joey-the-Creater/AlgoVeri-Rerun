@@ -20,7 +20,11 @@ def run_task(args):
     else:
         raise ValueError(f"Unknown model {args.model}")
     
-    eval = SemanticEval(llm_client=llm_provider, max_rounds=args.max_rounds)
+    eval = SemanticEval(
+        llm_client=llm_provider,
+        max_rounds=args.max_rounds,
+        temperature=args.temperature,
+    )
 
     # If stdin is piped, use that as the problem directory; otherwise use the default path.
     default_dir = "algoveri_data/bubble_sort"
@@ -84,6 +88,18 @@ def run_task(args):
                 item["verdict"] = False
                 item["analysis"] = ""
             new_results.append(item)
+    judge_metadata = {
+        "model": args.model,
+        "temperature": args.temperature,
+        "reasoning_effort": args.reasoning_effort,
+    }
+    if isinstance(new_results, list):
+        for item in new_results:
+            if isinstance(item, dict):
+                item["semantic_judge"] = judge_metadata.copy()
+    elif isinstance(new_results, dict):
+        new_results["semantic_judge"] = judge_metadata
+
     out_path = Path(args.save_root) / args.language / f"{friendly_test_model_name}_{task}_{args.language}.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(new_results, indent=4))
@@ -96,6 +112,7 @@ if __name__ == "__main__":
     argparser.add_argument("--model", type=str, default="gpt-oss-120b")
     argparser.add_argument("--max_rounds", type=int, default=5)
     argparser.add_argument("--num_passes", type=int, default=1)
+    argparser.add_argument("--temperature", type=float, default=1.0)
     argparser.add_argument(
         "--reasoning_effort",
         choices=("none", "low", "medium", "high", "xhigh", "max"),
@@ -110,4 +127,6 @@ if __name__ == "__main__":
     argparser.add_argument("--problem_dir", type=str, default="")
     argparser.add_argument("--url", type=str, default="")
     args = argparser.parse_args()
+    if not 0.0 <= args.temperature <= 2.0:
+        argparser.error("--temperature must be between 0 and 2")
     run_task(args)

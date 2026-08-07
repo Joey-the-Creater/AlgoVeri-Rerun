@@ -1,0 +1,107 @@
+{
+    "verified": true,
+    "details": {
+        "rounds": 12,
+        "llm_response": {
+            "code": "import Mathlib\n\n-- Precondition definitions\n@[reducible, simp]\ndef bracket_match_precond (s : Array UInt8) : Prop :=\n  -- !benchmark @start precond\n  s.size \u2264 1000000\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n/-- Weight of a single character: '(' \u21a6 1, ')' \u21a6 -1, anything else \u21a6 0. -/\ndef bm_w (c : UInt8) : Int :=\n  if c == 40 then 1\n  else if c == 41 then -1\n  else 0\n\n/-- Linear scan maintaining the running balance `c`.\n    Fails as soon as the balance would drop below `0`,\n    succeeds at the end exactly when the balance is `0`. -/\ndef bm_scan : List UInt8 \u2192 Int \u2192 Bool\n  | [], c => c == 0\n  | x :: xs, c => if c + bm_w x < 0 then false else bm_scan xs (c + bm_w x)\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef bracket_match (s : Array UInt8) (_ : bracket_match_precond s) : Bool :=\n  -- !benchmark @start code\n  bm_scan s.toList 0\n  -- !benchmark @end code\n\n-- Helper definitions\ndef char_weight (c : UInt8) : Int :=\n  if c == 40 then 1      -- '('\n  else if c == 41 then -1 -- ')'\n  else 0\n\n-- Calculates total weight of a list of characters\ndef total_weight (s : List UInt8) : Int :=\n  (s.map char_weight).sum\n\n-- Prefix property: all prefixes have non-negative total weight\ndef valid_prefix_weights (s : List UInt8) : Prop :=\n  \u2200 i, i \u2264 s.length \u2192 total_weight (s.take i) \u2265 0\n\n-- Correctness predicate\ndef is_matched (s : List UInt8) : Prop :=\n  total_weight s = 0 \u2227 valid_prefix_weights s\n\n-- Postcondition definitions\n@[reducible, simp]\ndef bracket_match_postcond (s : Array UInt8) (result : Bool) (_ : bracket_match_precond s) : Prop :=\n  -- !benchmark @start postcond\n  result = is_matched s.toList\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\ntheorem bm_w_eq (x : UInt8) : bm_w x = char_weight x := rfl\n\ntheorem total_weight_nil : total_weight [] = 0 := rfl\n\ntheorem total_weight_cons (x : UInt8) (xs : List UInt8) :\n    total_weight (x :: xs) = char_weight x + total_weight xs := by\n  simp [total_weight]\n\n/-- Loop invariant: starting the scan with a non-negative balance `c` succeeds\n    iff the balance ends at `0` and stays non-negative on every prefix. -/\ntheorem bm_scan_spec : \u2200 (l : List UInt8) (c : Int), 0 \u2264 c \u2192\n    (bm_scan l c = true \u2194\n      (c + total_weight l = 0 \u2227 \u2200 i, i \u2264 l.length \u2192 0 \u2264 c + total_weight (l.take i))) := by\n  intro l\n  induction l with\n  | nil =>\n    intro c hc\n    simp only [bm_scan, beq_iff_eq, total_weight_nil, List.length_nil, List.take_nil]\n    constructor\n    \u00b7 intro h\n      subst h\n      exact \u27e8by norm_num, by intro i hi; simpa [total_weight_nil] using le_refl (0 : Int)\u27e9\n    \u00b7 rintro \u27e8h1, -\u27e9\n      linarith\n  | cons x xs ih =>\n    intro c hc\n    simp only [bm_scan, bm_w_eq]\n    by_cases h : c + char_weight x < 0\n    \u00b7 rw [if_pos h]\n      have he : total_weight ((x :: xs).take 1) = char_weight x := by\n        simp [total_weight]\n      constructor\n      \u00b7 intro hf; exact absurd hf (by simp)\n      \u00b7 rintro \u27e8-, h2\u27e9\n        exfalso\n        have h3 := h2 1 (by simp)\n        rw [he] at h3\n        linarith\n    \u00b7 rw [if_neg h]\n      have hc' : (0 : Int) \u2264 c + char_weight x := by linarith [not_lt.mp h]\n      rw [ih (c + char_weight x) hc']\n      constructor\n      \u00b7 rintro \u27e8h1, h2\u27e9\n        refine \u27e8by rw [total_weight_cons]; linarith, ?_\u27e9\n        intro i hi\n        cases i with\n        | zero => simpa [total_weight_nil] using hc\n        | succ j =>\n          have hj : j \u2264 xs.length := by simpa using hi\n          have h3 := h2 j hj\n          have he : total_weight ((x :: xs).take (j + 1))\n              = char_weight x + total_weight (xs.take j) := by\n            rw [List.take_succ_cons, total_weight_cons]\n          rw [he]; linarith\n      \u00b7 rintro \u27e8h1, h2\u27e9\n        rw [total_weight_cons] at h1\n        refine \u27e8by linarith, ?_\u27e9\n        intro i hi\n        have h3 := h2 (i + 1) (by simpa using hi)\n        have he : total_weight ((x :: xs).take (i + 1))\n            = char_weight x + total_weight (xs.take i) := by\n          rw [List.take_succ_cons, total_weight_cons]\n        rw [he] at h3\n        linarith\n\ntheorem bm_key (l : List UInt8) : (bm_scan l 0 = true) \u2194 is_matched l := by\n  rw [bm_scan_spec l 0 le_rfl]\n  simp only [is_matched, valid_prefix_weights, ge_iff_le, zero_add]\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem bracket_match_postcond_satisfied\n    (s : Array UInt8) (h_precond : bracket_match_precond s) :\n    bracket_match_postcond s (bracket_match s h_precond) h_precond := by\n  -- !benchmark @start proof\n  simp only [bracket_match_postcond, bracket_match]\n  exact propext (bm_key s.toList)\n  -- !benchmark @end proof\n",
+            "comment": "`./check.sh` prints **LEAN VERIFIED** (only a cosmetic `simpa`\u2192`simp` linter warning).\n\n## What was implemented\n\n**auxcode** \u2014 `bm_w` (character weight: `'('`=40 \u21a6 1, `')'`=41 \u21a6 \u22121, else 0) and `bm_scan : List UInt8 \u2192 Int \u2192 Bool`, the linear scan carrying the running balance `c`: on each character it computes `c + bm_w x`, returns `false` immediately if that is `< 0`, and at end of input returns `c == 0`.\n\n**code** \u2014 `bracket_match s _ := bm_scan s.toList 0` (single left-to-right pass, tail-recursive, O(n)).\n\n**lemma** \u2014 the loop invariant, `bm_scan_spec`: for every list `l` and every balance `c \u2265 0`,\n`bm_scan l c = true \u2194 (c + total_weight l = 0 \u2227 \u2200 i \u2264 l.length, 0 \u2264 c + total_weight (l.take i))`.\nProved by induction on `l` generalizing `c`; the early-failure branch is refuted using the length-1 prefix, and the continuing branch shifts the invariant by `char_weight x`. `bm_key` instantiates it at `c = 0` to get `bm_scan l 0 = true \u2194 is_matched l`.\n\n**proof** \u2014 unfolds the postcondition and closes it with `propext (bm_key s.toList)` (the postcondition is a `Bool`-vs-`Prop` equality, hence `propext`).\n\n## Semantic audit against TASK.md\n- Initialization at 0, per-character \u00b11 increment, early `false` when the balance drops below 0, final `true` iff balance is exactly 0 \u2014 all four stated steps present, no substitute algorithm.\n- Functional correctness is proved against the teacher's `is_matched` (total weight 0 **and** every prefix non-negative), not a weakened variant; both conjuncts are established in both directions.\n- The invariant requirement is met literally: `bm_scan_spec` states that the counter equals the weight sum of the processed portion (as the `c + total_weight` offset form) together with non-negativity of all prefixes in range.\n- Edge cases: empty array \u2192 `0 == 0 = true`, matching `is_matched []`; characters other than 40/41 get weight 0 and leave the counter unchanged; a leading `')'` fails at index 0 via the early check; unbalanced `'('` fails only at the final check. The precondition `s.size \u2264 1000000` is not needed for correctness and is correctly left unused.\n- No `sorry`/`admit`, no new axioms, `constant`, `partial`, `unsafe`, `extern`, or `implemented_by`; no `decide`/`Nat.find`/`Classical.choose` over the target property; all four marker pairs preserved and only their interiors edited. `bm_w`, `total_weight` usage, and the invariant are genuine definitions, not placeholders."
+        },
+        "verifier_response": {
+            "verified": true,
+            "feedback": "Verified successfully.",
+            "raw": {
+                "stdout": "claude_code_bracket_matching_final_1785909728372.lean:78:41: warning: try 'simp' instead of 'simpa'\n\nNote: This linter can be disabled with `set_option linter.unnecessarySimpa false`\n",
+                "stderr": "",
+                "returncode": 0
+            }
+        },
+        "history": [
+            {
+                "compiler_pass": 1,
+                "verified": true,
+                "verifier_response": {
+                    "verified": true,
+                    "feedback": "Verified successfully.",
+                    "raw": {
+                        "stdout": "claude_code_bracket_matching_final_1785909728372.lean:78:41: warning: try 'simp' instead of 'simpa'\n\nNote: This linter can be disabled with `set_option linter.unnecessarySimpa false`\n",
+                        "stderr": "",
+                        "returncode": 0
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "663a59e9-52e0-46f8-96eb-067add95f587",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.42907975000000004,
+                    "duration_ms": 130016,
+                    "duration_api_ms": 125557,
+                    "num_turns": 13,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/bracket_matching/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "budget_usd": 2.0
+                }
+            }
+        ],
+        "tokens": {
+            "input": 126138,
+            "output": 10663,
+            "reasoning": 0
+        },
+        "agent": {
+            "kind": "claude-code",
+            "cli_version": "2.1.220 (Claude Code)",
+            "model": "claude-opus-5",
+            "effort": "medium",
+            "session_id": "663a59e9-52e0-46f8-96eb-067add95f587",
+            "subtype": "success",
+            "is_error": false,
+            "total_cost_usd": 0.42907975000000004,
+            "duration_ms": 130016,
+            "duration_api_ms": 125557,
+            "num_turns": 13,
+            "returncode": 0,
+            "timed_out": false,
+            "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/bracket_matching/agent_events.jsonl",
+            "pass_number": 1,
+            "prompt_kind": "initial",
+            "budget_usd": 2.0,
+            "compiler_passes": 1,
+            "sessions": [
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "663a59e9-52e0-46f8-96eb-067add95f587",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.42907975000000004,
+                    "duration_ms": 130016,
+                    "duration_api_ms": 125557,
+                    "num_turns": 13,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/bracket_matching/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "budget_usd": 2.0
+                }
+            ]
+        }
+    },
+    "parsed": true,
+    "verdict": true,
+    "analysis": "The student\u2019s implementation does match the required linear scan algorithm in substance, and I do not see evidence of cheating.\n\nKey points:\n\n1. **Algorithmic structure matches the description**\n   - They define `bm_scan : List UInt8 \u2192 Int \u2192 Bool`.\n   - It scans the input left-to-right recursively.\n   - It maintains a running counter `c`.\n   - For each character:\n     - `'('` (40) contributes `+1`\n     - `')'` (41) contributes `-1`\n     - anything else contributes `0`\n   - If `c + bm_w x < 0`, it immediately returns `false`.\n   - At the end (`[]`), it returns whether `c == 0`.\n\n   This is exactly the required linear scan / running balance / early failure / final zero check pattern.\n\n2. **Correctness statement aligns with the intended semantic property**\n   - They define:\n     - `total_weight`\n     - `valid_prefix_weights`\n     - `is_matched := total_weight s = 0 \u2227 valid_prefix_weights s`\n   - They prove `bm_scan_spec`, which expresses the loop invariant style property:\n     - starting from balance `c`,\n     - success is equivalent to final total balance being zero relative to `c`,\n     - and every processed prefix staying nonnegative relative to `c`.\n   - Then `bm_key` specializes this to initial counter `0`.\n\n   This matches the natural language requirement about total sum being zero and every prefix sum being nonnegative, as well as the loop invariant relating the counter to the processed prefix weight.\n\n3. **Implementation approach is from scratch**\n   - They do not call a built-in bracket matcher or any external verified function that solves the problem for them.\n   - The scan is explicitly implemented by recursion.\n   - The proof is also written explicitly.\n\n4. **No obvious cheating**\n   - No `sorry`, `admit`, `axiom`, empty body, or placeholder proof terms.\n   - No suspicious delegation to an existing bracket-matching library function.\n   - The executable code is nontrivial and genuinely implements the algorithm.\n\n5. **Minor note**\n   - The natural language description talks about iterating over an `Array UInt8`; the student converts the array to a list and scans the list. This is still semantically the same linear scan over the sequence, not a different algorithm or a cheat.\n\nOverall, the student implemented the required linear scan bracket matching algorithm and proved the intended kind of correctness property, without using disallowed shortcuts.",
+    "semantic_judge": {
+        "model": "gpt-5.4",
+        "temperature": 0.0,
+        "reasoning_effort": "medium"
+    }
+}

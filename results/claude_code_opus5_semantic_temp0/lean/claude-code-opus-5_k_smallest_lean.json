@@ -1,0 +1,107 @@
+{
+    "verified": true,
+    "details": {
+        "rounds": 21,
+        "llm_response": {
+            "code": "import Mathlib\n\n-- Precondition definitions\n@[reducible, simp]\ndef quick_select_precond (v : Array Int) (k : Nat) : Prop :=\n  -- !benchmark @start precond\n  k < v.size\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n/-- Quick Select on lists: pick the head as pivot, partition the tail into the\nelements strictly smaller than the pivot and the rest, then recurse into the\nside containing index `k` (or return the pivot when `k` is the pivot index).\nThe `fuel` argument only makes the recursion structural; it is always\ninstantiated with the length of the list. -/\ndef qsel : Nat \u2192 List Int \u2192 Nat \u2192 Int\n  | 0, _, _ => 0\n  | _ + 1, [], _ => 0\n  | fuel + 1, p :: t, k =>\n      let sm := t.filter (fun x => decide (x < p))\n      let lg := t.filter (fun x => !decide (x < p))\n      if k < sm.length then qsel fuel sm k\n      else if k = sm.length then p\n      else qsel fuel lg (k - sm.length - 1)\n-- !benchmark @end auxcode\n\n-- Main function definitions\ndef quick_select (v : Array Int) (k : Nat) (h_precond : quick_select_precond v k) : Int :=\n  -- !benchmark @start code\n  qsel v.toList.length v.toList k\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef quick_select_postcond (v : Array Int) (k : Nat) (result : Int) (h_precond : quick_select_precond v k) : Prop :=\n  -- !benchmark @start postcond\n  \u2203 sorted : List Int,\n    sorted.length = v.size \u2227\n    List.Sorted (\u00b7 \u2264 \u00b7) sorted \u2227\n    sorted.getD k 0 = result \u2227\n    sorted.Perm v.toList\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\ntheorem qsel_getD_append_right (A B : List Int) (n : Nat) (h : A.length \u2264 n) :\n    (A ++ B).getD n 0 = B.getD (n - A.length) 0 := by\n  induction A generalizing n with\n  | nil => simp\n  | cons a A ih =>\n    match n with\n    | 0 => simp at h\n    | m + 1 =>\n      simp only [List.cons_append, List.getD_cons_succ, List.length_cons]\n      have h' : A.length \u2264 m := by simpa using h\n      rw [ih m h']\n      congr 1\n      omega\n\n/-- Sorting `p :: t` is the same as sorting the two partition halves and\nputting the pivot in between. -/\ntheorem qsel_sort_split (p : Int) (t : List Int) :\n    List.insertionSort (\u00b7 \u2264 \u00b7) (p :: t) =\n      List.insertionSort (\u00b7 \u2264 \u00b7) (t.filter (fun x => decide (x < p))) ++\n        p :: List.insertionSort (\u00b7 \u2264 \u00b7) (t.filter (fun x => !decide (x < p))) := by\n  set sm := t.filter (fun x => decide (x < p)) with hsm\n  set lg := t.filter (fun x => !decide (x < p)) with hlg\n  have hR : (List.insertionSort (\u00b7 \u2264 \u00b7) sm ++ p :: List.insertionSort (\u00b7 \u2264 \u00b7) lg).Perm\n      (sm ++ p :: lg) :=\n    (List.perm_insertionSort (\u00b7 \u2264 \u00b7) sm).append\n      ((List.perm_insertionSort (\u00b7 \u2264 \u00b7) lg).cons p)\n  have hM : (sm ++ p :: lg).Perm (p :: t) :=\n    List.perm_middle.trans ((List.filter_append_perm _ t).cons p)\n  have hperm : (List.insertionSort (\u00b7 \u2264 \u00b7) (p :: t)).Perm\n      (List.insertionSort (\u00b7 \u2264 \u00b7) sm ++ p :: List.insertionSort (\u00b7 \u2264 \u00b7) lg) :=\n    (List.perm_insertionSort (\u00b7 \u2264 \u00b7) (p :: t)).trans (hR.trans hM).symm\n  have hsm_lt : \u2200 x \u2208 List.insertionSort (\u00b7 \u2264 \u00b7) sm, x < p := by\n    intro x hx\n    rw [List.mem_insertionSort, hsm, List.mem_filter] at hx\n    simpa using hx.2\n  have hlg_ge : \u2200 x \u2208 List.insertionSort (\u00b7 \u2264 \u00b7) lg, p \u2264 x := by\n    intro x hx\n    rw [List.mem_insertionSort, hlg, List.mem_filter] at hx\n    have := hx.2\n    simp only [Bool.not_eq_true', decide_eq_false_iff_not, not_lt] at this\n    exact this\n  have hsorted : List.Sorted (\u00b7 \u2264 \u00b7)\n      (List.insertionSort (\u00b7 \u2264 \u00b7) sm ++ p :: List.insertionSort (\u00b7 \u2264 \u00b7) lg) := by\n    have hp : List.Pairwise (\u00b7 \u2264 \u00b7)\n        (List.insertionSort (\u00b7 \u2264 \u00b7) sm ++ p :: List.insertionSort (\u00b7 \u2264 \u00b7) lg) := by\n      rw [List.pairwise_append]\n      refine \u27e8List.sorted_insertionSort _ _, ?_, ?_\u27e9\n      \u00b7 rw [List.pairwise_cons]\n        exact \u27e8hlg_ge, List.sorted_insertionSort _ _\u27e9\n      \u00b7 intro a ha b hb\n        rcases List.mem_cons.mp hb with rfl | hb\n        \u00b7 exact le_of_lt (hsm_lt a ha)\n        \u00b7 exact le_trans (le_of_lt (hsm_lt a ha)) (hlg_ge b hb)\n    exact hp\n  exact List.eq_of_perm_of_sorted hperm (List.sorted_insertionSort _ _) hsorted\n\n/-- Correctness of quick select with enough fuel. -/\ntheorem qsel_spec : \u2200 (fuel : Nat) (l : List Int) (k : Nat),\n    l.length \u2264 fuel \u2192 k < l.length \u2192\n    qsel fuel l k = (List.insertionSort (\u00b7 \u2264 \u00b7) l).getD k 0 := by\n  intro fuel\n  induction fuel with\n  | zero =>\n    intro l k hf hk\n    interval_cases h : l.length\n    \u00b7 omega\n  | succ n ih =>\n    intro l k hf hk\n    match l with\n    | [] => simp at hk\n    | p :: t =>\n      set sm := t.filter (fun x => decide (x < p)) with hsm\n      set lg := t.filter (fun x => !decide (x < p)) with hlg\n      have hlen : sm.length + lg.length = t.length := by\n        have := (List.filter_append_perm (fun x => decide (x < p)) t).length_eq\n        simpa [hsm, hlg] using this\n      have hsmle : sm.length \u2264 n := by\n        have h1 : sm.length \u2264 t.length := List.length_filter_le _ _\n        simp only [List.length_cons] at hf\n        omega\n      have hlgle : lg.length \u2264 n := by\n        have h1 : lg.length \u2264 t.length := List.length_filter_le _ _\n        simp only [List.length_cons] at hf\n        omega\n      have hsplit := qsel_sort_split p t\n      set A := List.insertionSort (\u00b7 \u2264 \u00b7) sm with hA\n      set B := List.insertionSort (\u00b7 \u2264 \u00b7) lg with hB\n      have hAlen : A.length = sm.length := by\n        rw [hA, List.length_insertionSort]\n      have hklen : k < t.length + 1 := by simpa using hk\n      show (if k < sm.length then qsel n sm k\n        else if k = sm.length then p\n        else qsel n lg (k - sm.length - 1)) = _\n      rw [hsplit]\n      by_cases h1 : k < sm.length\n      \u00b7 rw [if_pos h1, ih sm k hsmle h1, \u2190 hA]\n        rw [List.getD_append]\n        omega\n      \u00b7 rw [if_neg h1]\n        by_cases h2 : k = sm.length\n        \u00b7 rw [if_pos h2, qsel_getD_append_right A _ k (by omega), hAlen]\n          subst h2\n          simp\n        \u00b7 rw [if_neg h2, qsel_getD_append_right A _ k (by omega), hAlen]\n          have h3 : k - sm.length = (k - sm.length - 1) + 1 := by omega\n          rw [h3, List.getD_cons_succ]\n          have h4 : k - sm.length - 1 + 1 - 1 = k - sm.length - 1 := by omega\n          rw [h4, hB]\n          exact ih lg (k - sm.length - 1) hlgle (by omega)\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem quick_select_postcond_satisfied (v : Array Int) (k : Nat) (h_precond : quick_select_precond v k) :\n    quick_select_postcond v k (quick_select v k h_precond) h_precond := by\n  -- !benchmark @start proof\n  refine \u27e8List.insertionSort (\u00b7 \u2264 \u00b7) v.toList, ?_, List.sorted_insertionSort _ _, ?_, ?_\u27e9\n  \u00b7 rw [List.length_insertionSort, Array.length_toList]\n  \u00b7 rw [quick_select]\n    exact (qsel_spec v.toList.length v.toList k le_rfl (by simpa using h_precond)).symm\n  \u00b7 exact List.perm_insertionSort _ _\n  -- !benchmark @end proof\n",
+            "comment": "`./check.sh` prints **LEAN VERIFIED**.\n\n## What I implemented\n\n**Algorithm** (`auxcode`, `Solution.lean:16`): genuine partition-based Quick Select on `List Int`, with a `fuel` parameter only to make the recursion structural (always instantiated with the list length at the call site):\n\n- pivot = head `p`; partition the tail into `sm = {x < p}` and `lg = {x \u2265 p}`\n- if `k < sm.length` recurse into `sm` with the same `k`; if `k = sm.length` return the pivot; otherwise recurse into `lg` with `k - sm.length - 1`\n\n`quick_select` (`code`) is `qsel v.toList.length v.toList k`. No sorting, no oracle, no `Nat.find`/`Classical.choose`/`decide` in the algorithm.\n\n**Proof** (`lemma` + `proof`):\n1. `qsel_getD_append_right` \u2014 a small `getD` splitting lemma proved by induction.\n2. `qsel_sort_split` \u2014 `insertionSort (p :: t) = insertionSort sm ++ p :: insertionSort lg`, proved via `List.eq_of_perm_of_sorted` (permutation from `List.filter_append_perm` + `perm_middle`; sortedness from `pairwise_append` plus the pivot bounds `x < p` on `sm`, `p \u2264 x` on `lg`).\n3. `qsel_spec` \u2014 by induction on fuel: for `l.length \u2264 fuel` and `k < l.length`, `qsel fuel l k = (insertionSort (\u00b7 \u2264 \u00b7) l).getD k 0`. Fuel adequacy comes from `length_filter_le`; the third-branch index bound from `sm.length + lg.length = t.length`.\n4. The postcondition witness is `insertionSort (\u00b7 \u2264 \u00b7) v.toList` \u2014 length via `length_insertionSort`, sortedness via `sorted_insertionSort`, permutation via `perm_insertionSort`, and the `getD k 0 = result` component from `qsel_spec`. The sorted list appears only as the existential witness the postcondition demands, never in the computed function.\n\n## Semantic audit\n\n- **Precondition `k < v.size`** is used exactly where needed (to discharge `k < v.toList.length`), and the postcondition is proved in full, unweakened form.\n- **Edge cases**: negatives are fine \u2014 the algorithm compares with `<` on `Int` and the `0` fallbacks (`fuel = 0`, empty list) are provably unreachable under the precondition, so no all-negative input can return a spurious `0`; that's established by `qsel_spec` covering every `k < l.length`. Duplicates are handled correctly since `lg` keeps elements `\u2265 p` while the pivot itself is removed as the head.\n- No helper is a placeholder: both lemmas are fully proved statements about `insertionSort`/`getD`, not `:= 0` or `:= True`.\n- All four markers and the untouched `precond`/`postcond` blocks are preserved; no `sorry`, `axiom`, `partial`, or `unsafe` anywhere.\n\nOne design note worth flagging: the pivot is the first element (deterministic), so the O(N) claim holds in the average-over-inputs sense, not against an adversarially ordered input \u2014 the usual reading for this formulation."
+        },
+        "verifier_response": {
+            "verified": true,
+            "feedback": "Verified successfully.",
+            "raw": {
+                "stdout": "claude_code_k_smallest_final_1785915641005.lean:28:44: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_k_smallest_final_1785915641005.lean:35:68: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+                "stderr": "",
+                "returncode": 0
+            }
+        },
+        "history": [
+            {
+                "compiler_pass": 1,
+                "verified": true,
+                "verifier_response": {
+                    "verified": true,
+                    "feedback": "Verified successfully.",
+                    "raw": {
+                        "stdout": "claude_code_k_smallest_final_1785915641005.lean:28:44: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_k_smallest_final_1785915641005.lean:35:68: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+                        "stderr": "",
+                        "returncode": 0
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "29336366-362c-4c9f-86f7-8f5d79243e66",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.79063475,
+                    "duration_ms": 230258,
+                    "duration_api_ms": 215834,
+                    "num_turns": 22,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/k_smallest/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "budget_usd": 2.0
+                }
+            }
+        ],
+        "tokens": {
+            "input": 418798,
+            "output": 16828,
+            "reasoning": 0
+        },
+        "agent": {
+            "kind": "claude-code",
+            "cli_version": "2.1.220 (Claude Code)",
+            "model": "claude-opus-5",
+            "effort": "medium",
+            "session_id": "29336366-362c-4c9f-86f7-8f5d79243e66",
+            "subtype": "success",
+            "is_error": false,
+            "total_cost_usd": 0.79063475,
+            "duration_ms": 230258,
+            "duration_api_ms": 215834,
+            "num_turns": 22,
+            "returncode": 0,
+            "timed_out": false,
+            "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/k_smallest/agent_events.jsonl",
+            "pass_number": 1,
+            "prompt_kind": "initial",
+            "budget_usd": 2.0,
+            "compiler_passes": 1,
+            "sessions": [
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "29336366-362c-4c9f-86f7-8f5d79243e66",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.79063475,
+                    "duration_ms": 230258,
+                    "duration_api_ms": 215834,
+                    "num_turns": 22,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/k_smallest/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "budget_usd": 2.0
+                }
+            ]
+        }
+    },
+    "parsed": true,
+    "verdict": true,
+    "analysis": "The student\u2019s implementation does satisfy the semantic requirements of the problem.\n\nWhat the problem requires:\n- Implement Quick Select for the k-th smallest element.\n- Use a recursive partition-based selection algorithm, like Quick Sort partitioning.\n- Return the pivot if its partition index is k; otherwise recurse into the appropriate side.\n- Avoid cheating tricks such as `sorry`, `admit`, empty bodies, or delegating the actual algorithm to an existing selection routine.\n\nWhat the student implemented:\n- They define `qsel` recursively on a list:\n  - choose the head `p` as pivot,\n  - partition the tail into\n    - `sm := t.filter (fun x => decide (x < p))`\n    - `lg := t.filter (fun x => !decide (x < p))`\n  - recurse into `sm` if `k < sm.length`,\n  - return `p` if `k = sm.length`,\n  - otherwise recurse into `lg` with adjusted index `k - sm.length - 1`.\n- `quick_select` simply converts the array to a list and calls `qsel` with fuel equal to the list length.\n\nThis is indeed the standard quick-select structure. It is partition-based and recursive, and it uses the pivot position logic exactly as described.\n\nAbout use of sorting:\n- The implementation of the algorithm itself does **not** sort the input to compute the answer.\n- `List.insertionSort` appears only in the proofs/postcondition witness, not in the executable selection algorithm.\n- So the student is not replacing quick select with sorting in the implementation.\n\nAbout cheating:\n- No `sorry`, `admit`, placeholders, axioms, or empty bodies.\n- No call to a built-in quick-select/select routine.\n- The recursion is real and implemented from scratch.\n- The `fuel` argument is a standard termination device in Lean, not a cheat. Since they call it with `v.toList.length`, and each recursive call goes to a strict sublist, this is consistent with the intended algorithm.\n\nPotential concern:\n- The base cases `| 0, _, _ => 0` and `| _ + 1, [], _ => 0` are dummy fallback values.\n- However, these are only unreachable under the intended precondition and the way `quick_select` invokes `qsel` with enough fuel. This is a common Lean technique for total definitions and does not indicate cheating.\n\nComplexity:\n- The algorithm is the usual quick-select with head pivot and partitioning by filtering. This matches the required recursive partition-based approach and has the intended average-case quick-select behavior conceptually. The proof uses sorting, but the runtime implementation does not.\n\nSo semantically, the student implemented the required algorithm and did not use prohibited shortcuts.",
+    "semantic_judge": {
+        "model": "gpt-5.4",
+        "temperature": 0.0,
+        "reasoning_effort": "medium"
+    }
+}

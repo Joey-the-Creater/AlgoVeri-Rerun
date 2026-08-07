@@ -61,6 +61,16 @@ class OpenAIResponsesProviderTest(unittest.TestCase):
         self.assertEqual([message["role"] for message in second_input], ["user", "assistant", "user"])
         self.assertEqual(second_input[-1]["content"], "revision")
 
+    def test_gpt56_none_forwards_temperature(self):
+        responses = FakeResponses()
+        client = SimpleNamespace(responses=responses)
+        chat = OpenAIMultiTurnChat(client, "gpt-5.6-sol", reasoning_effort="none")
+
+        chat.send_message("judge this", temperature=0.0)
+
+        self.assertEqual(responses.calls[0]["reasoning"], {"effort": "none"})
+        self.assertEqual(responses.calls[0]["temperature"], 0.0)
+
     def test_older_models_keep_chat_completions_path(self):
         completions = FakeChatCompletions()
         client = SimpleNamespace(chat=SimpleNamespace(completions=completions))

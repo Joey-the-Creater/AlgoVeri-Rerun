@@ -1,0 +1,102 @@
+{
+    "verified": true,
+    "details": {
+        "rounds": 7,
+        "llm_response": {
+            "code": "import Mathlib\n\n-- Precondition definitions\n@[reducible, simp]\ndef linear_search_lower_bound_precond (seq : Array Int) (target : Int) : Prop :=\n  -- !benchmark @start precond\n  seq.size \u2264 0x7FFFFFFF \u2227\n  (\u2200 i j : Nat, i < j \u2227 j < seq.size \u2192 seq.getD i 0 \u2264 seq.getD j 0)\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n/-- Linear scan starting at index `i`: returns the first index `k \u2265 i` with\n`seq[k] \u2265 target`, or `seq.size` if there is none. -/\ndef linear_search_aux (seq : Array Int) (target : Int) (i : Nat) : Nat :=\n  if i < seq.size then\n    if seq.getD i 0 \u2265 target then i else linear_search_aux seq target (i + 1)\n  else\n    seq.size\ntermination_by seq.size - i\ndecreasing_by omega\n-- !benchmark @end auxcode\n\n-- Main function definitions\ndef linear_search_lower_bound (seq : Array Int) (target : Int) (h_precond : linear_search_lower_bound_precond seq target) : Nat :=\n  -- !benchmark @start code\n  linear_search_aux seq target 0\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef linear_search_lower_bound_postcond (seq : Array Int) (target : Int) (result : Nat) (h_precond : linear_search_lower_bound_precond seq target) : Prop :=\n  -- !benchmark @start postcond\n  result \u2264 seq.size \u2227\n  (\u2200 i : Nat, i < result \u2192 seq.getD i 0 < target) \u2227\n  (\u2200 i : Nat, result \u2264 i \u2227 i < seq.size \u2192 seq.getD i 0 \u2265 target)\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\ntheorem linear_search_aux_spec (seq : Array Int) (target : Int) :\n    \u2200 n i : Nat, seq.size - i \u2264 n \u2192\n      linear_search_aux seq target i \u2264 seq.size \u2227\n      (\u2200 j : Nat, i \u2264 j \u2192 j < linear_search_aux seq target i \u2192 seq.getD j 0 < target) \u2227\n      (linear_search_aux seq target i < seq.size \u2192\n        seq.getD (linear_search_aux seq target i) 0 \u2265 target) := by\n  intro n\n  induction n with\n  | zero =>\n    intro i hi\n    have hni : \u00ac (i < seq.size) := by omega\n    rw [linear_search_aux, if_neg hni]\n    refine \u27e8le_refl _, ?_, ?_\u27e9\n    \u00b7 intro j _ hj; omega\n    \u00b7 intro h; omega\n  | succ n ih =>\n    intro i hi\n    by_cases hlt : i < seq.size\n    \u00b7 by_cases hge : seq.getD i 0 \u2265 target\n      \u00b7 rw [linear_search_aux, if_pos hlt, if_pos hge]\n        exact \u27e8le_of_lt hlt, fun j _ hj => by omega, fun _ => hge\u27e9\n      \u00b7 have hrec : linear_search_aux seq target i = linear_search_aux seq target (i + 1) := by\n          rw [linear_search_aux, if_pos hlt, if_neg hge]\n        obtain \u27e8h1, h2, h3\u27e9 := ih (i + 1) (by omega)\n        rw [hrec]\n        refine \u27e8h1, ?_, h3\u27e9\n        intro j hij hj\n        rcases Nat.eq_or_lt_of_le hij with heq | hlt2\n        \u00b7 rw [\u2190 heq]; omega\n        \u00b7 exact h2 j hlt2 hj\n    \u00b7 rw [linear_search_aux, if_neg hlt]\n      refine \u27e8le_refl _, ?_, ?_\u27e9\n      \u00b7 intro j _ hj; omega\n      \u00b7 intro h; omega\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem linear_search_lower_bound_postcond_satisfied (seq : Array Int) (target : Int) (h_precond : linear_search_lower_bound_precond seq target) :\n    linear_search_lower_bound_postcond seq target (linear_search_lower_bound seq target h_precond) h_precond := by\n  -- !benchmark @start proof\n  obtain \u27e8_, hsorted\u27e9 := h_precond\n  simp only [linear_search_lower_bound_postcond, linear_search_lower_bound]\n  obtain \u27e8h1, h2, h3\u27e9 := linear_search_aux_spec seq target seq.size 0 (by omega)\n  refine \u27e8h1, fun i hi => h2 i (Nat.zero_le i) hi, ?_\u27e9\n  rintro i \u27e8hle, hilt\u27e9\n  have hr : linear_search_aux seq target 0 < seq.size := lt_of_le_of_lt hle hilt\n  have hval := h3 hr\n  rcases Nat.eq_or_lt_of_le hle with heq | hlt2\n  \u00b7 rw [\u2190 heq]; exact hval\n  \u00b7 have := hsorted _ i \u27e8hlt2, hilt\u27e9\n    omega\n  -- !benchmark @end proof\n",
+            "comment": "`./check.sh` prints **LEAN VERIFIED**.\n\n**What I implemented** (`Solution.lean`):\n\n- **auxcode**: `linear_search_aux seq target i` \u2014 a genuine left-to-right linear scan: if `i < seq.size`, return `i` when `seq[i] \u2265 target`, else recurse on `i+1`; return `seq.size` when the array is exhausted. `termination_by seq.size - i`, so it's O(N) and structurally a real search (no `Nat.find`, `Classical.choose`, `decide`, or enumeration).\n- **code**: `linear_search_aux seq target 0`.\n- **lemma**: `linear_search_aux_spec`, proved by induction on a fuel bound `n \u2265 seq.size - i`, giving for every start index: result `\u2264 seq.size`, every `j` in `[i, result)` has `seq[j] < target`, and if `result < seq.size` then `seq[result] \u2265 target`.\n- **proof**: instantiates the lemma at `i = 0` for postconditions (1) and (2). For (3) \u2014 *all* `i \u2265 result` are `\u2265 target` \u2014 it uses the sortedness precondition: `result < seq.size` follows from `result \u2264 i < seq.size`, so `seq[result] \u2265 target`, and for `i > result` monotonicity gives `seq[result] \u2264 seq[i]`.\n\n**Semantic audit against TASK.md:**\n\n- Postcondition (3) genuinely requires the array to be sorted, and I used the `\u2200 i j, i < j < size \u2192 seq[i] \u2264 seq[j]` conjunct of the stated precondition exactly as intended \u2014 no weakening of the postcondition to only the element at `result`.\n- The `seq.size \u2264 0x7FFFFFFF` conjunct is an overflow guard with no mathematical content here; it's unused, which is why Lean warns about unused `h_precond` (harmless).\n- Edge cases: empty array \u2192 returns `0 = seq.size`, all three clauses hold vacuously. No element `\u2265 target` \u2192 returns `seq.size`, clause (3) vacuous. All elements `\u2265 target` (including all-negative arrays with a very negative target) \u2192 returns `0`, clause (2) vacuous. Adversarial all-negative input is handled since nothing in the code assumes nonnegativity; `0` is only the `getD` default for out-of-range reads, which the proof never depends on for in-range indices.\n- No `sorry`/`admit`/axioms/`partial`/`unsafe` anywhere; all four marker pairs preserved and only their interiors edited; `Original.lean`, `TASK.md`, `check.sh` untouched."
+        },
+        "verifier_response": {
+            "verified": true,
+            "feedback": "Verified successfully.",
+            "raw": {
+                "stdout": "claude_code_linear_search_final_1785918413473.lean:5:57: warning: unused variable `target`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_linear_search_final_1785918413473.lean:24:64: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_linear_search_final_1785918413473.lean:31:88: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+                "stderr": "",
+                "returncode": 0
+            }
+        },
+        "history": [
+            {
+                "compiler_pass": 1,
+                "verified": true,
+                "verifier_response": {
+                    "verified": true,
+                    "feedback": "Verified successfully.",
+                    "raw": {
+                        "stdout": "claude_code_linear_search_final_1785918413473.lean:5:57: warning: unused variable `target`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_linear_search_final_1785918413473.lean:24:64: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_linear_search_final_1785918413473.lean:31:88: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+                        "stderr": "",
+                        "returncode": 0
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "ece111ab-2a43-4fc4-bdf7-dfec0a0e8422",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.24161875,
+                    "duration_ms": 72241,
+                    "duration_api_ms": 68173,
+                    "num_turns": 8,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/linear_search/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "budget_usd": 2.0
+                }
+            }
+        ],
+        "tokens": {
+            "input": 63987,
+            "output": 5848,
+            "reasoning": 0
+        },
+        "agent": {
+            "kind": "claude-code",
+            "cli_version": "2.1.220 (Claude Code)",
+            "model": "claude-opus-5",
+            "effort": "medium",
+            "session_id": "ece111ab-2a43-4fc4-bdf7-dfec0a0e8422",
+            "subtype": "success",
+            "is_error": false,
+            "total_cost_usd": 0.24161875,
+            "duration_ms": 72241,
+            "duration_api_ms": 68173,
+            "num_turns": 8,
+            "returncode": 0,
+            "timed_out": false,
+            "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/linear_search/agent_events.jsonl",
+            "pass_number": 1,
+            "prompt_kind": "initial",
+            "budget_usd": 2.0,
+            "compiler_passes": 1,
+            "sessions": [
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "ece111ab-2a43-4fc4-bdf7-dfec0a0e8422",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.24161875,
+                    "duration_ms": 72241,
+                    "duration_api_ms": 68173,
+                    "num_turns": 8,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/linear_search/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "budget_usd": 2.0
+                }
+            ]
+        }
+    },
+    "parsed": true,
+    "verdict": true,
+    "analysis": "The student\u2019s implementation matches the required algorithm and does not appear to use any cheating tricks.\n\nWhat the problem requires:\n- Implement lower bound on a sorted array.\n- Use Linear Search, i.e. an O(N) scan from left to right.\n- Return the first index `k` such that `seq[k] >= target`, or `seq.size` if none exists.\n- Verify correctness in Lean.\n- No tricks like `sorry`, `admit`, empty bodies, or delegating to pre-existing search functionality.\n\nWhat the student implemented:\n- A precondition including sortedness:\n  `\u2200 i j, i < j \u2227 j < seq.size \u2192 seq.getD i 0 \u2264 seq.getD j 0`\n  This is consistent with lower-bound-on-sorted-array semantics.\n- An auxiliary recursive function:\n  `linear_search_aux seq target i`\n  which:\n  - checks whether `i < seq.size`\n  - if yes, checks whether `seq[i] >= target`\n  - returns `i` if so\n  - otherwise recurses on `i + 1`\n  - if `i` is out of bounds, returns `seq.size`\n\nThis is exactly a left-to-right linear scan for the first qualifying index.\n\nAlgorithmic requirement:\n- It is clearly linear search, not binary search or any other method.\n- It does not use any built-in lower_bound/search routine.\n- It does not sort the array or otherwise change the problem.\n- It is O(N) in the intended sense.\n\nCheating check:\n- No `sorry`, `admit`, `axiom`, or placeholder body.\n- No empty implementation.\n- No appeal to an externally verified lower-bound function.\n- The recursive function is explicitly implemented from scratch.\n\nMinor note:\n- The proof lemma `linear_search_aux_spec` itself only proves the found position has `seq[result] >= target` when in bounds, and the final theorem uses sortedness to extend that to all later indices. That is fine and consistent with the intended semantics. Since you asked not to challenge the spec/proof details, this does not count against the submission.\n\nOverall, the student implemented the correct algorithm required by the natural language description and did not use forbidden shortcuts."
+}

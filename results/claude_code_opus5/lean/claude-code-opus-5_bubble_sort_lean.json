@@ -1,0 +1,99 @@
+{
+  "verified": true,
+  "details": {
+    "rounds": 8,
+    "llm_response": {
+      "code": "import Mathlib\n\n-- Precondition definitions\n@[reducible, simp]\ndef bubble_sort_precond (v : List Int) : Prop :=\n  -- !benchmark @start precond\n  True\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n/-- One bubble pass over `x :: l`, comparing adjacent elements and swapping the\n    ones that are out of order.  The pass is performed from the right end towards\n    the left, so the returned pair is `(m, r)` where `m` is the element that has\n    been bubbled to the front and `r` is the remainder of the list. -/\ndef bubblePass : Int \u2192 List Int \u2192 Int \u00d7 List Int\n  | x, [] => (x, [])\n  | x, y :: t =>\n    let p := bubblePass y t\n    if x \u2264 p.1 then (x, p.1 :: p.2) else (p.1, x :: p.2)\n\n/-- Repeat bubble passes.  Each pass fixes one more element in its final place,\n    and `n` is the fuel (the number of remaining passes). -/\ndef bubbleSortAux : Nat \u2192 List Int \u2192 List Int\n  | 0, _ => []\n  | _ + 1, [] => []\n  | n + 1, x :: t =>\n    let p := bubblePass x t\n    p.1 :: bubbleSortAux n p.2\n-- !benchmark @end auxcode\n\n-- Main function definitions\ndef bubble_sort (v : List Int) (h_precond : bubble_sort_precond v) : List Int :=\n  -- !benchmark @start code\n  bubbleSortAux v.length v\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef bubble_sort_postcond (v : List Int) (result : List Int) (h_precond : bubble_sort_precond v) : Prop :=\n  -- !benchmark @start postcond\n  List.Sorted (\u00b7 \u2264 \u00b7) result \u2227 result.Perm v\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\ntheorem bubblePass_perm (x : Int) (l : List Int) :\n    ((bubblePass x l).1 :: (bubblePass x l).2).Perm (x :: l) := by\n  induction l generalizing x with\n  | nil => simp [bubblePass]\n  | cons y t ih =>\n    simp only [bubblePass]\n    split_ifs with hxy\n    \u00b7 exact (ih y).cons x\n    \u00b7 refine List.Perm.trans (List.Perm.swap x (bubblePass y t).1 (bubblePass y t).2) ?_\n      exact (ih y).cons x\n\ntheorem bubblePass_length (x : Int) (l : List Int) :\n    (bubblePass x l).2.length = l.length := by\n  induction l generalizing x with\n  | nil => simp [bubblePass]\n  | cons y t ih =>\n    simp only [bubblePass]\n    split_ifs with hxy\n    \u00b7 simp [ih y]\n    \u00b7 simp [ih y]\n\ntheorem bubblePass_le (x : Int) (l : List Int) :\n    \u2200 y \u2208 (bubblePass x l).2, (bubblePass x l).1 \u2264 y := by\n  induction l generalizing x with\n  | nil => simp [bubblePass]\n  | cons y t ih =>\n    simp only [bubblePass]\n    split_ifs with hxy\n    \u00b7 intro z hz\n      simp only [List.mem_cons] at hz\n      rcases hz with rfl | hz\n      \u00b7 exact hxy\n      \u00b7 exact le_trans hxy (ih y z hz)\n    \u00b7 intro z hz\n      simp only [List.mem_cons] at hz\n      push_neg at hxy\n      rcases hz with rfl | hz\n      \u00b7 exact hxy.le\n      \u00b7 exact ih y z hz\n\ntheorem bubbleSortAux_spec (n : Nat) : \u2200 (l : List Int), l.length \u2264 n \u2192\n    (bubbleSortAux n l).Perm l \u2227 (bubbleSortAux n l).Sorted (\u00b7 \u2264 \u00b7) := by\n  induction n with\n  | zero =>\n    intro l hl\n    cases l with\n    | nil => simp [bubbleSortAux]\n    | cons x t => simp at hl\n  | succ n ih =>\n    intro l hl\n    cases l with\n    | nil => simp [bubbleSortAux]\n    | cons x t =>\n      simp only [bubbleSortAux]\n      have hlen : (bubblePass x t).2.length \u2264 n := by\n        rw [bubblePass_length]\n        simpa using hl\n      obtain \u27e8hperm, hsorted\u27e9 := ih (bubblePass x t).2 hlen\n      constructor\n      \u00b7 exact (hperm.cons _).trans (bubblePass_perm x t)\n      \u00b7 rw [List.sorted_cons]\n        refine \u27e8?_, hsorted\u27e9\n        intro b hb\n        exact bubblePass_le x t b (hperm.mem_iff.mp hb)\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem bubble_sort_postcond_satisfied (v : List Int) (h_precond : bubble_sort_precond v) :\n    bubble_sort_postcond v (bubble_sort v h_precond) h_precond := by\n  -- !benchmark @start proof\n  have h := bubbleSortAux_spec v.length v (le_refl _)\n  exact \u27e8h.2, h.1\u27e9\n  -- !benchmark @end proof\n",
+      "comment": "`LEAN VERIFIED` on the first check run.\n\n## What was implemented\n\n**`auxcode`** \u2014 two genuine functions:\n- `bubblePass : Int \u2192 List Int \u2192 Int \u00d7 List Int` \u2014 a single bubble pass over `x :: l`. It recurses to the tail, then compares the adjacent pair `x` and the pass result's head, swapping them if out of order (`if x \u2264 p.1 then (x, p.1 :: p.2) else (p.1, x :: p.2)`). This is the standard adjacent-compare-and-swap sweep, run right-to-left, so it bubbles the extreme element to the front.\n- `bubbleSortAux : Nat \u2192 List Int \u2192 List Int` \u2014 repeats passes; each pass fixes one element and recurses on the remainder. Fuel-indexed to make it structurally terminating.\n\n**`code`** \u2014 `bubbleSortAux v.length v`. Fuel equals the list length, which is exactly enough since `bubblePass` preserves length (each step consumes one element and one unit of fuel). O(N\u00b2).\n\n**`lemma`** \u2014 `bubblePass_perm` (pass is a permutation), `bubblePass_length` (length preserved), `bubblePass_le` (the bubbled-out head is \u2264 every remaining element), and `bubbleSortAux_spec` by induction on fuel.\n\n**`proof`** \u2014 instantiates the spec at `n = v.length` with `le_refl`.\n\n## Semantic audit against TASK.md\n\n- **Postcondition (1) sorted / (2) permutation**: both proven; the postcond block is unchanged teacher content.\n- **Precondition**: `True`, unchanged \u2014 the implementation is total for every `List Int`.\n- **Algorithm identity**: real bubble-sort passes of adjacent comparisons and swaps. No library sort, no `Nat.find`, `Classical.choose`, `decide` on the target property, no enumeration, no spec oracle.\n- **Edge cases**: `[]` \u2192 fuel `0` \u2192 `[]` (sorted, `Perm []`); singleton passes through. The truncating `| 0, _ => []` branch is unreachable from the top-level call because fuel starts at the exact length \u2014 this is what `l.length \u2264 n` in the spec lemma pins down, and `bubblePass_length` supplies it at each step.\n- **Negative inputs**: all comparisons are `Int` `\u2264` on actual list elements; there is no sentinel, no `0` default, no non-negativity assumption. An all-negative list like `[-5, -1, -9]` sorts on the same path as any other.\n- **No placeholders**: no `sorry`/`admit`/`axiom`/`partial`/`unsafe` in the four editable sections; every helper is a real definition with a proved property. All four marker pairs preserved; `Original.lean`, `TASK.md`, `check.sh`, `Merged.lean` untouched.\n\nThe only remaining output is three `unused variable` linter warnings, all on teacher-provided `v`/`h_precond` binders outside the editable regions."
+    },
+    "verifier_response": {
+      "verified": true,
+      "feedback": "Verified successfully.",
+      "raw": {
+        "stdout": "claude_code_bubble_sort_final_1785910601440.lean:5:25: warning: unused variable `v`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_bubble_sort_final_1785910601440.lean:32:32: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_bubble_sort_final_1785910601440.lean:39:61: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+        "stderr": "",
+        "returncode": 0
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": true,
+        "verifier_response": {
+          "verified": true,
+          "feedback": "Verified successfully.",
+          "raw": {
+            "stdout": "claude_code_bubble_sort_final_1785910601440.lean:5:25: warning: unused variable `v`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_bubble_sort_final_1785910601440.lean:32:32: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_bubble_sort_final_1785910601440.lean:39:61: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+            "stderr": "",
+            "returncode": 0
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "f423be8f-4844-45bf-b768-3c19622663e0",
+          "subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.40311850000000005,
+          "duration_ms": 131633,
+          "duration_api_ms": 127417,
+          "num_turns": 9,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/bubble_sort/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "budget_usd": 2.0
+        }
+      }
+    ],
+    "tokens": {
+      "input": 85711,
+      "output": 10832,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "f423be8f-4844-45bf-b768-3c19622663e0",
+      "subtype": "success",
+      "is_error": false,
+      "total_cost_usd": 0.40311850000000005,
+      "duration_ms": 131633,
+      "duration_api_ms": 127417,
+      "num_turns": 9,
+      "returncode": 0,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/bubble_sort/agent_events.jsonl",
+      "pass_number": 1,
+      "prompt_kind": "initial",
+      "budget_usd": 2.0,
+      "compiler_passes": 1,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "f423be8f-4844-45bf-b768-3c19622663e0",
+          "subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.40311850000000005,
+          "duration_ms": 131633,
+          "duration_api_ms": 127417,
+          "num_turns": 9,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/bubble_sort/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "budget_usd": 2.0
+        }
+      ]
+    }
+  }
+}

@@ -244,15 +244,46 @@ apptainer_imgs
 lean_env/
 logs/
 *.pid
+.agent_runs/
 
-# Preserve only the four final rerun result sets. Smoke tests and probes remain
-# local so that the published data has an unambiguous experimental scope.
+# Preserve only published rerun, semantic-judge, and coding-agent result sets.
+# Smoke tests and probes remain local so the repository has a documented scope.
 results/*
 !results/full_three/
 !results/full_three/**
 !results/full_three_semantic/
 !results/full_three_semantic/**
+!results/full_three_semantic_temp0/
+!results/full_three_semantic_temp0/**
+!results/full_three_semantic_gpt56_temp0/
+!results/full_three_semantic_gpt56_temp0/**
 !results/full_opus_no_thinking/
 !results/full_opus_no_thinking/**
 !results/full_opus_no_thinking_semantic/
 !results/full_opus_no_thinking_semantic/**
+!results/full_opus_no_thinking_semantic_temp0/
+!results/full_opus_no_thinking_semantic_temp0/**
+!results/full_opus_no_thinking_semantic_gpt56_temp0/
+!results/full_opus_no_thinking_semantic_gpt56_temp0/**
+!results/claude_code_opus5/
+!results/claude_code_opus5/**
+!results/claude_code_opus5_semantic/
+!results/claude_code_opus5_semantic/**
+!results/claude_code_opus5_semantic_temp0/
+!results/claude_code_opus5_semantic_temp0/**
+!results/claude_code_opus5_semantic_gpt56_temp0/
+!results/claude_code_opus5_semantic_gpt56_temp0/**
+!results/claude_code_hard10/
+!results/claude_code_hard10/**
+!results/claude_code_hard10_semantic/
+!results/claude_code_hard10_semantic/**
+!results/claude_code_opus5_nonthinking20/
+!results/claude_code_opus5_nonthinking20/**
+!results/claude_code_opus5_nonthinking20_semantic/
+!results/claude_code_opus5_nonthinking20_semantic/**
+
+# Keep the compiled report, not local LaTeX intermediates.
+reports/*.aux
+reports/*.bbl
+reports/*.blg
+reports/*.out

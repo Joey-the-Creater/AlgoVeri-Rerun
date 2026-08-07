@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AlgoVeri Agent Observatory</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-mark" aria-hidden="true">λ</div>
+    <div class="brand-copy">
+      <p class="eyebrow">ALGORITHMIC VERIFICATION</p>
+      <h1>Agent Observatory</h1>
+    </div>
+    <div class="run-identity">
+      <span id="connection-dot" class="connection-dot"></span>
+      <span id="connection-label">Connecting</span>
+      <span class="divider"></span>
+      <span id="model-label">Claude Code</span>
+      <select id="experiment-select" aria-label="Select model run"></select>
+      <div class="view-switch" role="group" aria-label="Dashboard view">
+        <button class="view-button active" data-view="monitor">Run trace</button>
+        <button class="view-button" data-view="comparison">Compare</button>
+        <button class="view-button" data-view="semantic-temp0">5.4 judge · T0</button>
+        <button class="view-button" data-view="semantic-gpt56-temp0">5.6 judge · T0</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div id="monitor-view">
+    <section class="overview" aria-label="Run overview">
+      <article class="metric primary">
+        <span class="metric-label">Run status</span>
+        <strong id="run-status">—</strong>
+        <small id="run-subtitle">Waiting for data</small>
+      </article>
+      <article class="metric">
+        <span class="metric-label">Progress</span>
+        <strong id="progress-count">0 / 0</strong>
+        <div class="mini-progress"><span id="progress-bar"></span></div>
+      </article>
+      <article class="metric">
+        <span class="metric-label">Lean verified</span>
+        <strong id="verified-count">0</strong>
+        <small id="failed-count">0 failed</small>
+      </article>
+      <article class="metric">
+        <span class="metric-label">Known cost</span>
+        <strong id="cost-total">$0.00</strong>
+        <small>Completed sessions only</small>
+      </article>
+    </section>
+
+    <section id="interruption-banner" class="notice hidden">
+      <span class="notice-icon">!</span>
+      <div><strong>Runner is not active</strong><p>The dashboard is showing the last durable event stream. No new cases are currently running.</p></div>
+    </section>
+
+    <div class="workspace-layout">
+      <aside class="queue-panel">
+        <div class="panel-heading">
+          <div><p class="eyebrow">BENCHMARK QUEUE</p><h2>Cases</h2></div>
+          <span id="task-total" class="count-pill">0</span>
+        </div>
+        <div class="filters" role="group" aria-label="Filter tasks">
+          <button class="filter active" data-filter="all">All</button>
+          <button class="filter" data-filter="active">Active</button>
+          <button class="filter" data-filter="semantic_success">Semantic pass</button>
+          <button class="filter" data-filter="compiled_no_semantic_pass">No semantic pass</button>
+          <button class="filter" data-filter="compile_failed">Does not compile</button>
+          <button class="filter" data-filter="missing">Missing</button>
+        </div>
+        <div id="task-list" class="task-list"></div>
+      </aside>
+
+      <section class="detail-panel">
+        <div class="task-hero">
+          <div>
+            <div class="task-title-line">
+              <span id="task-status-dot" class="status-dot queued"></span>
+              <h2 id="task-name">Select a case</h2>
+              <span id="task-badge" class="status-badge queued">Queued</span>
+            </div>
+            <p id="task-stage" class="task-stage">No case selected</p>
+          </div>
+          <div class="task-facts">
+            <div><span>Elapsed</span><strong id="task-duration">—</strong></div>
+            <div><span>Turns</span><strong id="task-turns">—</strong></div>
+            <div><span>LOC added</span><strong id="task-loc-added">—</strong></div>
+            <div><span>Cost</span><strong id="task-cost">—</strong></div>
+          </div>
+        </div>
+
+        <div id="stage-rail" class="stage-rail">
+          <div class="stage" data-stage="queue"><span>1</span><p>Queued</p></div>
+          <div class="stage-line"></div>
+          <div class="stage" data-stage="agent"><span>2</span><p>Agent work</p></div>
+          <div class="stage-line"></div>
+          <div class="stage" data-stage="lean"><span>3</span><p>Lean check</p></div>
+          <div class="stage-line"></div>
+          <div class="stage" data-stage="save"><span>4</span><p>Result saved</p></div>
+        </div>
+
+        <div class="activity-stats">
+          <div><span>Thinking estimate</span><strong id="thinking-count">0</strong></div>
+          <div><span>Lean checks</span><strong id="check-count">0</strong></div>
+          <div><span>Rejected actions</span><strong id="denied-count">0</strong></div>
+          <div><span>Events captured</span><strong id="event-count">0</strong></div>
+        </div>
+
+        <nav class="tabs" aria-label="Task detail views">
+          <button class="tab active" data-tab="activity">Live activity</button>
+          <button class="tab" data-tab="diff">Code / diff</button>
+          <button class="tab" data-tab="diagnostics">Diagnostics</button>
+          <label class="follow-toggle"><input id="auto-follow" type="checkbox" checked> Follow latest</label>
+        </nav>
+
+        <div id="activity-view" class="tab-view active">
+          <div id="thinking-strip" class="thinking-strip hidden">
+            <span class="thinking-pulse"></span>
+            <div><strong>Claude is reasoning</strong><p id="thinking-copy"></p></div>
+          </div>
+          <div id="timeline" class="timeline"><p class="empty-state">Waiting for agent events…</p></div>
+        </div>
+        <div id="diff-view" class="tab-view"><pre id="diff-content" class="code-panel">No edits recorded.</pre></div>
+        <div id="diagnostics-view" class="tab-view">
+          <div class="diagnostic-grid">
+            <article><h3>Judge / verifier feedback</h3><pre id="feedback-content">No saved verifier feedback.</pre></article>
+            <article><h3>Claude stderr</h3><pre id="stderr-content">No stderr output.</pre></article>
+          </div>
+        </div>
+      </section>
+    </div>
+    </div>
+
+    <section id="comparison-view" class="comparison-view hidden">
+      <div class="comparison-heading">
+        <div><p class="eyebrow">EXPERIMENT ANALYTICS</p><h2 id="comparison-title">Model comparison</h2><p id="comparison-description">Compilation and semantic success remain separate. Missing outputs are never counted as judged failures.</p></div>
+        <div class="comparison-controls">
+          <label>Scope<select id="scope-select"><option value="common">Common tasks</option><option value="native">Each run's native scope</option></select></label>
+          <label>Success by try <span id="try-value">1</span><input id="try-slider" type="range" min="1" max="15" value="1"></label>
+        </div>
+      </div>
+
+      <div id="model-toggles" class="model-toggles"></div>
+
+      <div class="comparison-grid">
+        <article class="comparison-card bars-card">
+          <div class="card-heading"><div><p class="eyebrow">AT SELECTED TRY</p><h3 id="bars-title">Cumulative compilation success</h3></div><span id="comparison-scope" class="count-pill">—</span></div>
+          <div id="comparison-bars" class="comparison-bars"></div>
+        </article>
+        <article class="comparison-card curve-card">
+          <div class="card-heading"><div><p class="eyebrow">REPAIR CURVE</p><h3>Success by try number</h3></div><span class="chart-note">Cumulative</span></div>
+          <svg id="try-chart" class="try-chart" viewBox="0 0 900 300" role="img" aria-label="Cumulative compilation success by repair try"></svg>
+        </article>
+      </div>
+
+      <article class="comparison-card table-card">
+        <div class="card-heading"><div><p class="eyebrow">SUMMARY</p><h3>Outcome table</h3></div><span class="chart-note">Pass@1 for current one-pass datasets</span></div>
+        <div class="table-scroll"><table class="result-table"><thead><tr><th>Model / condition</th><th>Scope</th><th>Outputs</th><th id="try-column">Compile by try 1</th><th>Final compile</th><th>Semantic full mark</th><th>Judged</th><th>LOC added</th></tr></thead><tbody id="comparison-table"></tbody></table></div>
+      </article>
+
+      <article class="comparison-card matrix-card">
+        <div class="card-heading"><div><p class="eyebrow">CASE-LEVEL VIEW</p><h3>Result matrix</h3></div><div class="matrix-legend"><span class="semantic_success">Compiled + semantic pass</span><span class="compiled_no_semantic_pass">Compiled · no semantic pass</span><span class="compile_failed">Does not compile</span><span class="missing">Missing output</span></div></div>
+        <div class="table-scroll matrix-scroll"><table class="result-table"><thead id="matrix-head"></thead><tbody id="matrix-body"></tbody></table></div>
+      </article>
+    </section>
+  </main>
+
+  <footer><span>Read-only local monitor</span><span id="last-refresh">Not yet refreshed</span></footer>
+  <script src="/app.js"></script>
+</body>
+</html>

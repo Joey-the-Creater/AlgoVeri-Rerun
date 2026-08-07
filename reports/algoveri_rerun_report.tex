@@ -1,0 +1,759 @@
+\documentclass[10pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[margin=0.82in]{geometry}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{pdflscape}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage[hidelinks]{hyperref}
+
+\newcommand{\model}[1]{\textsf{#1}}
+\newcommand{\task}[1]{\texttt{#1}}
+\newcommand{\pct}[1]{#1\%}
+\newcommand{\yes}{\textcolor{green!50!black}{\textbf{pass}}}
+\newcommand{\no}{\textcolor{red!65!black}{\textbf{fail}}}
+\newcommand{\artifact}{\url{https://github.com/Joey-the-Creater/AlgoVeri-Rerun}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false
+}
+
+\title{Compilation Is Not Semantic Correctness:\\
+An Agentic Rerun and Evaluation Audit of AlgoVeri's Lean Benchmark}
+\author{Joey Li\\\texttt{joeyli.shsid@gmail.com}}
+\date{August 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+AlgoVeri evaluates verified code generation for 77 classical algorithms aligned across
+Lean, Dafny, and Verus.  We independently rerun its Lean track with four direct-API
+conditions---\model{GPT-5.5}, \model{GPT-5.6-sol}, and \model{Claude Opus 5} with
+adaptive thinking enabled or disabled---and a separate compiler-using
+\model{Claude Code + Opus 5} condition.  Complete-output direct conditions compile at
+rates between \pct{92.2} and \pct{98.7}, yet only \pct{31.2}--\pct{57.1}
+of the full benchmark receive a semantic pass, depending on generator and judge.
+On a controlled 65-task subset without teacher-provided proof holes, the enhanced
+coding agent compiles 63/65 and receives 53/65 semantic passes from GPT-5.4 at
+temperature zero and 55/65 from GPT-5.6-sol at temperature zero, compared with
+39/65 and 44/65 for the strongest complete direct condition, respectively.
+
+The rerun also reveals evaluation defects that materially affect interpretation.
+The \task{trie\_search} scaffold contains a duplicate declaration and undefined
+identifier outside model-editable regions.  Twelve tasks contain teacher-owned
+\texttt{sorry} terms explicitly permitted by the generation prompt, while the
+semantic prompt broadly instructs the judge to reject \texttt{sorry}; GPT-5.4 rejects
+all 34 compiled direct-model answers observed on these tasks.  Judge choice remains
+consequential even at temperature zero: GPT-5.4 and GPT-5.6-sol disagree on 22 of
+334 compiled condition--task pairs (\pct{93.4} agreement, Cohen's $\kappa=0.868$).
+Qualitative analysis shows that most compiler-accepted failures use an extensionally
+correct but wrong algorithm, a specification oracle, brute-force enumeration, or a
+verified fallback.  We release all generated programs, three semantic-judge views,
+case-level analyses, a local Lean runner, a coding-agent harness, and an interactive
+audit dashboard.  The results support reporting compilation, algorithmic fidelity,
+output coverage, and judge robustness as separate dimensions rather than treating
+Lean compilation as a sufficient success criterion.
+\end{abstract}
+
+\section{Introduction}
+
+Large language models can now generate nontrivial formal programs and proofs, but
+evaluation is more delicate than ordinary code generation.  A Lean file may compile
+while implementing a different algorithm, delegating to a library theorem, exploiting
+an underspecified contract, or embedding a nonconstructive oracle.  Conversely, a
+correct student contribution can be penalized for immutable content supplied by the
+benchmark.  These distinctions matter because a compiler answers a syntactic and
+logical question---whether the complete term type-checks---whereas a benchmark may
+intend to measure algorithm identity, implementation quality, and proof authorship.
+
+AlgoVeri was introduced to study exactly this verified-code-generation setting on 77
+classical algorithms represented in Lean, Dafny, and Verus\cite{zhao2026algoveri}.
+Its aligned natural-language tasks and contracts make it a valuable testbed for
+separating formal verification from semantic algorithm selection.  The original paper
+reported a best Lean result of \pct{7.8}, emphasizing the difficulty of explicit proof
+construction.  Since then, newer reasoning models and tool-using coding agents have
+made it useful to revisit both capability and measurement validity.
+
+This work makes five contributions:
+
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item We provide a complete rerun of the Lean track using four direct generation
+        conditions and three semantic judging conditions.
+  \item We implement and evaluate an isolated Claude Code condition with constrained
+        compiler access, adaptive repair, source ownership enforcement, and final
+        independent verification.
+  \item We measure output coverage, Lean compilation, semantic acceptance, repair
+        dynamics, costs where available, judge agreement, and paired differences on a
+        common task scope.
+  \item We audit every compiler failure, every coding-agent semantic rejection, every
+        judge disagreement, and all task-level outcomes.  The complete matrix appears
+        in Appendix~\ref{tab:complete-matrix}; machine-readable analyses are released
+        with the artifact\cite{rerunrepo}.
+  \item We identify a malformed scaffold, an ownership contradiction involving
+        teacher-permitted \texttt{sorry}, and an asymmetry between the generation and
+        compiler-revision prompts, then propose concrete benchmark fixes.
+\end{enumerate}
+
+\section{Background and Related Work}
+
+\subsection{Lean and verified code generation}
+
+Lean 4 combines dependent type theory, an extensible theorem prover, and a functional
+programming language\cite{demoura2021lean4}.  Mathlib supplies a large, community-built
+library of definitions, theorems, and tactics\cite{mathlib2020}.  This ecosystem enables
+machine-checkable proofs but also creates evaluation choices: using Mathlib is necessary
+for the supplied tasks, whereas calling an existing implementation of the target
+algorithm may violate a ``from scratch'' requirement.  The benchmark therefore needs a
+semantic policy in addition to compiler verification.
+
+Formal-reasoning benchmarks such as miniF2F\cite{zheng2022minif2f} and
+LeanDojo\cite{yang2023leandojo} primarily evaluate theorem proving.  Verified program
+generation additionally requires executable definitions, functional contracts,
+termination, and algorithm-specific invariants.  DafnyBench\cite{loughridge2024dafnybench}
+and the multi-language vericoding benchmark\cite{bursuc2025vericoding} demonstrate the
+growing interest in this broader setting.  AlgoVeri contributes aligned classical
+algorithm tasks across verification paradigms\cite{zhao2026algoveri}.
+
+\subsection{AlgoVeri's two-stage Lean metric}
+
+Each Lean task contains a natural-language description and a scaffold with four
+model-editable marker regions: \texttt{auxcode}, \texttt{code}, \texttt{lemma}, and
+\texttt{proof}.  The response parser copies only those regions into the teacher
+scaffold.  Generated uses of \texttt{sorry}, \texttt{admit}, axioms, unsafe definitions,
+and related bypasses are rejected.  A local Lean compiler then checks the merged file.
+
+Compilation alone cannot enforce the named algorithm.  AlgoVeri therefore applies an
+LLM semantic filter to the natural-language task and complete merged file.  The judge
+checks whether the intended algorithm was implemented from scratch and whether the
+answer uses a compiler trick.  This is an instance of model-based evaluation, whose
+scalability comes with known sensitivity to judge and prompt\cite{zheng2023llmjudge}.
+We retain the benchmark prompt while explicitly measuring that sensitivity.
+
+\section{Research Questions}
+
+We organize the study around the following questions.
+
+\begin{description}[leftmargin=3.2em,style=nextline]
+  \item[RQ1] How often do current frontier models return an output that compiles in the
+             AlgoVeri Lean environment?
+  \item[RQ2] How large is the gap between Lean compilation and semantic acceptance?
+  \item[RQ3] Does a constrained compiler-using coding agent improve end-to-end semantic
+             performance relative to direct API generation?
+  \item[RQ4] How stable are semantic conclusions under temperature and judge-model
+             changes?
+  \item[RQ5] Which task, prompt, and evaluator defects threaten the validity of the
+             measured score?
+\end{description}
+
+\section{Methodology}
+
+\subsection{Task scopes}
+
+The full scope contains all 77 Lean tasks in the public AlgoVeri repository
+\cite{algoverirepo}.  Four direct conditions target the full scope.  The adaptive-
+thinking Opus run produced only 49 saved outputs; missing outputs remain failures under
+the end-to-end denominator and are also reported conditionally.
+
+The enhanced coding-agent experiment uses a deterministic source-aware filter that
+excludes the 12 tasks containing teacher-owned \texttt{sorry} outside all four editable
+regions.  Its scope is therefore 65 tasks.  We evaluate every generator on this same
+65-task set for fair comparisons.  No generation result is selected or discarded based
+on its later semantic verdict.
+
+\subsection{Direct generation conditions}
+
+We evaluate \model{GPT-5.5}, \model{GPT-5.6-sol}, and \model{Claude Opus 5} through the
+same AlgoVeri chat-and-compiler-revision loop.  Each task receives one independent pass,
+up to 15 generation or repair attempts, and compiler error feedback after an invalid
+attempt.  The OpenAI conditions use medium reasoning and a 32,768-token maximum output.
+Opus is evaluated both with adaptive thinking and with thinking disabled.  Provider-
+specific reasoning settings are not assumed to be equivalent.
+
+The initial prompt explains the algorithm requirement and prohibits compiler bypasses.
+After a failed attempt, the stock Lean revision prompt asks for a complete standalone
+file that addresses the compiler errors.  Section~\ref{sec:prompt-audit} discusses the
+semantic information lost in this shorter revision instruction.
+
+\subsection{Enhanced coding-agent condition}
+
+The coding-agent condition uses Claude Code 2.1.220 with \model{Opus 5}, medium effort,
+and an isolated workspace per task.  The agent may read task files, edit only
+\texttt{Solution.lean}, and invoke only a constrained \texttt{./check.sh}; network,
+Git, package installation, and arbitrary shell commands are blocked.  Candidate content
+is copied only from the four editable regions into the original scaffold.  The harness
+then rejects prohibited terms and independently recompiles the merged result.
+
+The enhanced protocol provides an initial budget of USD~2.  If independent compilation
+fails, one fresh compiler-repair session receives the exact verifier feedback and up to
+another USD~2 while preserving the workspace.  The prompt explicitly prohibits
+alternative algorithms, specification oracles, brute-force enumeration, sorting as a
+substitute, \texttt{Nat.find}, \texttt{Classical.choose}, and \texttt{decide} over the
+target property.  It also requires an early Lean check and a final requirement-by-
+requirement semantic audit.  The final saved result is always independently checked;
+the agent's claim of success is not trusted.
+
+Before this enhanced run, two targeted pilot batches covered 10 and 20 cases that prior
+direct conditions had failed.  Those pilots are reported separately because their
+selection and prompt differ from the final 65-task condition.
+
+\subsection{Lean environment}
+
+All candidates are compiled locally without Apptainer.  The runner places a temporary
+file inside a pinned Lake project and invokes \texttt{lake env lean}.  The environment
+uses Lean 4.25.0-rc2 (commit \texttt{744f9806}), Lake 5.0.0, and Mathlib tag
+\texttt{v4.25.0-rc2} (commit \texttt{766e19e7}).  The host runs Ubuntu 22.04.5 LTS on an
+AMD Ryzen Threadripper PRO 7985WX (64 physical cores, 128 threads) with 502~GiB RAM.
+The visible display adapter is AMD/ATI; generation and semantic inference use remote
+APIs, so local GPU performance is not part of the treatment.
+
+\subsection{Semantic judges}
+
+Every saved generation output is evaluated with the same AlgoVeri semantic prompt under
+three conditions:
+
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item \model{GPT-5.4}, temperature 1 (the initial rerun configuration);
+  \item \model{GPT-5.4}, temperature 0;
+  \item \model{GPT-5.6-sol}, temperature 0 and reasoning effort \texttt{none}.
+\end{enumerate}
+
+GPT-5.6-sol rejects an explicit temperature when reasoning is enabled in this API, so
+\texttt{none} is required to isolate temperature zero.  The temperature-zero outputs
+are stored in distinct directories and do not overwrite the initial judgments.  Up to
+five turns are allowed only to repair malformed \texttt{<analysis>} and
+\texttt{<conclusion>} formatting; this is not a vote across independent samples.
+
+\subsection{Metrics and analysis}
+
+We report four mutually exclusive observable states: missing output, saved output that
+does not compile, compiled output rejected by the semantic judge, and compiled output
+accepted by the judge.  ``Semantic pass'' always means the conjunction of compiler
+success, a parsed judgment, and a \texttt{YES} verdict.  Rates use the stated native or
+common scope as denominator; we additionally show output-conditional rates where
+missingness is material.
+
+Judge agreement is measured only on compiled outputs evaluated by both judges.  We
+report raw agreement and Cohen's $\kappa$\cite{cohen1960kappa}.  Paired agent/direct
+comparisons on the same 65 tasks use the exact two-sided McNemar test
+\cite{mcnemar1947}; these descriptive $p$-values do not make the fixed task suite a
+random population.  Selected binomial intervals are 95\% Wilson intervals
+\cite{wilson1927}.  All aggregates are regenerated from JSON by
+\texttt{scripts/analyze\_rerun\_results.py}; no table was transcribed from terminal
+logs.
+
+\section{Results}
+
+\subsection{Output coverage and compilation}
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Native-scope results.  Semantic columns show pass counts for GPT-5.4 at
+temperature 1 (5.4-T1), GPT-5.4 at temperature 0 (5.4-T0), and GPT-5.6-sol at
+temperature 0 (5.6-T0).  Percentages use the native scope, not only returned outputs.}
+\label{tab:native-results}
+\begin{tabular}{lrrrrr}
+\toprule
+Generation condition & Output & Lean compile & 5.4-T1 & 5.4-T0 & 5.6-T0 \\
+\midrule
+GPT-5.5 & 77/77 & 75/77 (97.4\%) & 24/77 (31.2\%) & 24/77 (31.2\%) & 24/77 (31.2\%) \\
+GPT-5.6-sol & 77/77 & 71/77 (92.2\%) & 25/77 (32.5\%) & 27/77 (35.1\%) & 30/77 (39.0\%) \\
+Opus 5, thinking & 49/77 & 49/77 (63.6\%) & 29/77 (37.7\%) & 29/77 (37.7\%) & 31/77 (40.3\%) \\
+Opus 5, no thinking & 77/77 & 76/77 (98.7\%) & 36/77 (46.8\%) & 39/77 (50.6\%) & 44/77 (57.1\%) \\
+Claude Code + Opus 5 & 65/65 & 63/65 (96.9\%) & 53/65 (81.5\%) & 53/65 (81.5\%) & 55/65 (84.6\%) \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Table~\ref{tab:native-results} answers RQ1: when an answer is returned, compilation is
+high, but output coverage is itself a first-class failure mode.  GPT-5.5 compiles 75/77
+(\pct{97.4}; Wilson 95\% CI [\pct{91.0}, \pct{99.3}]), GPT-5.6-sol 71/77
+(\pct{92.2}), and no-thinking Opus 76/77 (\pct{98.7}).  All 49 saved adaptive-thinking
+Opus outputs compile, but 28 tasks have no output, reducing end-to-end compilation to
+\pct{63.6}.  In its final one-attempt sweep over the missing set, 24 requests exhausted
+32,768 output tokens with thinking blocks only and four ended in provider overload.
+
+Disabling Opus thinking eliminates this coverage failure and is not offset by worse
+quality on the matched 49 returned tasks.  On those tasks, thinking versus no-thinking
+semantic passes are 29 versus 30 (5.4-T1), 29 versus 31 (5.4-T0), and 31 versus 35
+(5.6-T0).  Thus this run provides no evidence that adaptive thinking improves the
+matched outcome, while it substantially reduces completion reliability.
+
+\subsection{Compilation is a weak proxy for semantic success}
+
+The central result for RQ2 is the size of the compilation--semantic gap.  For example,
+GPT-5.5 compiles 75 tasks but all three judges accept only 24.  No-thinking Opus compiles
+76, while acceptance ranges from 36 to 44.  Even conditional on compilation, GPT-5.4 at
+temperature zero accepts 32.0\% of GPT-5.5, 38.0\% of GPT-5.6-sol, and 51.3\% of
+no-thinking Opus outputs.  The compiler verifies the submitted theorem; it does not
+establish that the program realizes the natural-language algorithm.
+
+The 65-task scope removes the known teacher-\texttt{sorry} confound and makes all final
+conditions directly comparable (Table~\ref{tab:common-results}).  GPT-5.5 compiles all
+65 yet passes only 24.  No-thinking Opus is the strongest direct condition at 39/65
+under 5.4-T0 and 44/65 under 5.6-T0.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Common 65-task scope with no teacher-owned \texttt{sorry}.  This table should
+be used for comparisons with the enhanced coding agent.}
+\label{tab:common-results}
+\begin{tabular}{lrrrrr}
+\toprule
+Generation condition & Output & Lean compile & 5.4-T1 & 5.4-T0 & 5.6-T0 \\
+\midrule
+GPT-5.5 & 65 & 65 & 24 (36.9\%) & 24 (36.9\%) & 24 (36.9\%) \\
+GPT-5.6-sol & 65 & 60 & 25 (38.5\%) & 27 (41.5\%) & 29 (44.6\%) \\
+Opus 5, thinking & 47 & 47 & 29 (44.6\%) & 29 (44.6\%) & 31 (47.7\%) \\
+Opus 5, no thinking & 65 & 65 & 36 (55.4\%) & 39 (60.0\%) & 44 (67.7\%) \\
+Claude Code + Opus 5 & 65 & 63 & 53 (81.5\%) & 53 (81.5\%) & 55 (84.6\%) \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Coding-agent gains}
+
+The enhanced coding agent answers RQ3.  It compiles 63/65 and passes 53/65 under both
+GPT-5.4 conditions and 55/65 under GPT-5.6-sol.  Its 5.6-T0 semantic rate is \pct{84.6}
+(Wilson 95\% CI [\pct{73.9}, \pct{91.4}]), versus \pct{67.7}
+([\pct{55.6}, \pct{77.8}]) for no-thinking Opus on the same tasks.  The agent has 13
+unique passes against two unique passes for no-thinking Opus under 5.6-T0 (exact
+McNemar $p=0.0074$).  The corresponding discordances are 18--1 under 5.4-T1
+($p=7.6\times10^{-5}$) and 16--2 under 5.4-T0 ($p=0.0013$).
+
+This is an agentic condition, not a like-for-like model replacement.  It receives tool
+access, multiple turns, persistent files, explicit semantic reminders, and an adaptive
+budget.  The observed gain therefore estimates the whole harness treatment.  The final
+65-task run costs USD~70.26 in recorded Claude Code charges (mean USD~1.08 per task) and
+contains 6.24 summed agent-hours; direct API dollar cost and duration were not recorded
+and cannot be compared.
+
+The earlier targeted pilots compiled 4/10 and 13/20, respectively; combined, 17/30
+compiled and 14/30 passed the 5.4-T1 judge at a recorded cost of USD~41.48.  After adding
+early checks, a semantic self-audit, a preserved-workspace repair pass, exact verifier
+feedback, and final independent verification, the broader enhanced condition reaches
+63/65 compilation and 53/65 5.4-T1 semantic success.  Because task selection and several
+settings changed, this is an engineering progression rather than an ablation.
+
+\subsection{Repair dynamics}
+
+\begin{table}[t]
+\centering
+\small
+\caption{Cumulative compilation success by attempt/check count.  Direct runs count LLM
+generation attempts; Claude Code counts observed \texttt{./check.sh} invocations, so the
+curves are descriptive rather than directly cost-equivalent.}
+\label{tab:repair-curves}
+\begin{tabular}{lrrrrrr}
+\toprule
+Condition & 1 & 2 & 3 & 5 & 10 & 15 \\
+\midrule
+GPT-5.5 & 21 & 43 & 57 & 67 & 75 & 75 \\
+GPT-5.6-sol & 19 & 37 & 53 & 63 & 70 & 71 \\
+Opus, thinking & 33 & 45 & 49 & 49 & 49 & 49 \\
+Opus, no thinking & 24 & 43 & 58 & 69 & 75 & 76 \\
+Claude Code & 15 & 37 & 45 & 62 & 63 & 63 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Iterative compiler feedback matters: only 19--24 of 77 full-output direct conditions
+compile on the first attempt, rising to 63--69 by attempt five.  GPT-5.5 gains no further
+success after attempt ten, and GPT-5.6-sol gains one.  The coding agent reaches 62/65 by
+its fifth observed Lean check and one more by its tenth.  These are cumulative
+success-at-repair curves, not pass@$k$ estimates from independent samples.
+
+\subsection{Judge robustness}
+
+Table~\ref{tab:judge-agreement-summary} answers RQ4.  Temperature zero does not
+eliminate evaluator variation.  Across all five generation conditions, GPT-5.4 at
+temperatures 1 and 0 flips 13 of 334 compiled pairs.  The two temperature-zero judges
+flip 22 pairs.  GPT-5.6-sol is more permissive in aggregate: 17 GPT-5.6-only passes
+versus five GPT-5.4-only passes, a net gain of 12.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Pooled semantic-judge agreement on compiled outputs.  A generation of the
+same benchmark task is a separate pair; pooled observations are not assumed independent.}
+\label{tab:judge-agreement-summary}
+\begin{tabular}{lrrrrrr}
+\toprule
+Comparison & $n$ & Agree & Rate & $\kappa$ & Left only & Right only \\
+\midrule
+5.4-T1 vs 5.4-T0 & 334 & 321 & 96.1\% & 0.922 & 4 & 9 \\
+5.4-T0 vs 5.6-T0 & 334 & 312 & 93.4\% & 0.868 & 5 & 17 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Per-condition agreement ranges from \pct{90.1} to \pct{96.8} for the two zero-
+temperature judges.  Exact disagreement cases and directional flips appear in
+Appendix~\ref{tab:all-disagreements}.  Several are substantively ambiguous.  For
+example, the agent's \task{bubble\_sort} is accepted at 5.4-T1, rejected at 5.4-T0 as
+selection-sort-like, and accepted at 5.6-T0.  Its \task{polymul\_naive} is rejected by
+GPT-5.4 for an unused placeholder definition but accepted by GPT-5.6-sol based on the
+actual convolution implementation.  A single uncalibrated LLM judge should therefore
+not be treated as ground truth.
+
+\subsection{Task-level difficulty}
+
+Sixteen tasks are stable successes across every generation condition, every available
+output, and all three judges:
+\task{bracket\_matching}, \task{bst\_insert}, \task{bst\_search}, \task{bst\_zig},
+\task{bst\_zigzag}, \task{bst\_zigzig}, \task{integer\_exponential},
+\task{knapsack\_01}, \task{llrbt\_flipcolor}, \task{llrbt\_rotateleft},
+\task{matrix\_multiplication}, \task{queue\_dequeue}, \task{queue\_enqueue},
+\task{ringbuffer\_enqueue}, \task{stack\_pop}, and \task{stack\_push}.
+
+At the other extreme, under 5.6-T0 no condition passes eight of the 65 controlled tasks:
+\task{ac\_automata}, \task{dijkstra}, \task{edmond\_karp}, \task{kruskal},
+\task{llrbt\_delete}, \task{longest\_palindrome\_substring}, \task{push\_relabel}, and
+\task{scc\_tarjan}.  These concentrate graph invariants, balanced-tree preservation,
+and algorithm-identity requirements that are easy to replace with extensional
+specification solvers.
+
+\section{Failure Analysis}
+
+\subsection{Compilation failures}
+
+The small number of final compilation failures fall into four distinct classes.
+
+\begin{enumerate}[leftmargin=*,itemsep=3pt]
+  \item \textbf{Malformed immutable scaffold.}  \task{trie\_search} fails identically
+        for GPT-5.5, GPT-5.6-sol, and no-thinking Opus because the teacher file itself
+        contains a duplicate declaration and undefined identifier
+        (Section~\ref{sec:trie-defect}).
+  \item \textbf{Response-schema failure.}  GPT-5.6-sol's final
+        \task{bellman\_ford}, \task{kruskal}, and \task{llrbt\_delete} responses lack
+        the required code/proof marker sections.  The parser therefore has no candidate
+        to compile.
+  \item \textbf{Unresolved Lean proof errors.}  GPT-5.5's \task{trie\_insert} ends with
+        tactic and recursion-depth errors.  GPT-5.6-sol's \task{llrbt\_insert} leaves
+        type mismatches and unsolved goals, while \task{prim} references an undefined
+        helper theorem.
+  \item \textbf{Prohibited generated placeholder.}  The enhanced agent's two failures,
+        \task{dijkstra} and \task{kruskal}, reach final candidate validation with an
+        editable proof section still containing \texttt{sorry}.  The harness correctly
+        records these attempts as failures rather than silently omitting files.
+\end{enumerate}
+
+The common compilation problem is therefore not lack of machine resources.  It is a
+mixture of benchmark validity, output-protocol compliance, and unfinished proof
+construction.  More repair rounds cannot solve immutable scaffolding, and schema-aware
+constrained decoding may be more useful than additional proof search for missing marker
+regions.
+
+\subsection{Why compiler-accepted programs fail semantically}
+
+Reviewing the judge analyses and generated Lean reveals five recurring patterns.
+
+\paragraph{Different algorithm, correct extensional behavior.}
+Many answers prove the supplied input--output property with a simpler algorithm:
+insertion or selection behavior for a named sort, direct convolution for Karatsuba,
+naive substring search for KMP, mutual reachability for Tarjan SCC, or exhaustive
+shortest paths instead of Dijkstra.  Lean correctly verifies the theorem, but the answer
+does not satisfy the natural-language algorithm constraint.
+
+\paragraph{Existing verified primitive.}
+Examples include computing GCD with \texttt{Nat.gcd} and marking primes with
+\texttt{decide (Nat.Prime i)} rather than implementing trial division or a sieve.
+These are mathematically valid terms and useful Lean programming patterns, but they
+violate the benchmark's from-scratch policy.
+
+\paragraph{Brute force or nonconstructive specification oracle.}
+Several answers enumerate all binary vectors for Gaussian elimination, all edge subsets
+for matching, or all flow tables for maximum flow.  Others use \texttt{Classical.choose}
+or finite search to obtain an object known to satisfy the postcondition.  This behavior
+exposes contracts that specify \emph{what} result is correct but cannot encode
+\emph{which} algorithm computed it.
+
+\paragraph{Guarded fallback.}
+The enhanced agent often implements a plausible target algorithm but protects it with a
+verified reference solver.  The exported function returns the candidate only if a
+certificate succeeds; otherwise it rebuilds or brute-forces a correct answer.  Such
+fallbacks maximize theorem completion while transferring correctness away from the
+named algorithm.
+
+\paragraph{Placeholder or weak helper.}
+An unused helper defined as \texttt{0} or \texttt{True}, or a proof that exploits a
+weak/vacuous precondition, may compile without providing the intended development.  The
+judges differ on whether an unused placeholder alone warrants rejection, contributing
+to the disagreement in Section~\ref{tab:judge-agreement-summary}.
+
+\subsection{Residual coding-agent failures}
+
+The two temperature-zero judges agree on eight semantic rejections among the 63 compiled
+agent outputs:
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item \task{ac\_automata}: dynamic suffix search rather than an explicit trie with
+        BFS-computed failure links;
+  \item \task{edmond\_karp}: a nonconstructive maximum-flow fallback using classical
+        choice;
+  \item \task{llrbt\_delete}: validate the intended deletion, otherwise rebuild from a
+        filtered inorder list;
+  \item \task{llrbt\_insert}: flatten, insert into a sorted list, and rebuild instead of
+        local LLRBT insertion;
+  \item \task{longest\_palindrome\_substring}: guard a Manacher-style candidate with
+        exhaustive search;
+  \item \task{max\_matching}: enumerate all edge subsets instead of using augmenting
+        paths;
+  \item \task{push\_relabel}: fall back to exhaustive enumeration of bounded flows;
+  \item \task{scc\_tarjan}: compute mutual-reachability classes without Tarjan's stack,
+        indices, or low-link values.
+\end{itemize}
+
+These failures persist despite explicit prompt prohibitions on exactly these strategies.
+Compiler interaction substantially improves theorem completion, but verifier feedback
+alone rewards contract satisfaction rather than algorithm identity.  A semantic
+self-audit reduces the problem; it cannot provide a machine-checkable enforcement
+mechanism.
+
+\section{Benchmark and Evaluator Audit}
+\label{sec:benchmark-audit}
+
+\subsection{Malformed \task{trie\_search} scaffold}
+\label{sec:trie-defect}
+
+The supplied file declares \texttt{is\_valid\_key} twice at lines 59 and 62.  It then
+uses an undefined \texttt{well\_formed} at lines 69 and 79.  These locations are outside
+all four model-editable sections.  Direct compilation of otherwise different generated
+answers consistently reports:
+
+\begin{lstlisting}
+line 62: `is_valid_key` has already been declared
+line 69: Unknown identifier `well_formed`
+line 79: Unknown identifier `well_formed`
+\end{lstlisting}
+
+The generation prompt simultaneously requires all non-editable content to remain
+unchanged, so no conforming answer can compile.  This is a benchmark defect, not a model
+failure.  It lowers end-to-end compilation for every complete full-scope condition by
+one and should be repaired or removed before model comparison.
+
+\subsection{Teacher-permitted \texttt{sorry} versus semantic rejection}
+\label{sec:sorry-conflict}
+
+The generation prompt expressly warns that some \texttt{sorry} terms occur outside the
+editable sections, mostly in \texttt{decreasing\_by} termination proofs, and instructs
+the model not to change them.  The response parser likewise checks prohibited terms
+only in model-owned regions.  In contrast, the semantic prompt lists visible
+\texttt{sorry} as a cheating signal and receives the complete merged file without
+machine-readable ownership annotations.
+
+Twelve tasks have teacher-owned \texttt{sorry}: \task{segmenttree\_build},
+\task{segmenttree\_modify}, \task{segmenttree\_query}, \task{splaytree\_splay}, the
+three ternary-search-tree tasks, the three trie tasks, \task{unionfind\_find}, and
+\task{unionfind\_linkroots}.  Across the four direct conditions, 34 returned answers on
+this subset compile.  GPT-5.4 assigns zero semantic passes at both temperatures.  Its
+analysis of GPT-5.6-sol's \task{ternarysearchtree\_delete}, for example, says the delete
+and eager pruning are correct but rejects the answer solely because teacher definitions
+contain termination \texttt{sorry}.
+
+GPT-5.6-sol at temperature zero accepts one of the same 34 answers: that exact
+\task{ternarysearchtree\_delete}.  Its analysis correctly distinguishes the two
+teacher-level termination holes from the student's complete implementation and proof.
+This isolated acceptance confirms that ownership-aware adjudication is possible, but
+the prompt does not reliably elicit it.  Scores on these 12 tasks conflate student
+quality with teacher scaffold policy.
+
+The clean fix is not to allow generated proof holes.  It is to give the judge only the
+student-owned sections plus necessary read-only context, or to annotate ownership and
+state explicitly that pre-existing teacher holes are permitted.  The enhanced 65-task
+condition excludes the confounded tasks instead of retroactively changing their labels.
+
+\subsection{Revision-prompt asymmetry}
+\label{sec:prompt-audit}
+
+The initial generation prompt emphasizes the exact natural-language algorithm and
+prohibits bypasses.  The subsequent Lean revision prompt says only to correct compiler
+messages, provide a complete standalone file, and retain marker structure.  It does not
+restate algorithm identity, from-scratch implementation, or the distinction between
+teacher and student \texttt{sorry}.  The original system message remains in chat, so
+this is an attentional asymmetry rather than a logical permission to cheat.  Nevertheless,
+each repair turn makes compiler acceptance the immediate objective, while the later
+semantic judge applies the stricter algorithmic criterion.
+
+The observed failures are consistent with this incentive: extensive repairs converge
+to classical choice, exhaustive solvers, alternate algorithms, or guarded fallbacks.
+The enhanced agent restates semantic constraints during both initial and repair phases
+and performs substantially better, although tool access and budget confound a causal
+attribution to prompt design alone.  A controlled ablation is needed to measure the
+prompt effect.
+
+\subsection{Metric and reporting implications}
+
+The term ``success rate of Lean'' is ambiguous.  This audit distinguishes at least:
+output coverage, parse compliance, compiler verification, absence of prohibited
+student terms, algorithmic fidelity, and judge agreement.  A single number hides where
+the system failed and can reverse rankings when missing outputs or teacher-owned holes
+are handled differently.  We recommend a structured result record rather than a binary
+leaderboard field.
+
+\section{Recommendations}
+
+\begin{enumerate}[leftmargin=*,itemsep=4pt]
+  \item \textbf{Preflight every scaffold.}  Compile a teacher-filled reference after
+        erasing only the four student holes; reject duplicate declarations, missing
+        identifiers, and version drift before release.
+  \item \textbf{Make source ownership explicit.}  Preserve marker provenance through
+        semantic evaluation.  Judges should never attribute immutable teacher terms to
+        the student.
+  \item \textbf{Align all repair prompts.}  Restate the exact-algorithm, from-scratch,
+        and no-oracle constraints whenever compiler feedback is supplied.
+  \item \textbf{Separate formal and semantic metrics.}  Report output, parse,
+        compilation, prohibited-term validation, and semantic fidelity independently.
+  \item \textbf{Calibrate semantic evaluation.}  Use temperature-zero runs, at least
+        two judges or blinded human adjudication for disagreements, and publish the
+        judge model, API mode, prompt, and sampling parameters.
+  \item \textbf{Test algorithm identity where possible.}  Add structural obligations,
+        trace properties, complexity/resource checks, or required intermediate
+        invariants so that a brute-force oracle cannot satisfy the same formal contract.
+  \item \textbf{Record every attempt.}  Empty responses, quota errors, overloads,
+        parser failures, and prohibited-term candidates should produce durable failure
+        artifacts rather than disappearing from the denominator.
+  \item \textbf{Evaluate agents as a separate treatment.}  Publish tool policy,
+        compiler-call counts, budgets, final independent verification, and costs; do
+        not merge agentic scores with direct prompting.
+\end{enumerate}
+
+\section{Threats to Validity}
+
+\paragraph{Single samples.}
+Each generation condition contains one pass per task.  We do not estimate variance over
+random seeds, API nondeterminism, or temporal model updates.  Temperature zero is a
+sampling setting, not a guarantee of bitwise determinism.
+
+\paragraph{LLM semantic labels.}
+No expert manually relabeled all 373 condition--task pairs.  The judge analyses are
+useful evidence, not formal proofs of algorithm identity.  The measured 22 cross-judge
+flips demonstrate residual label uncertainty.
+
+\paragraph{Unequal treatments.}
+Provider reasoning controls and token accounting are not directly comparable.  The
+coding agent receives tools, more interaction, and a monetary budget.  Its result is an
+upper-level system comparison, not an isolated Opus model effect.
+
+\paragraph{Adaptive-thinking attrition.}
+The 49 returned adaptive-thinking outputs are not a random subset of 77.  Conditional
+quality on those outputs is subject to selection bias; end-to-end rates retain missing
+outputs in the denominator.
+
+\paragraph{Benchmark and version scope.}
+Findings apply to the audited repository snapshot, Lean 4.25.0-rc2, and the named model
+endpoints in July--August 2026.  They do not automatically generalize to corrected
+scaffolds, other Lean/Mathlib releases, other languages in AlgoVeri, or future endpoint
+revisions.
+
+\paragraph{Cost accounting.}
+Only Claude Code reports dollar cost in the saved records.  Token fields differ by
+provider (for example, Anthropic thinking is not stored in the same field as OpenAI
+reasoning), so we release raw counters but avoid a cross-provider efficiency ranking.
+
+\section{Reproducibility and Artifact Layout}
+
+The artifact repository is \artifact.  It includes generation JSON, semantic JSON for
+all three judge settings, source modifications, tests, the dashboard, and this report.
+The principal immutable directories are:
+
+\begin{itemize}[leftmargin=*]
+  \item \texttt{results/full\_three}: GPT-5.5, GPT-5.6-sol, and thinking-Opus generation;
+  \item \texttt{results/full\_opus\_no\_thinking}: no-thinking Opus generation;
+  \item \texttt{results/claude\_code\_opus5}: enhanced 65-task agent generation;
+  \item matching \texttt{\_semantic}, \texttt{\_semantic\_temp0}, and
+        \texttt{\_semantic\_gpt56\_temp0} directories for the three judges;
+  \item \texttt{reports/data/result\_summary.json} and
+        \texttt{reports/data/case\_results.csv}: recomputed aggregate and case-level data;
+  \item \texttt{config/dashboard\_experiments.json}: the canonical experiment catalog.
+\end{itemize}
+
+From the repository root, regenerate the analytical artifacts with:
+
+\begin{lstlisting}
+python3 scripts/analyze_rerun_results.py \
+  --json-output reports/data/result_summary.json \
+  --csv-output reports/data/case_results.csv \
+  --latex-output reports/generated/case_tables.tex
+\end{lstlisting}
+
+Compile the paper locally or in Overleaf with:
+
+\begin{lstlisting}
+cd reports
+latexmk -pdf algoveri_rerun_report.tex
+\end{lstlisting}
+
+The CSV contains every judge analysis in full.  The PDF matrix uses compact pass/fail
+codes to remain readable; the underlying generated Lean and complete conversations are
+preserved in the result JSON.
+
+\section{Conclusion}
+
+Current frontier models make AlgoVeri's Lean files compile at high rates, but compilation
+substantially overstates success on the named algorithm.  No-thinking Opus is the
+strongest complete direct condition in this rerun, while a constrained compiler-using
+agent raises semantic acceptance further on a clean common scope.  Its remaining
+failures show that verifier-guided search still gravitates toward extensionally correct
+oracles and fallbacks when algorithm identity is not machine-enforced.
+
+At the same time, the benchmark itself introduces avoidable error: one task is
+uncompilable under its editing policy, and 12 tasks create a prompt-level conflict over
+teacher-owned proof holes.  Semantic scores also change with judge model despite
+temperature zero.  The appropriate conclusion is therefore not merely a model ranking.
+Reliable verified-code evaluation requires valid scaffolds, explicit authorship,
+aligned repair prompts, durable failure records, independent compilation, and calibrated
+semantic adjudication.
+
+\appendix
+
+\section{Native-Scope Failure Inventories}
+
+\paragraph{GPT-5.5 compilation failures (2).}
+\task{trie\_insert}, \task{trie\_search}.
+
+\paragraph{GPT-5.6-sol compilation failures (6).}
+\task{bellman\_ford}, \task{kruskal}, \task{llrbt\_delete}, \task{llrbt\_insert},
+\task{prim}, \task{trie\_search}.
+
+\paragraph{No-thinking Opus compilation failures (1).}
+\task{trie\_search}.
+
+\paragraph{Enhanced Claude Code compilation failures (2).}
+\task{dijkstra}, \task{kruskal}.
+
+\paragraph{Thinking-Opus missing outputs (28).}
+\task{bellman\_ford}, \task{bfs}, \task{coin\_change}, \task{cycle\_detection},
+\task{dfs}, \task{dijkstra}, \task{jump\_game}, \task{knapsack\_unbounded},
+\task{kruskal}, \task{lca}, \task{llrbt\_delete}, \task{llrbt\_insert},
+\task{maxheap\_popmax}, \task{prim}, \task{push\_relabel}, \task{scc\_tarjan},
+\task{segmenttree\_modify}, \task{segmenttree\_query},
+\task{ternarysearchtree\_delete}, \task{ternarysearchtree\_insert},
+\task{ternarysearchtree\_search}, \task{topological\_sort},
+\task{trial\_division\_optimized}, \task{trie\_delete}, \task{trie\_insert},
+\task{trie\_search}, \task{unionfind\_find}, \task{unionfind\_linkroots}.
+
+\section{Complete Case Matrix and Judge Disagreements}
+
+\input{generated/case_tables.tex}
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

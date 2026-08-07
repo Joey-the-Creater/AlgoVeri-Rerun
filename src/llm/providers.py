@@ -100,6 +100,10 @@ class OpenAIMultiTurnChat(MultiTurnChat):
             }
             if self._reasoning_effort:
                 request["reasoning"] = {"effort": self._reasoning_effort}
+            # GPT-5.6 accepts sampling controls only in its non-reasoning mode.
+            # Reasoning efforts above none reject the temperature parameter.
+            if self._reasoning_effort == "none":
+                request["temperature"] = temperature
             if self._max_output_tokens:
                 request["max_output_tokens"] = self._max_output_tokens
             response = self._client.responses.create(**request)

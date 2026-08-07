@@ -1,0 +1,1229 @@
+{
+  "schema_version": 1,
+  "conditions": [
+    {
+      "id": "gpt-5.5",
+      "label": "GPT-5.5",
+      "scope": 77,
+      "outputs": 77,
+      "missing": 0,
+      "compile_success": 75,
+      "compile_rate": 0.974025974025974,
+      "known_cost_usd": 0,
+      "cost_coverage": 0,
+      "judges": {
+        "original": {
+          "label": "GPT-5.4, temperature 1",
+          "evaluated": 77,
+          "passes": 24,
+          "rate_scope": 0.3116883116883117,
+          "rate_evaluated": 0.3116883116883117,
+          "rate_compiled": 0.32
+        },
+        "gpt54_t0": {
+          "label": "GPT-5.4, temperature 0",
+          "evaluated": 77,
+          "passes": 24,
+          "rate_scope": 0.3116883116883117,
+          "rate_evaluated": 0.3116883116883117,
+          "rate_compiled": 0.32
+        },
+        "gpt56_t0": {
+          "label": "GPT-5.6-sol, temperature 0, reasoning none",
+          "evaluated": 77,
+          "passes": 24,
+          "rate_scope": 0.3116883116883117,
+          "rate_evaluated": 0.3116883116883117,
+          "rate_compiled": 0.32
+        }
+      },
+      "compile_failures": [
+        "trie_insert",
+        "trie_search"
+      ],
+      "missing_tasks": []
+    },
+    {
+      "id": "gpt-5.6-sol",
+      "label": "GPT-5.6-sol",
+      "scope": 77,
+      "outputs": 77,
+      "missing": 0,
+      "compile_success": 71,
+      "compile_rate": 0.922077922077922,
+      "known_cost_usd": 0,
+      "cost_coverage": 0,
+      "judges": {
+        "original": {
+          "label": "GPT-5.4, temperature 1",
+          "evaluated": 77,
+          "passes": 25,
+          "rate_scope": 0.3246753246753247,
+          "rate_evaluated": 0.3246753246753247,
+          "rate_compiled": 0.352112676056338
+        },
+        "gpt54_t0": {
+          "label": "GPT-5.4, temperature 0",
+          "evaluated": 77,
+          "passes": 27,
+          "rate_scope": 0.35064935064935066,
+          "rate_evaluated": 0.35064935064935066,
+          "rate_compiled": 0.38028169014084506
+        },
+        "gpt56_t0": {
+          "label": "GPT-5.6-sol, temperature 0, reasoning none",
+          "evaluated": 77,
+          "passes": 30,
+          "rate_scope": 0.38961038961038963,
+          "rate_evaluated": 0.38961038961038963,
+          "rate_compiled": 0.4225352112676056
+        }
+      },
+      "compile_failures": [
+        "bellman_ford",
+        "kruskal",
+        "llrbt_delete",
+        "llrbt_insert",
+        "prim",
+        "trie_search"
+      ],
+      "missing_tasks": []
+    },
+    {
+      "id": "opus-5-thinking",
+      "label": "Opus 5 (thinking)",
+      "scope": 77,
+      "outputs": 49,
+      "missing": 28,
+      "compile_success": 49,
+      "compile_rate": 0.6363636363636364,
+      "known_cost_usd": 0,
+      "cost_coverage": 0,
+      "judges": {
+        "original": {
+          "label": "GPT-5.4, temperature 1",
+          "evaluated": 49,
+          "passes": 29,
+          "rate_scope": 0.37662337662337664,
+          "rate_evaluated": 0.5918367346938775,
+          "rate_compiled": 0.5918367346938775
+        },
+        "gpt54_t0": {
+          "label": "GPT-5.4, temperature 0",
+          "evaluated": 49,
+          "passes": 29,
+          "rate_scope": 0.37662337662337664,
+          "rate_evaluated": 0.5918367346938775,
+          "rate_compiled": 0.5918367346938775
+        },
+        "gpt56_t0": {
+          "label": "GPT-5.6-sol, temperature 0, reasoning none",
+          "evaluated": 49,
+          "passes": 31,
+          "rate_scope": 0.4025974025974026,
+          "rate_evaluated": 0.6326530612244898,
+          "rate_compiled": 0.6326530612244898
+        }
+      },
+      "compile_failures": [],
+      "missing_tasks": [
+        "bellman_ford",
+        "bfs",
+        "coin_change",
+        "cycle_detection",
+        "dfs",
+        "dijkstra",
+        "jump_game",
+        "knapsack_unbounded",
+        "kruskal",
+        "lca",
+        "llrbt_delete",
+        "llrbt_insert",
+        "maxheap_popmax",
+        "prim",
+        "push_relabel",
+        "scc_tarjan",
+        "segmenttree_modify",
+        "segmenttree_query",
+        "ternarysearchtree_delete",
+        "ternarysearchtree_insert",
+        "ternarysearchtree_search",
+        "topological_sort",
+        "trial_division_optimized",
+        "trie_delete",
+        "trie_insert",
+        "trie_search",
+        "unionfind_find",
+        "unionfind_linkroots"
+      ]
+    },
+    {
+      "id": "opus-5-no-thinking",
+      "label": "Opus 5 (no thinking)",
+      "scope": 77,
+      "outputs": 77,
+      "missing": 0,
+      "compile_success": 76,
+      "compile_rate": 0.987012987012987,
+      "known_cost_usd": 0,
+      "cost_coverage": 0,
+      "judges": {
+        "original": {
+          "label": "GPT-5.4, temperature 1",
+          "evaluated": 77,
+          "passes": 36,
+          "rate_scope": 0.4675324675324675,
+          "rate_evaluated": 0.4675324675324675,
+          "rate_compiled": 0.47368421052631576
+        },
+        "gpt54_t0": {
+          "label": "GPT-5.4, temperature 0",
+          "evaluated": 77,
+          "passes": 39,
+          "rate_scope": 0.5064935064935064,
+          "rate_evaluated": 0.5064935064935064,
+          "rate_compiled": 0.5131578947368421
+        },
+        "gpt56_t0": {
+          "label": "GPT-5.6-sol, temperature 0, reasoning none",
+          "evaluated": 77,
+          "passes": 44,
+          "rate_scope": 0.5714285714285714,
+          "rate_evaluated": 0.5714285714285714,
+          "rate_compiled": 0.5789473684210527
+        }
+      },
+      "compile_failures": [
+        "trie_search"
+      ],
+      "missing_tasks": []
+    },
+    {
+      "id": "claude-code-opus5-enhanced",
+      "label": "Claude Code + Opus 5 (enhanced)",
+      "scope": 65,
+      "outputs": 65,
+      "missing": 0,
+      "compile_success": 63,
+      "compile_rate": 0.9692307692307692,
+      "known_cost_usd": 70.26049374999998,
+      "cost_coverage": 65,
+      "judges": {
+        "original": {
+          "label": "GPT-5.4, temperature 1",
+          "evaluated": 65,
+          "passes": 53,
+          "rate_scope": 0.8153846153846154,
+          "rate_evaluated": 0.8153846153846154,
+          "rate_compiled": 0.8412698412698413
+        },
+        "gpt54_t0": {
+          "label": "GPT-5.4, temperature 0",
+          "evaluated": 65,
+          "passes": 53,
+          "rate_scope": 0.8153846153846154,
+          "rate_evaluated": 0.8153846153846154,
+          "rate_compiled": 0.8412698412698413
+        },
+        "gpt56_t0": {
+          "label": "GPT-5.6-sol, temperature 0, reasoning none",
+          "evaluated": 65,
+          "passes": 55,
+          "rate_scope": 0.8461538461538461,
+          "rate_evaluated": 0.8461538461538461,
+          "rate_compiled": 0.873015873015873
+        }
+      },
+      "compile_failures": [
+        "dijkstra",
+        "kruskal"
+      ],
+      "missing_tasks": []
+    }
+  ],
+  "agreements": [
+    {
+      "condition": "gpt-5.5",
+      "left": "original",
+      "right": "gpt54_t0",
+      "compiled_common": 75,
+      "agree": 71,
+      "both_pass": 22,
+      "both_fail": 49,
+      "left_only_pass": 2,
+      "right_only_pass": 2,
+      "agreement_rate": 0.9466666666666667,
+      "cohen_kappa": 0.8774509803921569,
+      "disagreements": [
+        {
+          "task": "knapsack_unbounded",
+          "left": true,
+          "right": false
+        },
+        {
+          "task": "lca",
+          "left": true,
+          "right": false
+        },
+        {
+          "task": "rod_cutting",
+          "left": false,
+          "right": true
+        },
+        {
+          "task": "trial_division_naive",
+          "left": false,
+          "right": true
+        }
+      ]
+    },
+    {
+      "condition": "gpt-5.5",
+      "left": "gpt54_t0",
+      "right": "gpt56_t0",
+      "compiled_common": 75,
+      "agree": 71,
+      "both_pass": 22,
+      "both_fail": 49,
+      "left_only_pass": 2,
+      "right_only_pass": 2,
+      "agreement_rate": 0.9466666666666667,
+      "cohen_kappa": 0.8774509803921569,
+      "disagreements": [
+        {
+          "task": "lca",
+          "left": false,
+          "right": true
+        },
+        {
+          "task": "longest_increasing_subsequence",
+          "left": true,
+          "right": false
+        },
+        {
+          "task": "ringbuffer_dequeue",
+          "left": false,
+          "right": true
+        },
+        {
+          "task": "rod_cutting",
+          "left": true,
+          "right": false
+        }
+      ]
+    },
+    {
+      "condition": "gpt-5.6-sol",
+      "left": "original",
+      "right": "gpt54_t0",
+      "compiled_common": 71,
+      "agree": 69,
+      "both_pass": 25,
+      "both_fail": 44,
+      "left_only_pass": 0,
+      "right_only_pass": 2,
+      "agreement_rate": 0.971830985915493,
+      "cohen_kappa": 0.9393680614859096,
+      "disagreements": [
+        {
+          "task": "lca",
+          "left": false,
+          "right": true
+        },
+        {
+          "task": "ringbuffer_dequeue",
+          "left": false,
+          "right": true
+        }
+      ]
+    },
+    {
+      "condition": "gpt-5.6-sol",
+      "left": "gpt54_t0",
+      "right": "gpt56_t0",
+      "compiled_common": 71,
+      "agree": 64,
+      "both_pass": 25,
+      "both_fail": 39,
+      "left_only_pass": 2,
+      "right_only_pass": 5,
+      "agreement_rate": 0.9014084507042254,
+      "cohen_kappa": 0.7952204367531933,
+      "disagreements": [
+        {
+          "task": "bipartite_check",
+          "left": false,
+          "right": true
+        },
+        {
+          "task": "fast_exponential",
+          "left": false,
+          "right": true
+        },
+        {
+          "task": "llrbt_rotateright",
+          "left": false,
+          "right": true
+        },
+        {
+          "task": "longest_increasing_subsequence",
+          "left": true,
+          "right": false
+        },
+        {
+          "task": "polymul_naive",
+          "left": false,
+          "right": true
+        },
+        {
+          "task": "string_search_naive",
+          "left": true,
+          "right": false
+        },
+        {
+          "task": "ternarysearchtree_delete",
+          "left": false,
+          "right": true
+        }
+      ]
+    },
+    {
+      "condition": "opus-5-thinking",
+      "left": "original",
+      "right": "gpt54_t0",
+      "compiled_common": 49,
+      "agree": 47,
+      "both_pass": 28,
+      "both_fail": 19,
+      "left_only_pass": 1,
+      "right_only_pass": 1,
+      "agreement_rate": 0.9591836734693877,
+      "cohen_kappa": 0.9155172413793102,
+      "disagreements": [
+        {
+          "task": "longest_common_subsequence",
+          "left": false,
+          "right": true
+        },
+        {
+          "task": "polymul_naive",
+          "left": true,
+          "right": false
+        }
+      ]
+    },
+    {
+      "condition": "opus-5-thinking",
+      "left": "gpt54_t0",
+      "right": "gpt56_t0",
+      "compiled_common": 49,
+      "agree": 45,
+      "both_pass": 28,
+      "both_fail": 17,
+      "left_only_pass": 1,
+      "right_only_pass": 3,
+      "agreement_rate": 0.9183673469387755,
+      "cohen_kappa": 0.8283712784588442,
+      "disagreements": [
+        {
+          "task": "bipartite_check",
+          "left": false,
+          "right": true
+        },
+        {
+          "task": "fast_exponential",
+          "left": true,
+          "right": false
+        },
+        {
+          "task": "llrbt_rotateright",
+          "left": false,
+          "right": true
+        },
+        {
+          "task": "max_matching",
+          "left": false,
+          "right": true
+        }
+      ]
+    },
+    {
+      "condition": "opus-5-no-thinking",
+      "left": "original",
+      "right": "gpt54_t0",
+      "compiled_common": 76,
+      "agree": 73,
+      "both_pass": 36,
+      "both_fail": 37,
+      "left_only_pass": 0,
+      "right_only_pass": 3,
+      "agreement_rate": 0.9605263157894737,
+      "cohen_kappa": 0.9211618257261411,
+      "disagreements": [
+        {
+          "task": "bellman_ford",
+          "left": false,
+          "right": true
+        },
+        {
+          "task": "bipartite_check",
+          "left": false,
+          "right": true
+        },
+        {
+          "task": "jump_game",
+          "left": false,
+          "right": true
+        }
+      ]
+    },
+    {
+      "condition": "opus-5-no-thinking",
+      "left": "gpt54_t0",
+      "right": "gpt56_t0",
+      "compiled_common": 76,
+      "agree": 71,
+      "both_pass": 39,
+      "both_fail": 32,
+      "left_only_pass": 0,
+      "right_only_pass": 5,
+      "agreement_rate": 0.9342105263157895,
+      "cohen_kappa": 0.8678720445062588,
+      "disagreements": [
+        {
+          "task": "cycle_detection",
+          "left": false,
+          "right": true
+        },
+        {
+          "task": "fast_exponential",
+          "left": false,
+          "right": true
+        },
+        {
+          "task": "llrbt_rotateright",
+          "left": false,
+          "right": true
+        },
+        {
+          "task": "max_matching",
+          "left": false,
+          "right": true
+        },
+        {
+          "task": "polymul_naive",
+          "left": false,
+          "right": true
+        }
+      ]
+    },
+    {
+      "condition": "claude-code-opus5-enhanced",
+      "left": "original",
+      "right": "gpt54_t0",
+      "compiled_common": 63,
+      "agree": 61,
+      "both_pass": 52,
+      "both_fail": 9,
+      "left_only_pass": 1,
+      "right_only_pass": 1,
+      "agreement_rate": 0.9682539682539683,
+      "cohen_kappa": 0.8811320754716981,
+      "disagreements": [
+        {
+          "task": "bubble_sort",
+          "left": true,
+          "right": false
+        },
+        {
+          "task": "llrbt_rotateright",
+          "left": false,
+          "right": true
+        }
+      ]
+    },
+    {
+      "condition": "claude-code-opus5-enhanced",
+      "left": "gpt54_t0",
+      "right": "gpt56_t0",
+      "compiled_common": 63,
+      "agree": 61,
+      "both_pass": 53,
+      "both_fail": 8,
+      "left_only_pass": 0,
+      "right_only_pass": 2,
+      "agreement_rate": 0.9682539682539683,
+      "cohen_kappa": 0.8706365503080081,
+      "disagreements": [
+        {
+          "task": "bubble_sort",
+          "left": false,
+          "right": true
+        },
+        {
+          "task": "polymul_naive",
+          "left": false,
+          "right": true
+        }
+      ]
+    }
+  ],
+  "common_no_teacher_sorry_scope": {
+    "count": 65,
+    "tasks": [
+      "ac_automata",
+      "bellman_ford",
+      "bfs",
+      "binary_search",
+      "bipartite_check",
+      "bracket_matching",
+      "bst_delete",
+      "bst_insert",
+      "bst_search",
+      "bst_zig",
+      "bst_zigzag",
+      "bst_zigzig",
+      "bubble_sort",
+      "coin_change",
+      "cycle_detection",
+      "dfs",
+      "dijkstra",
+      "discrete_logarithm",
+      "edmond_karp",
+      "fast_exponential",
+      "gcd",
+      "house_robber",
+      "insertion_sort",
+      "integer_exponential",
+      "jump_game",
+      "k_smallest",
+      "kmp",
+      "knapsack_01",
+      "knapsack_unbounded",
+      "kruskal",
+      "lca",
+      "linear_search",
+      "linearsys_gf2",
+      "llrbt_delete",
+      "llrbt_flipcolor",
+      "llrbt_insert",
+      "llrbt_rotateleft",
+      "llrbt_rotateright",
+      "longest_common_subsequence",
+      "longest_increasing_subsequence",
+      "longest_palindrome_substring",
+      "matrix_multiplication",
+      "max_matching",
+      "maxheap_popmax",
+      "maxheap_push",
+      "maximum_subarray_sum",
+      "merge_sort",
+      "polymul_karatsuba",
+      "polymul_naive",
+      "prim",
+      "push_relabel",
+      "queue_dequeue",
+      "queue_enqueue",
+      "quick_sort",
+      "ringbuffer_dequeue",
+      "ringbuffer_enqueue",
+      "rod_cutting",
+      "scc_tarjan",
+      "sieve_method",
+      "stack_pop",
+      "stack_push",
+      "string_search_naive",
+      "topological_sort",
+      "trial_division_naive",
+      "trial_division_optimized"
+    ],
+    "conditions": [
+      {
+        "condition": "gpt-5.5",
+        "label": "GPT-5.5",
+        "scope": 65,
+        "outputs": 65,
+        "compile_success": 65,
+        "semantic_passes": {
+          "original": 24,
+          "gpt54_t0": 24,
+          "gpt56_t0": 24
+        }
+      },
+      {
+        "condition": "gpt-5.6-sol",
+        "label": "GPT-5.6-sol",
+        "scope": 65,
+        "outputs": 65,
+        "compile_success": 60,
+        "semantic_passes": {
+          "original": 25,
+          "gpt54_t0": 27,
+          "gpt56_t0": 29
+        }
+      },
+      {
+        "condition": "opus-5-thinking",
+        "label": "Opus 5 (thinking)",
+        "scope": 65,
+        "outputs": 47,
+        "compile_success": 47,
+        "semantic_passes": {
+          "original": 29,
+          "gpt54_t0": 29,
+          "gpt56_t0": 31
+        }
+      },
+      {
+        "condition": "opus-5-no-thinking",
+        "label": "Opus 5 (no thinking)",
+        "scope": 65,
+        "outputs": 65,
+        "compile_success": 65,
+        "semantic_passes": {
+          "original": 36,
+          "gpt54_t0": 39,
+          "gpt56_t0": 44
+        }
+      },
+      {
+        "condition": "claude-code-opus5-enhanced",
+        "label": "Claude Code + Opus 5 (enhanced)",
+        "scope": 65,
+        "outputs": 65,
+        "compile_success": 63,
+        "semantic_passes": {
+          "original": 53,
+          "gpt54_t0": 53,
+          "gpt56_t0": 55
+        }
+      }
+    ]
+  },
+  "teacher_owned_sorry": {
+    "count": 12,
+    "tasks": [
+      "segmenttree_build",
+      "segmenttree_modify",
+      "segmenttree_query",
+      "splaytree_splay",
+      "ternarysearchtree_delete",
+      "ternarysearchtree_insert",
+      "ternarysearchtree_search",
+      "trie_delete",
+      "trie_insert",
+      "trie_search",
+      "unionfind_find",
+      "unionfind_linkroots"
+    ],
+    "conditions": [
+      {
+        "condition": "gpt-5.5",
+        "outputs": 12,
+        "compile_success": 10,
+        "semantic_passes": {
+          "original": 0,
+          "gpt54_t0": 0,
+          "gpt56_t0": 0
+        }
+      },
+      {
+        "condition": "gpt-5.6-sol",
+        "outputs": 12,
+        "compile_success": 11,
+        "semantic_passes": {
+          "original": 0,
+          "gpt54_t0": 0,
+          "gpt56_t0": 1
+        }
+      },
+      {
+        "condition": "opus-5-thinking",
+        "outputs": 2,
+        "compile_success": 2,
+        "semantic_passes": {
+          "original": 0,
+          "gpt54_t0": 0,
+          "gpt56_t0": 0
+        }
+      },
+      {
+        "condition": "opus-5-no-thinking",
+        "outputs": 12,
+        "compile_success": 11,
+        "semantic_passes": {
+          "original": 0,
+          "gpt54_t0": 0,
+          "gpt56_t0": 0
+        }
+      },
+      {
+        "condition": "claude-code-opus5-enhanced",
+        "outputs": 0,
+        "compile_success": 0,
+        "semantic_passes": {
+          "original": 0,
+          "gpt54_t0": 0,
+          "gpt56_t0": 0
+        }
+      }
+    ]
+  },
+  "efficiency": [
+    {
+      "condition": "gpt-5.5",
+      "tokens": {
+        "input": 2872202,
+        "output": 1719088,
+        "reasoning": 1115607
+      },
+      "known_cost_usd": 0,
+      "cost_coverage": 0,
+      "summed_duration_hours": 0.0,
+      "loc_added": 8916,
+      "average_loc_added": 115.79220779220779,
+      "success_by_try": {
+        "1": 21,
+        "2": 43,
+        "3": 57,
+        "5": 67,
+        "10": 75,
+        "15": 75
+      }
+    },
+    {
+      "condition": "gpt-5.6-sol",
+      "tokens": {
+        "input": 3144115,
+        "output": 1313342,
+        "reasoning": 688657
+      },
+      "known_cost_usd": 0,
+      "cost_coverage": 0,
+      "summed_duration_hours": 0.0,
+      "loc_added": 10036,
+      "average_loc_added": 135.6216216216216,
+      "success_by_try": {
+        "1": 19,
+        "2": 37,
+        "3": 53,
+        "5": 63,
+        "10": 70,
+        "15": 71
+      }
+    },
+    {
+      "condition": "opus-5-thinking",
+      "tokens": {
+        "input": 625869,
+        "output": 900409,
+        "reasoning": 0
+      },
+      "known_cost_usd": 0,
+      "cost_coverage": 0,
+      "summed_duration_hours": 0.0,
+      "loc_added": 3727,
+      "average_loc_added": 76.06122448979592,
+      "success_by_try": {
+        "1": 33,
+        "2": 45,
+        "3": 49,
+        "5": 49,
+        "10": 49,
+        "15": 49
+      }
+    },
+    {
+      "condition": "opus-5-no-thinking",
+      "tokens": {
+        "input": 10974256,
+        "output": 3969858,
+        "reasoning": 0
+      },
+      "known_cost_usd": 0,
+      "cost_coverage": 0,
+      "summed_duration_hours": 0.0,
+      "loc_added": 15749,
+      "average_loc_added": 204.53246753246754,
+      "success_by_try": {
+        "1": 24,
+        "2": 43,
+        "3": 58,
+        "5": 69,
+        "10": 75,
+        "15": 76
+      }
+    },
+    {
+      "condition": "claude-code-opus5-enhanced",
+      "tokens": {
+        "input": 22356378,
+        "output": 1748393,
+        "reasoning": 0
+      },
+      "known_cost_usd": 70.26049374999998,
+      "cost_coverage": 65,
+      "summed_duration_hours": 6.239915555555555,
+      "loc_added": 12088,
+      "average_loc_added": 191.87301587301587,
+      "success_by_try": {
+        "1": 15,
+        "2": 37,
+        "3": 45,
+        "5": 62,
+        "10": 63,
+        "15": 63
+      }
+    }
+  ],
+  "pilot_claude_code": [
+    {
+      "id": "claude-code-hard10",
+      "label": "Claude Code \u00b7 hard 10",
+      "group": "Claude Code \u00b7 Opus 5",
+      "comparison_default": false,
+      "condition": "Opus 5 coding agent \u00b7 $2/task cap",
+      "provider": "Anthropic",
+      "model": "claude-code-opus-5",
+      "judge_model": null,
+      "judge_temperature": null,
+      "judge_reasoning_effort": null,
+      "color": "#67e8b1",
+      "live": true,
+      "total": 10,
+      "outputs": 10,
+      "missing": 0,
+      "compile_success": 4,
+      "compile_rate": 0.4,
+      "semantic_evaluated": 10,
+      "semantic_success": 3,
+      "semantic_rate": 0.3,
+      "semantic_rate_judged": 0.3,
+      "known_cost_usd": 16.26912075,
+      "cost_coverage": 10,
+      "loc_added": 2574,
+      "average_loc_added": 321.75,
+      "loc_coverage": 8,
+      "max_tries": 15,
+      "max_passes": 1,
+      "try_curve": [
+        {
+          "try": 1,
+          "successes": 0,
+          "rate": 0.0
+        },
+        {
+          "try": 2,
+          "successes": 2,
+          "rate": 0.2
+        },
+        {
+          "try": 3,
+          "successes": 3,
+          "rate": 0.3
+        },
+        {
+          "try": 4,
+          "successes": 3,
+          "rate": 0.3
+        },
+        {
+          "try": 5,
+          "successes": 4,
+          "rate": 0.4
+        },
+        {
+          "try": 6,
+          "successes": 4,
+          "rate": 0.4
+        },
+        {
+          "try": 7,
+          "successes": 4,
+          "rate": 0.4
+        },
+        {
+          "try": 8,
+          "successes": 4,
+          "rate": 0.4
+        },
+        {
+          "try": 9,
+          "successes": 4,
+          "rate": 0.4
+        },
+        {
+          "try": 10,
+          "successes": 4,
+          "rate": 0.4
+        },
+        {
+          "try": 11,
+          "successes": 4,
+          "rate": 0.4
+        },
+        {
+          "try": 12,
+          "successes": 4,
+          "rate": 0.4
+        },
+        {
+          "try": 13,
+          "successes": 4,
+          "rate": 0.4
+        },
+        {
+          "try": 14,
+          "successes": 4,
+          "rate": 0.4
+        },
+        {
+          "try": 15,
+          "successes": 4,
+          "rate": 0.4
+        }
+      ],
+      "pass_curve": [
+        {
+          "pass": 1,
+          "compile_successes": 4,
+          "compile_rate": 0.4,
+          "semantic_successes": 3,
+          "semantic_rate": 0.3
+        }
+      ]
+    },
+    {
+      "id": "claude-code-opus5-nonthinking20",
+      "label": "Non-thinking failures \u00b7 remaining 20",
+      "group": "Claude Code \u00b7 Opus 5",
+      "comparison_default": false,
+      "condition": "Opus 5 coding agent \u00b7 $2/task cap",
+      "provider": "Anthropic",
+      "model": "claude-code-opus-5",
+      "judge_model": null,
+      "judge_temperature": null,
+      "judge_reasoning_effort": null,
+      "color": "#38bdf8",
+      "live": true,
+      "total": 20,
+      "outputs": 20,
+      "missing": 0,
+      "compile_success": 13,
+      "compile_rate": 0.65,
+      "semantic_evaluated": 20,
+      "semantic_success": 11,
+      "semantic_rate": 0.55,
+      "semantic_rate_judged": 0.55,
+      "known_cost_usd": 25.206526999999998,
+      "cost_coverage": 20,
+      "loc_added": 3600,
+      "average_loc_added": 225.0,
+      "loc_coverage": 16,
+      "max_tries": 15,
+      "max_passes": 1,
+      "try_curve": [
+        {
+          "try": 1,
+          "successes": 4,
+          "rate": 0.2
+        },
+        {
+          "try": 2,
+          "successes": 8,
+          "rate": 0.4
+        },
+        {
+          "try": 3,
+          "successes": 12,
+          "rate": 0.6
+        },
+        {
+          "try": 4,
+          "successes": 13,
+          "rate": 0.65
+        },
+        {
+          "try": 5,
+          "successes": 13,
+          "rate": 0.65
+        },
+        {
+          "try": 6,
+          "successes": 13,
+          "rate": 0.65
+        },
+        {
+          "try": 7,
+          "successes": 13,
+          "rate": 0.65
+        },
+        {
+          "try": 8,
+          "successes": 13,
+          "rate": 0.65
+        },
+        {
+          "try": 9,
+          "successes": 13,
+          "rate": 0.65
+        },
+        {
+          "try": 10,
+          "successes": 13,
+          "rate": 0.65
+        },
+        {
+          "try": 11,
+          "successes": 13,
+          "rate": 0.65
+        },
+        {
+          "try": 12,
+          "successes": 13,
+          "rate": 0.65
+        },
+        {
+          "try": 13,
+          "successes": 13,
+          "rate": 0.65
+        },
+        {
+          "try": 14,
+          "successes": 13,
+          "rate": 0.65
+        },
+        {
+          "try": 15,
+          "successes": 13,
+          "rate": 0.65
+        }
+      ],
+      "pass_curve": [
+        {
+          "pass": 1,
+          "compile_successes": 13,
+          "compile_rate": 0.65,
+          "semantic_successes": 11,
+          "semantic_rate": 0.55
+        }
+      ]
+    },
+    {
+      "id": "claude-code-opus5-combined",
+      "label": "Claude Code \u00b7 all 30 cases",
+      "group": "Claude Code",
+      "comparison_default": false,
+      "condition": "Opus 5 coding agent \u00b7 combined batches",
+      "provider": "Anthropic",
+      "model": "claude-code-opus-5",
+      "judge_model": null,
+      "judge_temperature": null,
+      "judge_reasoning_effort": null,
+      "color": "#22d3ee",
+      "live": false,
+      "total": 30,
+      "outputs": 30,
+      "missing": 0,
+      "compile_success": 17,
+      "compile_rate": 0.5666666666666667,
+      "semantic_evaluated": 30,
+      "semantic_success": 14,
+      "semantic_rate": 0.4666666666666667,
+      "semantic_rate_judged": 0.4666666666666667,
+      "known_cost_usd": 41.47564775000001,
+      "cost_coverage": 30,
+      "loc_added": 6174,
+      "average_loc_added": 257.25,
+      "loc_coverage": 24,
+      "max_tries": 15,
+      "max_passes": 1,
+      "try_curve": [
+        {
+          "try": 1,
+          "successes": 4,
+          "rate": 0.13333333333333333
+        },
+        {
+          "try": 2,
+          "successes": 10,
+          "rate": 0.3333333333333333
+        },
+        {
+          "try": 3,
+          "successes": 15,
+          "rate": 0.5
+        },
+        {
+          "try": 4,
+          "successes": 16,
+          "rate": 0.5333333333333333
+        },
+        {
+          "try": 5,
+          "successes": 17,
+          "rate": 0.5666666666666667
+        },
+        {
+          "try": 6,
+          "successes": 17,
+          "rate": 0.5666666666666667
+        },
+        {
+          "try": 7,
+          "successes": 17,
+          "rate": 0.5666666666666667
+        },
+        {
+          "try": 8,
+          "successes": 17,
+          "rate": 0.5666666666666667
+        },
+        {
+          "try": 9,
+          "successes": 17,
+          "rate": 0.5666666666666667
+        },
+        {
+          "try": 10,
+          "successes": 17,
+          "rate": 0.5666666666666667
+        },
+        {
+          "try": 11,
+          "successes": 17,
+          "rate": 0.5666666666666667
+        },
+        {
+          "try": 12,
+          "successes": 17,
+          "rate": 0.5666666666666667
+        },
+        {
+          "try": 13,
+          "successes": 17,
+          "rate": 0.5666666666666667
+        },
+        {
+          "try": 14,
+          "successes": 17,
+          "rate": 0.5666666666666667
+        },
+        {
+          "try": 15,
+          "successes": 17,
+          "rate": 0.5666666666666667
+        }
+      ],
+      "pass_curve": [
+        {
+          "pass": 1,
+          "compile_successes": 17,
+          "compile_rate": 0.5666666666666667,
+          "semantic_successes": 14,
+          "semantic_rate": 0.4666666666666667
+        }
+      ]
+    }
+  ]
+}

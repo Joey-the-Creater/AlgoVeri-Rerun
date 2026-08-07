@@ -1,0 +1,99 @@
+{
+  "verified": true,
+  "details": {
+    "rounds": 26,
+    "llm_response": {
+      "code": "import Mathlib\n\ndef total_weight (selected : List Bool) (weights : List Nat) : Nat :=\n  match selected, weights with\n  | [], _ => 0\n  | _, [] => 0\n  | b :: bs, w :: ws => (if b then w else 0) + total_weight bs ws\n\ndef total_value (selected : List Bool) (values : List Nat) : Nat :=\n  match selected, values with\n  | [], _ => 0\n  | _, [] => 0\n  | b :: bs, v :: vs => (if b then v else 0) + total_value bs vs\n\ndef is_valid_strategy (selected : List Bool) (weights : List Nat) (capacity : Nat) : Prop :=\n  selected.length = weights.length \u2227\n  total_weight selected weights \u2264 capacity\n\n-- Precondition definitions\n@[reducible, simp]\ndef knapsack_01_precond (weights values : List Nat) (capacity : Nat) : Prop :=\n  -- !benchmark @start precond\n  weights.length = values.length\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n/-- The 0/1 knapsack recurrence: best value obtainable from the items\n    `(ws, vs)` with remaining capacity `c` (either skip the first item, or\n    take it when it fits). -/\ndef knapAux : List Nat \u2192 List Nat \u2192 Nat \u2192 Nat\n  | [], _, _ => 0\n  | _ :: _, [], _ => 0\n  | w :: ws, v :: vs, c =>\n      max (knapAux ws vs c) (if w \u2264 c then v + knapAux ws vs (c - w) else 0)\n\n/-- Bottom-up dynamic programming table for 0/1 knapsack: `knapRow ws vs cap`\n    is the row of length `cap + 1` whose `c`-th entry is the best value\n    obtainable from the items `(ws, vs)` with capacity `c`.  Each item is\n    processed once, producing a new row from the previous one. -/\ndef knapRow : List Nat \u2192 List Nat \u2192 Nat \u2192 List Nat\n  | [], _, cap => List.replicate (cap + 1) 0\n  | _ :: _, [], cap => List.replicate (cap + 1) 0\n  | w :: ws, v :: vs, cap =>\n      let prev := knapRow ws vs cap\n      (List.range (cap + 1)).map fun c =>\n        max (prev.getD c 0) (if w \u2264 c then v + prev.getD (c - w) 0 else 0)\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef knapsack_01 (weights values : List Nat) (capacity : Nat)\n    (h_precond : knapsack_01_precond weights values capacity) : Nat :=\n  -- !benchmark @start code\n  (knapRow weights values capacity).getD capacity 0\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef knapsack_01_postcond (weights values : List Nat) (capacity : Nat) (result : Nat)\n    (_ : knapsack_01_precond weights values capacity) : Prop :=\n  -- !benchmark @start postcond\n  (\u2200 selected, is_valid_strategy selected weights capacity \u2192 total_value selected values \u2264 result) \u2227\n  (\u2203 selected, is_valid_strategy selected weights capacity \u2227 total_value selected values = result)\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\ntheorem total_value_nil_right (s : List Bool) : total_value s [] = 0 := by\n  cases s <;> rfl\n\ntheorem total_weight_replicate_false (n : Nat) (ws : List Nat) :\n    total_weight (List.replicate n false) ws = 0 := by\n  induction n generalizing ws with\n  | zero => cases ws <;> rfl\n  | succ k ih =>\n    cases ws with\n    | nil => rfl\n    | cons w ws => simp [List.replicate_succ, total_weight, ih]\n\ntheorem total_weight_false_cons (w : Nat) (ws : List Nat) (s : List Bool) :\n    total_weight (false :: s) (w :: ws) = total_weight s ws := by\n  simp [total_weight]\n\ntheorem knapAux_ub : \u2200 (ws vs : List Nat) (c : Nat) (s : List Bool),\n    s.length = ws.length \u2192 total_weight s ws \u2264 c \u2192 total_value s vs \u2264 knapAux ws vs c := by\n  intro ws\n  induction ws with\n  | nil =>\n    intro vs c s hlen _\n    cases s with\n    | nil => simp [knapAux, total_value]\n    | cons b bs => simp at hlen\n  | cons w ws ih =>\n    intro vs c s hlen hw\n    cases vs with\n    | nil => simp [total_value_nil_right, knapAux]\n    | cons v vs =>\n      cases s with\n      | nil => simp at hlen\n      | cons b bs =>\n        simp only [List.length_cons, Nat.add_right_cancel_iff] at hlen\n        simp only [total_weight] at hw\n        cases b with\n        | false =>\n          have hw' : total_weight bs ws \u2264 c := by simpa using hw\n          have h1 : total_value (false :: bs) (v :: vs) = total_value bs vs := by\n            simp [total_value]\n          rw [h1]\n          simp only [knapAux]\n          exact le_trans (ih vs c bs hlen hw') (le_max_left _ _)\n        | true =>\n          simp only [if_true] at hw\n          have hwc : w \u2264 c := le_trans (Nat.le_add_right w _) hw\n          have hrest : total_weight bs ws \u2264 c - w := by omega\n          have hIH := ih vs (c - w) bs hlen hrest\n          have hstep : total_value (true :: bs) (v :: vs) \u2264\n              (if w \u2264 c then v + knapAux ws vs (c - w) else 0) := by\n            simp only [total_value, if_true, if_pos hwc]\n            omega\n          exact le_trans hstep (le_max_right _ _)\n\ntheorem knapAux_ex : \u2200 (ws vs : List Nat) (c : Nat),\n    \u2203 s : List Bool, s.length = ws.length \u2227 total_weight s ws \u2264 c \u2227\n      total_value s vs = knapAux ws vs c := by\n  intro ws\n  induction ws with\n  | nil =>\n    intro vs c\n    exact \u27e8[], rfl, by simp [total_weight], by simp [knapAux, total_value]\u27e9\n  | cons w ws ih =>\n    intro vs c\n    cases vs with\n    | nil =>\n      refine \u27e8List.replicate (w :: ws).length false, by simp, ?_, ?_\u27e9\n      \u00b7 rw [total_weight_replicate_false]; exact Nat.zero_le _\n      \u00b7 rw [total_value_nil_right]; simp [knapAux]\n    | cons v vs =>\n      by_cases hwc : w \u2264 c\n      \u00b7 rcases le_total (if w \u2264 c then v + knapAux ws vs (c - w) else 0)\n          (knapAux ws vs c) with hcase | hcase\n        \u00b7 obtain \u27e8s, hl, hwt, hv\u27e9 := ih vs c\n          refine \u27e8false :: s, by simp [hl], by rw [total_weight_false_cons]; exact hwt, ?_\u27e9\n          have h1 : total_value (false :: s) (v :: vs) = total_value s vs := by\n            simp [total_value]\n          rw [h1, hv]\n          simp only [knapAux]\n          exact (max_eq_left hcase).symm\n        \u00b7 obtain \u27e8s, hl, hwt, hv\u27e9 := ih vs (c - w)\n          refine \u27e8true :: s, by simp [hl], ?_, ?_\u27e9\n          \u00b7 simp only [total_weight, if_true]; omega\n          \u00b7 simp only [total_value, if_true, knapAux]\n            rw [hv, max_eq_right hcase, if_pos hwc]\n      \u00b7 obtain \u27e8s, hl, hwt, hv\u27e9 := ih vs c\n        refine \u27e8false :: s, by simp [hl], by rw [total_weight_false_cons]; exact hwt, ?_\u27e9\n        have h1 : total_value (false :: s) (v :: vs) = total_value s vs := by\n          simp [total_value]\n        rw [h1, hv]\n        simp only [knapAux, if_neg hwc]\n        simp\ntheorem getD_replicate_zero (n c : Nat) : (List.replicate n (0 : Nat)).getD c 0 = 0 := by\n  rcases lt_or_ge c n with h | h\n  \u00b7 rw [List.getD_eq_getElem _ _ (by simpa using h)]\n    simp\n  \u00b7 rw [List.getD_eq_default]\n    simpa using h\n\ntheorem getD_map_range (f : Nat \u2192 Nat) (n c : Nat) (h : c < n) :\n    ((List.range n).map f).getD c 0 = f c := by\n  rw [List.getD_eq_getElem _ _ (by simpa using h)]\n  simp\n\n/-- The dynamic-programming table agrees with the knapsack recurrence. -/\ntheorem knapRow_getD : \u2200 (ws vs : List Nat) (cap c : Nat), c \u2264 cap \u2192\n    (knapRow ws vs cap).getD c 0 = knapAux ws vs c := by\n  intro ws\n  induction ws with\n  | nil =>\n    intro vs cap c _\n    simp [knapRow, knapAux, getD_replicate_zero]\n  | cons w ws ih =>\n    intro vs cap c hc\n    cases vs with\n    | nil => simp [knapRow, knapAux, getD_replicate_zero]\n    | cons v vs =>\n      have hlt : c < cap + 1 := by omega\n      simp only [knapRow]\n      rw [getD_map_range _ _ _ hlt, ih vs cap c hc]\n      by_cases hw : w \u2264 c\n      \u00b7 rw [if_pos hw, ih vs cap (c - w) (by omega)]\n        simp only [knapAux, if_pos hw]\n      \u00b7 rw [if_neg hw]\n        simp only [knapAux, if_neg hw]\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem knapsack_01_postcond_satisfied (weights values : List Nat) (capacity : Nat)\n    (h_precond : knapsack_01_precond weights values capacity) :\n    knapsack_01_postcond weights values capacity (knapsack_01 weights values capacity h_precond) h_precond := by\n  -- !benchmark @start proof\n  have hdp : knapsack_01 weights values capacity h_precond = knapAux weights values capacity :=\n    knapRow_getD weights values capacity capacity (le_refl _)\n  rw [hdp]\n  constructor\n  \u00b7 rintro selected \u27e8hlen, hw\u27e9\n    exact knapAux_ub weights values capacity selected hlen hw\n  \u00b7 obtain \u27e8s, hl, hwt, hv\u27e9 := knapAux_ex weights values capacity\n    exact \u27e8s, \u27e8hl, hwt\u27e9, hv\u27e9\n  -- !benchmark @end proof\n",
+      "comment": "`./check.sh` prints **LEAN VERIFIED**.\n\n## What was implemented\n\n**Algorithm** (`auxcode`, `code`) \u2014 a genuine bottom-up 0/1 knapsack DP:\n- `knapAux ws vs c` \u2014 the knapsack recurrence: `max(skip item, if w\u1d62 \u2264 c then v\u1d62 + best(rest, c \u2212 w\u1d62))`.\n- `knapRow ws vs cap` \u2014 the DP **table**: processes each item once, turning the previous capacity row (length `cap+1`) into the next one via the standard transition `dp'[c] = max(dp[c], v\u1d62 + dp[c\u2212w\u1d62])`.\n- `knapsack_01 = (knapRow weights values capacity).getD capacity 0`.\n\n**Lemmas** (`lemma`):\n- `knapAux_ub` \u2014 every valid selection's value is \u2264 the recurrence (induction on items, case-splitting on take/skip).\n- `knapAux_ex` \u2014 a valid selection achieving exactly that value exists (constructed explicitly, `false`-padded in the degenerate branch).\n- `knapRow_getD` \u2014 the DP table entry at capacity `c \u2264 cap` equals `knapAux ws vs c`, so the table is not a stand-in for the spec.\n- Supporting index lemmas (`getD_replicate_zero`, `getD_map_range`) are proved, not stubbed.\n\n**Proof** (`proof`) \u2014 rewrites the table lookup to the recurrence via `knapRow_getD`, then discharges both postcondition conjuncts.\n\n## Semantic audit\n\n- Both postconditions (Upper Bound, Existence) proved about the actual returned value; postcond/precond blocks untouched, all six markers preserved.\n- No `sorry`/`admit`/axioms/`partial`/`unsafe` in editable regions; no `Nat.find`, `Classical.choose`, `decide`, sorting, or subset enumeration.\n- Selections are `List Bool` of length exactly `weights.length` \u2014 the existence witness always has the required full length (including the `values = []` branch, where an all-`false` replicate is used).\n- Edge cases: empty item lists \u2192 `0`; `capacity = 0` \u2192 row of length 1, zero-weight items still selectable; unequal-length lists (outside the precondition) are handled by the recursion's base cases, so nothing was weakened. Values are `Nat`, so there is no all-negative case; the \"take nothing\" selection always exists and bounds the result below by 0."
+    },
+    "verifier_response": {
+      "verified": true,
+      "feedback": "Verified successfully.",
+      "raw": {
+        "stdout": "claude_code_knapsack_01_final_1785916468302.lean:21:53: warning: unused variable `capacity`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_knapsack_01_final_1785916468302.lean:51:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_knapsack_01_final_1785916468302.lean:177:28: warning: This simp argument is unused:\n  getD_replicate_zero\n\nHint: Omit it from the simp argument list.\n  simp [knapRow, knapAux,\u0335 \u0335g\u0335e\u0335t\u0335D\u0335_\u0335r\u0335e\u0335p\u0335l\u0335i\u0335c\u0335a\u0335t\u0335e\u0335_\u0335z\u0335e\u0335r\u0335o\u0335]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_knapsack_01_final_1785916468302.lean:181:37: warning: This simp argument is unused:\n  getD_replicate_zero\n\nHint: Omit it from the simp argument list.\n  simp [knapRow, knapAux,\u0335 \u0335g\u0335e\u0335t\u0335D\u0335_\u0335r\u0335e\u0335p\u0335l\u0335i\u0335c\u0335a\u0335t\u0335e\u0335_\u0335z\u0335e\u0335r\u0335o\u0335]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\n",
+        "stderr": "",
+        "returncode": 0
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": true,
+        "verifier_response": {
+          "verified": true,
+          "feedback": "Verified successfully.",
+          "raw": {
+            "stdout": "claude_code_knapsack_01_final_1785916468302.lean:21:53: warning: unused variable `capacity`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_knapsack_01_final_1785916468302.lean:51:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_knapsack_01_final_1785916468302.lean:177:28: warning: This simp argument is unused:\n  getD_replicate_zero\n\nHint: Omit it from the simp argument list.\n  simp [knapRow, knapAux,\u0335 \u0335g\u0335e\u0335t\u0335D\u0335_\u0335r\u0335e\u0335p\u0335l\u0335i\u0335c\u0335a\u0335t\u0335e\u0335_\u0335z\u0335e\u0335r\u0335o\u0335]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_knapsack_01_final_1785916468302.lean:181:37: warning: This simp argument is unused:\n  getD_replicate_zero\n\nHint: Omit it from the simp argument list.\n  simp [knapRow, knapAux,\u0335 \u0335g\u0335e\u0335t\u0335D\u0335_\u0335r\u0335e\u0335p\u0335l\u0335i\u0335c\u0335a\u0335t\u0335e\u0335_\u0335z\u0335e\u0335r\u0335o\u0335]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\n",
+            "stderr": "",
+            "returncode": 0
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "27911432-6d55-49d4-89ad-675dda4432c9",
+          "subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.9244982499999999,
+          "duration_ms": 284330,
+          "duration_api_ms": 259919,
+          "num_turns": 27,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/knapsack_01/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "budget_usd": 2.0
+        }
+      }
+    ],
+    "tokens": {
+      "input": 551224,
+      "output": 19055,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "27911432-6d55-49d4-89ad-675dda4432c9",
+      "subtype": "success",
+      "is_error": false,
+      "total_cost_usd": 0.9244982499999999,
+      "duration_ms": 284330,
+      "duration_api_ms": 259919,
+      "num_turns": 27,
+      "returncode": 0,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/knapsack_01/agent_events.jsonl",
+      "pass_number": 1,
+      "prompt_kind": "initial",
+      "budget_usd": 2.0,
+      "compiler_passes": 1,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "27911432-6d55-49d4-89ad-675dda4432c9",
+          "subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.9244982499999999,
+          "duration_ms": 284330,
+          "duration_api_ms": 259919,
+          "num_turns": 27,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/knapsack_01/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "budget_usd": 2.0
+        }
+      ]
+    }
+  }
+}

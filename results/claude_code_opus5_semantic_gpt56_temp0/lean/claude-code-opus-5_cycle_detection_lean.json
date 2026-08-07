@@ -1,0 +1,107 @@
+{
+    "verified": true,
+    "details": {
+        "rounds": 15,
+        "llm_response": {
+            "code": "import Mathlib\n\nstructure CycleGraph where\n  adj : Array (Array Nat)\n\ndef CycleGraph.well_formed (g : CycleGraph) : Prop :=\n  \u2200 u, u < g.adj.size \u2192\n    \u2200 v, v \u2208 g.adj.getD u #[] \u2192 v < g.adj.size\n\ndef CycleGraph.size (g : CycleGraph) : Nat :=\n  g.adj.size\n\ndef CycleGraph.has_edge (g : CycleGraph) (u v : Nat) : Prop :=\n  u < g.adj.size \u2227\n  v \u2208 g.adj.getD u #[]\n\ndef CycleGraph.is_path (g : CycleGraph) (p : List Nat) : Prop :=\n  p.length > 0 \u2227\n  \u2200 i, i + 1 < p.length \u2192\n    g.has_edge (p.getD i 0) (p.getD (i + 1) 0)\n\ndef CycleGraph.is_cycle (g : CycleGraph) (p : List Nat) : Prop :=\n  g.is_path p \u2227 p.length > 1 \u2227 p.head? = p.getLast?\n\ndef CycleGraph.graph_has_cycle (g : CycleGraph) : Prop :=\n  \u2203 p, g.is_cycle p\n\n-- Precondition definitions\n@[reducible, simp]\ndef has_cycle_precond (graph : CycleGraph) : Prop :=\n  -- !benchmark @start precond\n  graph.well_formed\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n/-- Successors of `u` as a list. -/\ndef cycAdj (g : CycleGraph) (u : Nat) : List Nat := (g.adj.getD u #[]).toList\n\n/-- `cycLayer g k` is the list of nodes from which a walk with `k` edges starts.\n    This is the \"peeling\" (Kahn-style) computation: layer `0` is every node, and a\n    node survives to layer `k+1` exactly when one of its successors is in layer `k`.\n    The layers shrink, so if a node survives `size` rounds the graph has a cycle. -/\ndef cycLayer (g : CycleGraph) : Nat \u2192 List Nat\n  | 0 => List.range g.adj.size\n  | k + 1 =>\n      (List.range g.adj.size).filter\n        (fun u => (cycAdj g u).any (fun v => decide (v \u2208 cycLayer g k)))\n\n/-- `hasWalk g k u` : there is a walk with `k` edges starting at `u`. -/\ndef hasWalk (g : CycleGraph) : Nat \u2192 Nat \u2192 Prop\n  | 0, u => u < g.adj.size\n  | k + 1, u => \u2203 v, g.has_edge u v \u2227 hasWalk g k v\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef has_cycle (graph : CycleGraph)\n    (h_precond : has_cycle_precond graph) : Bool :=\n  -- !benchmark @start code\n  !(cycLayer graph graph.adj.size).isEmpty\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef has_cycle_postcond (graph : CycleGraph) (result : Bool)\n    (_ : has_cycle_precond graph) : Prop :=\n  -- !benchmark @start postcond\n  result = graph.graph_has_cycle\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\ntheorem cyc_mem_adj (g : CycleGraph) (u v : Nat) :\n    v \u2208 cycAdj g u \u2194 v \u2208 g.adj.getD u #[] := by\n  simp [cycAdj]\n\ntheorem cyc_layer_iff (g : CycleGraph) : \u2200 k u, u \u2208 cycLayer g k \u2194 hasWalk g k u := by\n  intro k\n  induction k with\n  | zero => intro u; simp [cycLayer, hasWalk]\n  | succ k ih =>\n    intro u\n    constructor\n    \u00b7 intro h\n      rw [cycLayer, List.mem_filter] at h\n      obtain \u27e8h1, h2\u27e9 := h\n      rw [List.any_eq_true] at h2\n      obtain \u27e8v, hv, hv2\u27e9 := h2\n      simp only [hasWalk]\n      refine \u27e8v, \u27e8?_, ?_\u27e9, ?_\u27e9\n      \u00b7 simpa using h1\n      \u00b7 exact (cyc_mem_adj g u v).1 hv\n      \u00b7 exact (ih v).1 (of_decide_eq_true hv2)\n    \u00b7 intro h\n      simp only [hasWalk] at h\n      obtain \u27e8v, he, hw\u27e9 := h\n      rw [cycLayer, List.mem_filter]\n      refine \u27e8by simpa using he.1, ?_\u27e9\n      rw [List.any_eq_true]\n      exact \u27e8v, (cyc_mem_adj g u v).2 he.2, decide_eq_true ((ih v).2 hw)\u27e9\n\ntheorem hasWalk_mono (g : CycleGraph) :\n    \u2200 k j u, j \u2264 k \u2192 hasWalk g k u \u2192 hasWalk g j u := by\n  intro k\n  induction k with\n  | zero =>\n    intro j u hj h\n    obtain rfl : j = 0 := Nat.le_zero.1 hj\n    exact h\n  | succ k ih =>\n    intro j u hj h\n    simp only [hasWalk] at h\n    obtain \u27e8v, he, hw\u27e9 := h\n    cases j with\n    | zero => exact he.1\n    | succ j =>\n      simp only [hasWalk]\n      exact \u27e8v, he, ih j v (by omega) hw\u27e9\n\ntheorem hasWalk_of_inf (g : CycleGraph) (f : Nat \u2192 Nat)\n    (hf : \u2200 t, g.has_edge (f t) (f (t + 1))) : \u2200 k s, hasWalk g k (f s) := by\n  intro k\n  induction k with\n  | zero => intro s; exact (hf s).1\n  | succ k ih =>\n    intro s\n    simp only [hasWalk]\n    exact \u27e8f (s + 1), hf s, ih (s + 1)\u27e9\n\ntheorem walkFn_of_hasWalk (g : CycleGraph) : \u2200 k u, hasWalk g k u \u2192\n    \u2203 f : Nat \u2192 Nat, f 0 = u \u2227 \u2200 s, s < k \u2192 g.has_edge (f s) (f (s + 1)) := by\n  intro k\n  induction k with\n  | zero =>\n    intro u _\n    exact \u27e8fun _ => u, rfl, by intro s hs; omega\u27e9\n  | succ k ih =>\n    intro u h\n    simp only [hasWalk] at h\n    obtain \u27e8v, he, hw\u27e9 := h\n    obtain \u27e8f, hf0, hf\u27e9 := ih v hw\n    refine \u27e8fun s => if s = 0 then u else f (s - 1), by simp, ?_\u27e9\n    intro s hs\n    cases s with\n    | zero => simpa [hf0] using he\n    | succ s => simpa using hf s (by omega)\n\ntheorem getD_range_map (h : Nat \u2192 Nat) (m i : Nat) (hi : i < m) :\n    ((List.range m).map h).getD i 0 = h i := by\n  have hlen : i < ((List.range m).map h).length := by simp [hi]\n  rw [List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hlen]\n  simp\n\ntheorem cycle_of_repeat (g : CycleGraph) (f : Nat \u2192 Nat) (a b : Nat)\n    (hab : a < b) (hbn : b \u2264 g.adj.size)\n    (hf : \u2200 s, s < g.adj.size \u2192 g.has_edge (f s) (f (s + 1)))\n    (heq : f a = f b) : g.graph_has_cycle := by\n  refine \u27e8(List.range (b - a + 1)).map (fun t => f (a + t)), \u27e8by simp, ?_\u27e9, by simp; omega, ?_\u27e9\n  \u00b7 intro i hi\n    have hlen : ((List.range (b - a + 1)).map (fun t => f (a + t))).length = b - a + 1 := by\n      simp\n    rw [hlen] at hi\n    rw [getD_range_map _ _ i (by omega), getD_range_map _ _ (i + 1) (by omega)]\n    have : a + (i + 1) = (a + i) + 1 := by omega\n    rw [this]\n    exact hf (a + i) (by omega)\n  \u00b7 have h0 : 0 < ((List.range (b - a + 1)).map (fun t => f (a + t))).length := by simp\n    have hm : b - a < ((List.range (b - a + 1)).map (fun t => f (a + t))).length := by\n      simp\n    rw [List.head?_eq_getElem?, List.getLast?_eq_getElem?,\n      List.getElem?_eq_getElem h0]\n    have hidx : ((List.range (b - a + 1)).map (fun t => f (a + t))).length - 1 = b - a := by\n      simp\n    rw [hidx, List.getElem?_eq_getElem hm]\n    simp only [List.getElem_map, List.getElem_range, Option.some_inj]\n    have hb : a + (b - a) = b := by omega\n    rw [hb]\n    simpa using heq\n\ntheorem cycle_of_hasWalk (g : CycleGraph) (hwf : g.well_formed) (u : Nat)\n    (h : hasWalk g g.adj.size u) : g.graph_has_cycle := by\n  obtain \u27e8f, hf0, hf\u27e9 := walkFn_of_hasWalk g g.adj.size u h\n  have hun : u < g.adj.size := hasWalk_mono g g.adj.size 0 u (Nat.zero_le _) h\n  have hbound : \u2200 s, s \u2264 g.adj.size \u2192 f s < g.adj.size := by\n    intro s hs\n    rcases Nat.lt_or_ge s g.adj.size with hlt | hge\n    \u00b7 exact (hf s hlt).1\n    \u00b7 have hsn : s = g.adj.size := by omega\n      have he := hf (g.adj.size - 1) (by omega)\n      have hsucc : g.adj.size - 1 + 1 = g.adj.size := by omega\n      rw [hsucc] at he\n      rw [hsn]\n      exact hwf (f (g.adj.size - 1)) he.1 (f g.adj.size) he.2\n  set F : Fin (g.adj.size + 1) \u2192 Fin g.adj.size :=\n    fun i => \u27e8f i.val, hbound i.val (Nat.lt_succ_iff.mp i.isLt)\u27e9 with hF\n  have hni : \u00ac Function.Injective F := by\n    intro hinj\n    have hcard := Fintype.card_le_of_injective F hinj\n    rw [Fintype.card_fin, Fintype.card_fin] at hcard\n    omega\n  obtain \u27e8x, y, hxy, hne\u27e9 := Function.not_injective_iff.mp hni\n  have hval : f x.val = f y.val := congrArg Fin.val hxy\n  have hxn : x.val \u2264 g.adj.size := Nat.lt_succ_iff.mp x.isLt\n  have hyn : y.val \u2264 g.adj.size := Nat.lt_succ_iff.mp y.isLt\n  have hnev : x.val \u2260 y.val := fun hc => hne (Fin.ext hc)\n  rcases Nat.lt_or_ge x.val y.val with hlt | hge\n  \u00b7 exact cycle_of_repeat g f x.val y.val hlt hyn hf hval\n  \u00b7 have hlt' : y.val < x.val := by omega\n    exact cycle_of_repeat g f y.val x.val hlt' hxn hf hval.symm\n\ntheorem inf_of_cycle (g : CycleGraph) (p : List Nat) (hc : g.is_cycle p) :\n    \u2203 f : Nat \u2192 Nat, \u2200 t, g.has_edge (f t) (f (t + 1)) := by\n  obtain \u27e8\u27e8hpos, hstep\u27e9, hlen, hhl\u27e9 := hc\n  set m := p.length - 1 with hm\n  have hmpos : 0 < m := by omega\n  have h0 : 0 < p.length := by omega\n  have hml : m < p.length := by omega\n  have hlast : p.getD m 0 = p.getD 0 0 := by\n    have hh := hhl\n    rw [List.head?_eq_getElem?, List.getLast?_eq_getElem?, \u2190 hm,\n      List.getElem?_eq_getElem h0, List.getElem?_eq_getElem hml] at hh\n    rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD,\n      List.getElem?_eq_getElem hml, List.getElem?_eq_getElem h0]\n    simp only [Option.getD_some, Option.some_inj] at hh \u22a2\n    exact hh.symm\n  refine \u27e8fun s => p.getD (s % m) 0, ?_\u27e9\n  intro t\n  have hr : t % m < m := Nat.mod_lt _ hmpos\n  by_cases hcase : t % m + 1 < m\n  \u00b7 have hmod : (t + 1) % m = t % m + 1 := by\n      rw [Nat.add_mod, Nat.mod_eq_of_lt (show 1 < m by omega), Nat.mod_eq_of_lt (by omega)]\n    simp only [hmod]\n    exact hstep (t % m) (by omega)\n  \u00b7 have hcase' : t % m + 1 = m := by omega\n    have hmod : (t + 1) % m = 0 := by\n      rcases Nat.lt_or_ge 1 m with h1 | h1\n      \u00b7 rw [Nat.add_mod, Nat.mod_eq_of_lt h1, hcase', Nat.mod_self]\n      \u00b7 have hm1 : m = 1 := by omega\n        rw [hm1]\n        omega\n    simp only [hmod]\n    have hs := hstep (t % m) (by omega)\n    rw [hcase', hlast] at hs\n    exact hs\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem has_cycle_postcond_satisfied (graph : CycleGraph)\n    (h_precond : has_cycle_precond graph) :\n    has_cycle_postcond graph (has_cycle graph h_precond) h_precond := by\n  -- !benchmark @start proof\n  simp only [has_cycle_postcond]\n  apply propext\n  constructor\n  \u00b7 intro h\n    simp only [has_cycle] at h\n    obtain \u27e8u, hu\u27e9 : \u2203 u, u \u2208 cycLayer graph graph.adj.size := by\n      rcases hnil : cycLayer graph graph.adj.size with _ | \u27e8x, t\u27e9\n      \u00b7 rw [hnil] at h; simp at h\n      \u00b7 exact \u27e8x, by simp\u27e9\n    exact cycle_of_hasWalk graph h_precond u ((cyc_layer_iff graph _ u).1 hu)\n  \u00b7 intro h\n    obtain \u27e8p, hc\u27e9 := h\n    obtain \u27e8f, hf\u27e9 := inf_of_cycle graph p hc\n    have hmem : f 0 \u2208 cycLayer graph graph.adj.size :=\n      (cyc_layer_iff graph _ (f 0)).2 (hasWalk_of_inf graph f hf _ 0)\n    simp only [has_cycle]\n    rcases hnil : cycLayer graph graph.adj.size with _ | \u27e8x, t\u27e9\n    \u00b7 rw [hnil] at hmem; simp at hmem\n    \u00b7 simp\n  -- !benchmark @end proof\n",
+            "comment": "`./check.sh` prints **LEAN VERIFIED**.\n\n## What was implemented\n\n**Algorithm** (`has_cycle`, in the `code` marker): `!(cycLayer graph graph.adj.size).isEmpty`.\n\n`cycLayer` (auxcode) is a Kahn-style peeling computation over the adjacency list:\n- layer `0` = all nodes (`List.range n`),\n- layer `k+1` = nodes having some successor in layer `k`.\n\nSo layer `k` is exactly the set of nodes from which a walk with `k` edges starts. The layers shrink monotonically, so a node surviving `n = size` rounds forces a repeated vertex among the `n+1` visited nodes \u2014 i.e. a cycle. It terminates structurally (fixed number of rounds), no visited-set recursion needed, and it's a real graph computation, not enumeration of candidate cycles or a decidability oracle over the postcondition.\n\n**Proof chain** (lemma section):\n- `cyc_layer_iff`: `u \u2208 cycLayer g k \u2194 hasWalk g k u` (the executable layers match the walk predicate).\n- `walkFn_of_hasWalk` + `cycle_of_hasWalk`: from a walk with `n` edges, build `f : \u2115 \u2192 \u2115` along it, bound `f s < n` for `s \u2264 n` (the last node needs `well_formed` \u2014 this is where the precondition is used), then pigeonhole `Fin (n+1) \u2192 Fin n` via non-injectivity, and `cycle_of_repeat` builds the explicit cycle list `(List.range (b-a+1)).map (f \u2218 (a + \u00b7))` and discharges `is_path`, `length > 1`, `head? = getLast?`.\n- `inf_of_cycle` + `hasWalk_of_inf`: from a cycle `p`, the periodic map `s \u21a6 p.getD (s % (p.length-1)) 0` is an infinite walk (wrap-around case uses `head? = getLast?`), giving walks of every length, hence a nonempty layer `n`.\n\nThe postcondition is proved as a genuine `propext` of both directions of `result = true \u2194 graph.graph_has_cycle`.\n\n## Semantic audit\n- Markers all preserved; only `auxcode`, `code`, `lemma`, `proof` edited; no `sorry`/`admit`/axioms/`partial`/`unsafe`.\n- Precondition `well_formed` is genuinely used (bounding the final vertex of the walk); the postcondition is unchanged and proved in full, both soundness and completeness.\n- Edge cases: `size = 0` \u2192 layer 0 is `[]` \u2192 returns `false`, correct since `has_edge` is unsatisfiable. Self-loop `#[#[0]]` \u2192 returns `true`, matching the cycle `[0,0]` (length 2 > 1). Acyclic `#[#[1], #[]]` \u2192 layer 2 empty \u2192 `false`. No helper is a stub (`hasWalk`, `cycAdj`, `cycLayer` all carry real content)."
+        },
+        "verifier_response": {
+            "verified": true,
+            "feedback": "Verified successfully.",
+            "raw": {
+                "stdout": "claude_code_cycle_detection_final_1785911566054.lean:57:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+                "stderr": "",
+                "returncode": 0
+            }
+        },
+        "history": [
+            {
+                "compiler_pass": 1,
+                "verified": true,
+                "verifier_response": {
+                    "verified": true,
+                    "feedback": "Verified successfully.",
+                    "raw": {
+                        "stdout": "claude_code_cycle_detection_final_1785911566054.lean:57:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+                        "stderr": "",
+                        "returncode": 0
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "eb5e339d-1375-4d8a-be7e-e7418c0cb4a9",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 1.19360725,
+                    "duration_ms": 383535,
+                    "duration_api_ms": 374526,
+                    "num_turns": 16,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/cycle_detection/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "budget_usd": 2.0
+                }
+            }
+        ],
+        "tokens": {
+            "input": 311530,
+            "output": 32430,
+            "reasoning": 0
+        },
+        "agent": {
+            "kind": "claude-code",
+            "cli_version": "2.1.220 (Claude Code)",
+            "model": "claude-opus-5",
+            "effort": "medium",
+            "session_id": "eb5e339d-1375-4d8a-be7e-e7418c0cb4a9",
+            "subtype": "success",
+            "is_error": false,
+            "total_cost_usd": 1.19360725,
+            "duration_ms": 383535,
+            "duration_api_ms": 374526,
+            "num_turns": 16,
+            "returncode": 0,
+            "timed_out": false,
+            "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/cycle_detection/agent_events.jsonl",
+            "pass_number": 1,
+            "prompt_kind": "initial",
+            "budget_usd": 2.0,
+            "compiler_passes": 1,
+            "sessions": [
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "eb5e339d-1375-4d8a-be7e-e7418c0cb4a9",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 1.19360725,
+                    "duration_ms": 383535,
+                    "duration_api_ms": 374526,
+                    "num_turns": 16,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/cycle_detection/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "budget_usd": 2.0
+                }
+            ]
+        }
+    },
+    "parsed": true,
+    "verdict": true,
+    "analysis": "The student provides a genuine, terminating cycle-detection implementation rather than bypassing verification.\n\nThe algorithm computes `cycLayer graph k`, the vertices from which a directed walk of exactly `k` edges exists. It returns true precisely when some vertex admits a walk of length `|V|`. In a finite, well-formed graph, such a walk repeats a vertex and therefore contains a directed cycle. Conversely, a directed cycle can be traversed repeatedly, yielding a walk of length `|V|`. Thus this is a valid finite-graph cycle-detection algorithm, although it is not the more typical DFS recursion with a visited/active set.\n\nTermination is immediate from structural recursion on the natural-number layer count. The implementation performs only `graph.adj.size` rounds, so cycles cannot cause nontermination.\n\nThe proof establishes both required directions:\n- A nonempty final layer gives a length-`|V|` walk; pigeonhole reasoning produces a repeated vertex and hence a cycle.\n- A cycle is extended to an infinite periodic walk, which implies membership in every finite layer and therefore a true result.\n\nThere are no apparent verification cheats: no `sorry`, `admit`, axioms, empty implementation, or invocation of an existing cycle-detection routine. Standard Mathlib list, array, finite-cardinality, and arithmetic facilities are used only as supporting primitives and proof infrastructure. The cycle algorithm and its correctness argument are implemented explicitly.\n\nThe implementation therefore satisfies the requested semantic behavior and termination requirement.",
+    "semantic_judge": {
+        "model": "gpt-5.6-sol",
+        "temperature": 0.0,
+        "reasoning_effort": "none"
+    }
+}

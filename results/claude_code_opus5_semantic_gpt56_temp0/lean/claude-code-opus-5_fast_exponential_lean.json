@@ -1,0 +1,107 @@
+{
+    "verified": true,
+    "details": {
+        "rounds": 17,
+        "llm_response": {
+            "code": "import Mathlib\n\n-- Precondition definitions\n@[reducible, simp]\ndef exponentiation_precond (b e : UInt64) : Prop :=\n  -- !benchmark @start precond\n  b.toNat ^ e.toNat \u2264 (2 ^ 64 - 1)\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n/-- Exponentiation by squaring.  `res` is the accumulator, `b` the running base and\n`e` the remaining exponent.  The base is squared only when the remaining halved\nexponent is still nonzero, so no useless (possibly overflowing) squaring happens. -/\ndef exponentiation_by_squaring_aux (res b : UInt64) (e : Nat) : UInt64 :=\n  if h : e = 0 then res\n  else if e / 2 = 0 then (if e % 2 = 1 then res * b else res)\n  else exponentiation_by_squaring_aux (if e % 2 = 1 then res * b else res) (b * b) (e / 2)\ntermination_by e\ndecreasing_by exact Nat.div_lt_self (Nat.pos_of_ne_zero h) (by norm_num)\n-- !benchmark @end auxcode\n\n-- Main function definitions\ndef exponentiation (b e : UInt64) (h_precond : exponentiation_precond b e) : UInt64 :=\n  -- !benchmark @start code\n  exponentiation_by_squaring_aux 1 b e.toNat\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef exponentiation_postcond (b e : UInt64) (result : UInt64) (h_precond : exponentiation_precond b e) : Prop :=\n  -- !benchmark @start postcond\n  result.toNat = b.toNat ^ e.toNat\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\n/-- Multiplication of `UInt64` is exact as long as the `Nat` product fits. -/\ntheorem umul_toNat {x y : UInt64} (h : x.toNat * y.toNat < 2 ^ 64) :\n    (x * y).toNat = x.toNat * y.toNat := by\n  rw [UInt64.toNat_mul]\n  exact Nat.mod_eq_of_lt h\n\n/-- Accumulator safety: `res * b \u2264 res * b ^ e` whenever `1 \u2264 e`. -/\ntheorem acc_le_pow (r x e : Nat) (he : 1 \u2264 e) : r * x \u2264 r * x ^ e := by\n  rcases Nat.eq_zero_or_pos x with h | h\n  \u00b7 subst h; simp\n  \u00b7 exact Nat.mul_le_mul_left r (by simpa using Nat.pow_le_pow_right h he)\n\n/-- Squaring safety: `x ^ 2 \u2264 r * x ^ e` whenever `2 \u2264 e` and `r = 0 \u2192 x = 0`. -/\ntheorem sq_le_pow (r x e : Nat) (he : 2 \u2264 e) (hr : r = 0 \u2192 x = 0) :\n    x ^ 2 \u2264 r * x ^ e := by\n  rcases Nat.eq_zero_or_pos x with h | h\n  \u00b7 subst h; simp\n  \u00b7 rcases Nat.eq_zero_or_pos r with h0 | h0\n    \u00b7 exact absurd (hr h0) (by omega)\n    \u00b7 calc x ^ 2 \u2264 x ^ e := Nat.pow_le_pow_right h he\n        _ = 1 * x ^ e := (one_mul _).symm\n        _ \u2264 r * x ^ e := Nat.mul_le_mul_right _ h0\n\n/-- The conservation invariant, purely arithmetically:\n`(res or res*b) * b ^ (2 * (e / 2)) = res * b ^ e`. -/\ntheorem step_conservation (res b e : Nat) :\n    (if e % 2 = 1 then res * b else res) * b ^ (2 * (e / 2)) = res * b ^ e := by\n  rcases Nat.mod_two_eq_zero_or_one e with h | h\n  \u00b7 rw [if_neg (by omega), show 2 * (e / 2) = e from by omega]\n  \u00b7 rw [if_pos h, show 2 * (e / 2) = e - 1 from by omega, mul_assoc, \u2190 pow_succ']\n    congr 2\n    omega\n\n/-- Main correctness/safety lemma for the auxiliary loop, by strong induction on the\nremaining exponent.  The hypotheses are the conservation bound (which encodes overflow\nsafety) and the fact that a zero accumulator can only come from a zero base. -/\ntheorem exponentiation_by_squaring_aux_spec :\n    \u2200 (e : Nat) (res b : UInt64),\n      res.toNat * b.toNat ^ e \u2264 2 ^ 64 - 1 \u2192\n      (res.toNat = 0 \u2192 b.toNat = 0) \u2192\n      (exponentiation_by_squaring_aux res b e).toNat = res.toNat * b.toNat ^ e := by\n  intro e\n  induction e using Nat.strong_induction_on with\n  | _ e ih =>\n    intro res b hbound hzero\n    rw [exponentiation_by_squaring_aux]\n    by_cases he : e = 0\n    \u00b7 subst he; simp\n    \u00b7 have he1 : 1 \u2264 e := Nat.pos_of_ne_zero he\n      -- accumulator update never overflows\n      have hmul : (res * b).toNat = res.toNat * b.toNat := by\n        refine umul_toNat (lt_of_le_of_lt (le_trans (acc_le_pow _ _ e he1) hbound) ?_)\n        norm_num\n      have hres : (if e % 2 = 1 then res * b else res).toNat\n          = (if e % 2 = 1 then res.toNat * b.toNat else res.toNat) := by\n        by_cases hp : e % 2 = 1 <;> simp [hp, hmul]\n      rw [dif_neg he]\n      by_cases hd : e / 2 = 0\n      \u00b7 rw [if_pos hd, hres]\n        have : e = 1 := by omega\n        subst this\n        simp\n      \u00b7 rw [if_neg hd]\n        have he2 : 2 \u2264 e := by omega\n        -- squaring never overflows\n        have hsq : (b * b).toNat = b.toNat * b.toNat := by\n          refine umul_toNat (lt_of_le_of_lt ?_ (by norm_num : (2:Nat) ^ 64 - 1 < 2 ^ 64))\n          refine le_trans ?_ hbound\n          have := sq_le_pow res.toNat b.toNat e he2 hzero\n          simpa [pow_two] using this\n        have hcons : (if e % 2 = 1 then res.toNat * b.toNat else res.toNat)\n            * (b.toNat * b.toNat) ^ (e / 2) = res.toNat * b.toNat ^ e := by\n          have := step_conservation res.toNat b.toNat e\n          rw [\u2190 this, \u2190 pow_two, \u2190 pow_mul]\n        rw [ih (e / 2) (Nat.div_lt_self he1 (by norm_num)) _ _ ?_ ?_]\n        \u00b7 rw [hres, hsq, hcons]\n        \u00b7 rw [hres, hsq, hcons]; exact hbound\n        \u00b7 intro h0\n          rw [hsq]\n          rw [hres] at h0\n          by_cases hp : e % 2 = 1\n          \u00b7 simp only [hp, if_true] at h0\n            rcases Nat.mul_eq_zero.mp h0 with h | h\n            \u00b7 simp [hzero h]\n            \u00b7 simp [h]\n          \u00b7 simp only [hp, if_false] at h0\n            simp [hzero h0]\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem exponentiation_postcond_satisfied (b e : UInt64)\n    (h_precond : exponentiation_precond b e) :\n    exponentiation_postcond b e (exponentiation b e h_precond) h_precond := by\n  -- !benchmark @start proof\n  unfold exponentiation exponentiation_postcond\n  rw [exponentiation_by_squaring_aux_spec e.toNat 1 b (by simpa using h_precond) (by simp)]\n  simp\n  -- !benchmark @end proof\n",
+            "comment": "`LEAN VERIFIED`.\n\n## Semantic audit against TASK.md\n\n**Algorithm** \u2014 `exponentiation_by_squaring_aux res b e` (Solution.lean:14-19) is genuine exponentiation by squaring: it halves the exponent each step (`e / 2`), multiplies the accumulator in on odd bits, and squares the base. Logarithmic in `e`. Required name `exponentiation_by_squaring_aux` is present and is what `exponentiation` calls (with `res = 1`).\n\n**(1) Functional correctness** \u2014 the postcondition `result.toNat = b.toNat ^ e.toNat` (Nat.pow) is proved, not weakened.\n\n**(2) Algebraic lemma** \u2014 `step_conservation` proves `(if e%2=1 then res*b else res) * b^(2*(e/2)) = res * b^e`, and `(b\u00b2)^k = b^(2k)` is used via `pow_two`/`pow_mul` in `hcons`. Real proofs, no placeholders.\n\n**(3) Conservation invariant** \u2014 the strong-induction statement `exponentiation_by_squaring_aux_spec` *is* the invariant `current_res \u00d7 current_base^current_exp = original_base^original_exp`, carried through the recursion.\n\n**(4) Overflow safety** \u2014 `UInt64` multiplication wraps mod 2^64, so `umul_toNat` demands a proof that the `Nat` product is `< 2^64` at every use:\n- accumulator update: discharged by `acc_le_pow` (`res*b \u2264 res*b^e` for `e \u2265 1`) plus the invariant bound;\n- squaring: discharged by `sq_le_pow` (`b\u00b2 \u2264 res*b^e` for `e \u2265 2`).\n\nThis is real safety, not avoided by computing in `Nat`.\n\n**(5) Intermediate overflow / unnecessary squaring** \u2014 the `if e / 2 = 0 then \u2026` branch returns before squaring, so the base is never squared when the remaining exponent is exhausted. This is what makes the `e \u2265 2` hypothesis of `sq_le_pow` available.\n\n**Edge cases** \u2014 `e = 0` returns `1` (`= b^0`, including `0^0 = 1`); `b = 0, e > 0` returns `0`; `e = 1` hits the no-squaring branch. The auxiliary hypothesis `res.toNat = 0 \u2192 b.toNat = 0` is what makes the `b = 0` case work without assuming `res \u2265 1`.\n\n**Prohibitions** \u2014 no `sorry`/`admit`/axioms/`partial`/`unsafe`/`decide`-over-target/`Nat.find`/`Classical.choose`; all recursion is well-founded (`termination_by e`). All four markers preserved; only the four editable sections were changed."
+        },
+        "verifier_response": {
+            "verified": true,
+            "feedback": "Verified successfully.",
+            "raw": {
+                "stdout": "claude_code_fast_exponential_final_1785914408604.lean:23:35: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_fast_exponential_final_1785914408604.lean:30:62: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+                "stderr": "",
+                "returncode": 0
+            }
+        },
+        "history": [
+            {
+                "compiler_pass": 1,
+                "verified": true,
+                "verifier_response": {
+                    "verified": true,
+                    "feedback": "Verified successfully.",
+                    "raw": {
+                        "stdout": "claude_code_fast_exponential_final_1785914408604.lean:23:35: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_fast_exponential_final_1785914408604.lean:30:62: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+                        "stderr": "",
+                        "returncode": 0
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "923e5b66-8795-48d8-b912-4d70e0c3068c",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.60748825,
+                    "duration_ms": 198487,
+                    "duration_api_ms": 184968,
+                    "num_turns": 18,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/fast_exponential/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "budget_usd": 2.0
+                }
+            }
+        ],
+        "tokens": {
+            "input": 216790,
+            "output": 14944,
+            "reasoning": 0
+        },
+        "agent": {
+            "kind": "claude-code",
+            "cli_version": "2.1.220 (Claude Code)",
+            "model": "claude-opus-5",
+            "effort": "medium",
+            "session_id": "923e5b66-8795-48d8-b912-4d70e0c3068c",
+            "subtype": "success",
+            "is_error": false,
+            "total_cost_usd": 0.60748825,
+            "duration_ms": 198487,
+            "duration_api_ms": 184968,
+            "num_turns": 18,
+            "returncode": 0,
+            "timed_out": false,
+            "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/fast_exponential/agent_events.jsonl",
+            "pass_number": 1,
+            "prompt_kind": "initial",
+            "budget_usd": 2.0,
+            "compiler_passes": 1,
+            "sessions": [
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "923e5b66-8795-48d8-b912-4d70e0c3068c",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.60748825,
+                    "duration_ms": 198487,
+                    "duration_api_ms": 184968,
+                    "num_turns": 18,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/fast_exponential/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "budget_usd": 2.0
+                }
+            ]
+        }
+    },
+    "parsed": true,
+    "verdict": true,
+    "analysis": "The student\u2019s implementation satisfies the requested semantic requirements.\n\n- **Required algorithm:** `exponentiation` calls `exponentiation_by_squaring_aux` with accumulator `1`, base `b`, and exponent `e.toNat`.\n- **Exponentiation by squaring:** The auxiliary function repeatedly halves the exponent, conditionally multiplies the accumulator for odd exponents, and squares the running base. Thus it follows the intended logarithmic-recursion algorithm rather than using linear iteration or a built-in power operation for computation.\n- **Avoidance of unnecessary squaring:** When `e / 2 = 0`, the function returns the final accumulator update directly and does not square the base. This addresses the requirement that a potentially overflowing square be avoided when no longer needed.\n- **Functional correctness proof:** `exponentiation_by_squaring_aux_spec` establishes that the auxiliary result equals `res.toNat * b.toNat ^ e`; instantiating `res = 1` yields the required `b.toNat ^ e.toNat`.\n- **Conservation invariant:** `step_conservation` and its use in the auxiliary proof explicitly establish preservation of the accumulator/base/exponent relationship.\n- **Overflow safety:** `umul_toNat` proves exactness of `UInt64` multiplication under a fitting bound. The proof separately derives bounds for accumulator multiplication and base squaring before using their `UInt64` results.\n- **Algebraic support:** The proof includes and uses the necessary power identities, including rewriting a squared base raised to the halved exponent.\n- **No verification tricks:** There is no `sorry`, `admit`, axiom, empty implementation, or delegation to an existing exponentiation routine. The implementation and proof are supplied directly.\n\nThe auxiliary function\u2019s special branch for `e / 2 = 0` is a valid optimization of exponentiation by squaring and is important for overflow safety rather than a deviation from the required algorithm.",
+    "semantic_judge": {
+        "model": "gpt-5.6-sol",
+        "temperature": 0.0,
+        "reasoning_effort": "none"
+    }
+}

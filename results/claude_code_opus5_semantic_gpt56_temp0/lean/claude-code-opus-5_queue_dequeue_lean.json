@@ -1,0 +1,107 @@
+{
+    "verified": true,
+    "details": {
+        "rounds": 14,
+        "llm_response": {
+            "code": "import Mathlib\n\nstructure VerifiableQueue (T : Type) where\n  data : List T\n\ndef VerifiableQueue.view {T} (q : VerifiableQueue T) : List T :=\n  q.data\n\ndef VerifiableQueue.is_valid {T} (q : VerifiableQueue T) : Prop :=\n  True\n\n-- Precondition definitions\n@[reducible, simp]\ndef dequeue_precond {T} (q : VerifiableQueue T) : Prop :=\n  -- !benchmark @start precond\n  q.is_valid \u2227 q.view.length > 0\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\ntheorem VerifiableQueue.data_ne_nil {T} {q : VerifiableQueue T}\n    (h : dequeue_precond q) : q.data \u2260 [] := by\n  have h2 := h.2\n  simp [VerifiableQueue.view] at h2\n  exact List.ne_nil_of_length_pos h2\n-- !benchmark @end auxcode\n\n-- Main function definition\n-- Returns the projected pair (val, new_queue)\ndef dequeue {T} (q : VerifiableQueue T)\n    (h_precond : dequeue_precond q) : T \u00d7 VerifiableQueue T :=\n  -- !benchmark @start code\n  (q.data.head (VerifiableQueue.data_ne_nil h_precond), \u27e8q.data.tail\u27e9)\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef dequeue_postcond {T} (q : VerifiableQueue T) (result : T \u00d7 VerifiableQueue T)\n    (_ : dequeue_precond q) : Prop :=\n  -- !benchmark @start postcond\n  let (val, new_queue) := result\n  new_queue.is_valid \u2227\n  -- Concise & Proof-Free: The old queue consists of the return value followed by the new queue.\n  q.view = val :: new_queue.view\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem dequeue_postcond_satisfied {T} (q : VerifiableQueue T)\n    (h_precond : dequeue_precond q) :\n    dequeue_postcond q (dequeue q h_precond) h_precond := by\n  -- !benchmark @start proof\n  refine \u27e8trivial, ?_\u27e9\n  have h := VerifiableQueue.data_ne_nil h_precond\n  show q.view = q.data.head h :: (\u27e8q.data.tail\u27e9 : VerifiableQueue T).view\n  simpa [VerifiableQueue.view] using (List.head_cons_tail q.data h).symm\n  -- !benchmark @end proof\n",
+            "comment": "`./check.sh` prints **LEAN VERIFIED** (only two style linter warnings, one of which is in the teacher's own `is_valid`).\n\nSemantic audit against TASK.md:\n\n- **Algorithm**: `dequeue` returns `(q.data.head _, \u27e8q.data.tail\u27e9)` \u2014 the element at index 0 and the tail, preserving the relative order of remaining elements. This is genuine FIFO list surgery, no oracle/spec trickery, no `Nat.find`/`Classical.choose`/`decide`.\n- **Precondition use**: the function accepts the proof of non-emptiness and consumes it via `VerifiableQueue.data_ne_nil`, which derives `q.data \u2260 []` from `q.view.length > 0` \u2014 so `List.head`'s totality obligation is discharged from the actual precondition, not bypassed with a default value. The empty-queue case is therefore unreachable by typing rather than silently returning junk.\n- **Helpers**: the one auxcode helper is a real proof (`0 < length \u2192 \u2260 []`); nothing is stubbed as `:= 0` or `:= True`. The `is_valid`/`view` definitions are the teacher's and unchanged.\n- **Postcondition**: proved as stated, `q.view = val :: new_queue.view`, from `List.head_cons_tail`. Element type is a generic `T`, so value-sign edge cases (e.g. all-negative numeric inputs) are not even expressible \u2014 no branch depends on element values, only on list shape.\n- **Markers**: all four editable regions (`auxcode`, `code`, `lemma`, `proof`) plus `precond`/`postcond` markers intact; `lemma` left empty. No `sorry`, `admit`, axioms, `partial`, `unsafe`, or `implemented_by` anywhere. Only `Solution.lean` was modified."
+        },
+        "verifier_response": {
+            "verified": true,
+            "feedback": "Verified successfully.",
+            "raw": {
+                "stdout": "claude_code_queue_dequeue_final_1785925505913.lean:9:34: warning: unused variable `q`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_queue_dequeue_final_1785925505913.lean:57:2: warning: try 'simp' instead of 'simpa'\n\nNote: This linter can be disabled with `set_option linter.unnecessarySimpa false`\n",
+                "stderr": "",
+                "returncode": 0
+            }
+        },
+        "history": [
+            {
+                "compiler_pass": 1,
+                "verified": true,
+                "verifier_response": {
+                    "verified": true,
+                    "feedback": "Verified successfully.",
+                    "raw": {
+                        "stdout": "claude_code_queue_dequeue_final_1785925505913.lean:9:34: warning: unused variable `q`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_queue_dequeue_final_1785925505913.lean:57:2: warning: try 'simp' instead of 'simpa'\n\nNote: This linter can be disabled with `set_option linter.unnecessarySimpa false`\n",
+                        "stderr": "",
+                        "returncode": 0
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "fb6c9ff4-3f5c-4944-ba17-0fd85fcb169a",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.220939,
+                    "duration_ms": 72255,
+                    "duration_api_ms": 63674,
+                    "num_turns": 15,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/queue_dequeue/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "budget_usd": 2.0
+                }
+            }
+        ],
+        "tokens": {
+            "input": 133871,
+            "output": 3602,
+            "reasoning": 0
+        },
+        "agent": {
+            "kind": "claude-code",
+            "cli_version": "2.1.220 (Claude Code)",
+            "model": "claude-opus-5",
+            "effort": "medium",
+            "session_id": "fb6c9ff4-3f5c-4944-ba17-0fd85fcb169a",
+            "subtype": "success",
+            "is_error": false,
+            "total_cost_usd": 0.220939,
+            "duration_ms": 72255,
+            "duration_api_ms": 63674,
+            "num_turns": 15,
+            "returncode": 0,
+            "timed_out": false,
+            "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/queue_dequeue/agent_events.jsonl",
+            "pass_number": 1,
+            "prompt_kind": "initial",
+            "budget_usd": 2.0,
+            "compiler_passes": 1,
+            "sessions": [
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "fb6c9ff4-3f5c-4944-ba17-0fd85fcb169a",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.220939,
+                    "duration_ms": 72255,
+                    "duration_api_ms": 63674,
+                    "num_turns": 15,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_opus5/queue_dequeue/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "budget_usd": 2.0
+                }
+            ]
+        }
+    },
+    "parsed": true,
+    "verdict": true,
+    "analysis": "The student implements the queue as a `List T`, preserving the sequence model required by the problem.\n\nThe `dequeue` function:\n- Accepts a queue and a proof of the stated non-emptiness precondition.\n- Derives a proof that the underlying list is not empty.\n- Returns `q.data.head ...` as the dequeued value.\n- Returns a new queue containing `q.data.tail`.\n\nThus, it removes exactly the first element and leaves all remaining elements in their original relative order. The theorem proves the expected decomposition `q.view = val :: new_queue.view`, which establishes the FIFO behavior for dequeue.\n\nThe implementation is direct and from scratch. It does not use `sorry`, `admit`, axioms, an empty body, or an unrelated preverified queue operation. Using standard list primitives `head`, `tail`, and the elementary theorem `List.head_cons_tail` is appropriate and does not circumvent the requested implementation.",
+    "semantic_judge": {
+        "model": "gpt-5.6-sol",
+        "temperature": 0.0,
+        "reasoning_effort": "none"
+    }
+}
