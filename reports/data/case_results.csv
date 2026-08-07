@@ -685,22 +685,22 @@ gpt-5.5,GPT-5.5,bst_search,True,False,True,True,True,True,True,"The student’s 
 
 Key semantic checks:
 
-1. **Did they implement a BST structure?**  
+1. **Did they implement a BST structure?**
    Yes. They define:
    - `Empty`
    - `Node : Int → BinarySearchTree → BinarySearchTree → BinarySearchTree`
 
-2. **Did they represent the mathematical set of the tree?**  
+2. **Did they represent the mathematical set of the tree?**
    Yes. `view` maps a tree to a `Set Int` by taking the union of left subtree, right subtree, and the node value.
 
-3. **Did they encode the BST invariant required by the problem?**  
+3. **Did they encode the BST invariant required by the problem?**
    Yes. `is_bst` states:
    - every element in the left subtree is `< v`
    - left subtree is a BST
    - every element in the right subtree is `> v`
    - right subtree is a BST
 
-4. **Did they implement the required search algorithm, rather than some unrelated or cheating approach?**  
+4. **Did they implement the required search algorithm, rather than some unrelated or cheating approach?**
    Yes. The `search` function is the standard naive BST search:
    - if empty, return `false`
    - compare target with root
@@ -710,13 +710,13 @@ Key semantic checks:
 
    This matches the natural language requirement.
 
-5. **Did they exploit the specification by using set membership directly as the implementation of search?**  
+5. **Did they exploit the specification by using set membership directly as the implementation of search?**
    No. Although they define decidability of membership in `view`, the actual `search` implementation does not use `v ∈ view t` to compute the result. It performs explicit structural recursion and comparisons, which is what is expected.
 
-6. **Any signs of cheating (`sorry`, `admit`, empty bodies, relying on unimplemented external verified search)?**  
+6. **Any signs of cheating (`sorry`, `admit`, empty bodies, relying on unimplemented external verified search)?**
    No. There is no `sorry`, `admit`, placeholder body, or call to a pre-existing BST search function. The proof is fully written, and the implementation is from scratch.
 
-7. **Did they verify the correct property?**  
+7. **Did they verify the correct property?**
    Yes. The theorem proves the returned boolean equals membership in `view`, under the BST precondition. This matches the problem statement semantically.
 
 Potential minor concern:
@@ -2948,7 +2948,7 @@ gpt-5.5,GPT-5.5,llrbt_rotateright,True,False,True,True,False,False,False,"The st
 
 However, the natural language description is more specific than just “implement some right rotation.” It requires a fixup rotation for an LLRBT under the precondition:
 
-1. the node has a left child that is Red, and  
+1. the node has a left child that is Red, and
 2. that left child also has a left child that is Red (double red on left).
 
 The student’s implementation only requires that the left child is red:
@@ -4199,7 +4199,7 @@ Reasoning:
    - no `sorry`, `admit`, or placeholders,
    - no empty bodies,
    - no reliance on an external built-in quicksort.
-   
+
    So the issue is not cheating; the issue is implementing the wrong algorithm.
 
 Therefore, the answer is semantically not acceptable for this problem because it implements insertion sort instead of quicksort.","The student’s submission does not satisfy the semantic requirement from the natural language description.
@@ -5791,24 +5791,24 @@ So this fails both because:
 - it does not implement the required algorithmic behavior (path compression), and
 - it uses `sorry`, which is disallowed.","The answer does not satisfy the semantic requirements.
 
-1. **No path compression is implemented.**  
+1. **No path compression is implemented.**
    The required `find` operation must update parent pointers along the path to the representative. Instead, the implementation is:
    ```lean
    (spec_find uf i, uf)
    ```
    It returns the original `uf` unchanged. Therefore, future lookups are not made faster or closer to the root.
 
-2. **It uses the ghost specification as the executable implementation.**  
+2. **It uses the ghost specification as the executable implementation.**
    Rather than implementing recursive traversal and rebuilding/updating the parent list, `find` directly calls `spec_find`. This bypasses the intended task of implementing and verifying Union-Find’s Find algorithm from scratch.
 
-3. **It contains an explicit `sorry`.**  
+3. **It contains an explicit `sorry`.**
    The termination proof for `spec_find` is:
    ```lean
    decreasing_by sorry
    ```
    The problem explicitly disallows `sorry`/`admit`. Compilation succeeds only because Lean accepts this unproved obligation.
 
-4. **The proof is trivial because the data structure is unchanged.**  
+4. **The proof is trivial because the data structure is unchanged.**
    Stability, validity, length, and rank preservation are all proved by reflexivity or by reusing the precondition. This verifies an identity update, not a path-compressing Find operation.
 
 Although the returned value is defined to equal `spec_find uf i`, the required algorithmic behavior—recursive Find with parent-pointer path compression—is absent, and an admitted proof is used."
@@ -6875,13 +6875,13 @@ This is exactly the standard Zig-Zig transformation for the case “X is left ch
 
 On the semantic requirements:
 
-1. **Set preservation**  
+1. **Set preservation**
    They explicitly prove `view` is preserved by a direct lemma `zigzig_view_preserved`.
 
-2. **BST invariant preservation**  
+2. **BST invariant preservation**
    They provide a nontrivial proof `zigzig_bst_preserved` showing the rotated tree remains a BST assuming the original tree is a BST.
 
-3. **Structural correctness**  
+3. **Structural correctness**
    The implementation itself has the correct structure:
    - `x` becomes the new root,
    - `p` becomes the right child of `x`,
@@ -8541,7 +8541,7 @@ gpt-5.6-sol,GPT-5.6-sol,llrbt_rotateright,True,False,True,True,False,False,True,
 
 However, the natural language problem is specifically about implementing and verifying the LLRBT right-fixup rotation for the **Double Red on Left** case, with precondition:
 
-1. the node has a left child that is Red, and  
+1. the node has a left child that is Red, and
 2. that left child also has a left child that is Red.
 
 The student's implementation only requires:
@@ -8637,16 +8637,16 @@ The implemented function `solve_longest_common_subsequence` simply returns `lcs_
 
 Now for the important semantic/cheating checks:
 
-1. **Did the student implement the required algorithm?**  
+1. **Did the student implement the required algorithm?**
    The natural language description asks to implement the LCS algorithm and verify correctness, with postcondition that the result equals the standard recursive LCS specification. The student’s implementation is literally that recursive specification. This satisfies the required semantics.
 
-2. **Did the student use a forbidden built-in/external algorithm?**  
+2. **Did the student use a forbidden built-in/external algorithm?**
    No. There is no call to any built-in LCS function or external library implementation.
 
-3. **Did the student use proof cheats like `sorry`, `admit`, empty bodies, or unimplemented placeholders?**  
+3. **Did the student use proof cheats like `sorry`, `admit`, empty bodies, or unimplemented placeholders?**
    No. There is no `sorry`, `admit`, or placeholder body.
 
-4. **Did the student evade implementation by making the solver a trivial wrapper around an already provided verified function without implementing it?**  
+4. **Did the student evade implementation by making the solver a trivial wrapper around an already provided verified function without implementing it?**
    They defined `lcs_spec` themselves in the submission. So they are not relying on an external pre-verified LCS implementation.
 
 One possible concern is that `lcs_spec` is a direct recursive definition over two lists, and in Lean this kind of definition may not be accepted unless the termination checker can justify it. However, the prompt explicitly says the student answer passes compilation, so we should not challenge that.
@@ -11320,20 +11320,20 @@ So this is both:
 - algorithmically incorrect relative to the required ""find with path compression"", and
 - using a forbidden placeholder (`sorry`).","The answer does not satisfy the semantic requirements.
 
-1. **No path compression is implemented.**  
+1. **No path compression is implemented.**
    The required `find` operation must update parent pointers along the path to the representative. Instead, the implementation is:
    ```lean
    (spec_find uf i, uf)
    ```
    It returns the original `uf` unchanged. Therefore, no parent pointer is modified and future lookups are not made closer to the root.
 
-2. **The implementation directly uses the ghost specification.**  
+2. **The implementation directly uses the ghost specification.**
    Rather than implementing recursive traversal and rebuilding/updating the parent list, `find` simply calls `spec_find`. This bypasses the intended from-scratch implementation of the Union-Find operation.
 
-3. **The proof succeeds only because the data structure is unchanged.**  
+3. **The proof succeeds only because the data structure is unchanged.**
    Validity, logical stability, length preservation, and rank preservation are immediate because `new_uf = uf`. This does not establish the required operational behavior of path compression.
 
-4. **The submission contains `sorry`.**  
+4. **The submission contains `sorry`.**
    The termination proof for `spec_find` is:
    ```lean
    decreasing_by sorry
@@ -11497,12 +11497,12 @@ What the problem requires:
 - and not cheat with placeholders or built-ins.
 
 What the student did:
-1. **Core algorithm**  
+1. **Core algorithm**
    They define
    ```lean
    def lbAux (seq : Array Int) (target : Int) (lo hi : Nat) : Nat := ...
    ```
-   which recursively maintains a search interval `[lo, hi)`.  
+   which recursively maintains a search interval `[lo, hi)`.
    - If `lo < hi`, they compute `mid = (lo + hi) / 2`.
    - If `seq[mid] < target`, they recurse on `[mid+1, hi)`.
    - Otherwise, they recurse on `[lo, mid)`.
@@ -11510,17 +11510,17 @@ What the student did:
 
    This is exactly the standard lower-bound binary search scheme.
 
-2. **Correct return convention**  
+2. **Correct return convention**
    The top-level function calls:
    ```lean
    lbAux seq target 0 seq.size
    ```
    so if no element is large enough, the recursion can end at `seq.size`, which matches the required behavior.
 
-3. **Complexity / algorithmic approach**  
+3. **Complexity / algorithmic approach**
    The interval is halved each step by splitting at the midpoint, so this is the intended recursive `O(log N)` algorithm, not a linear scan or another different algorithm.
 
-4. **No cheating**  
+4. **No cheating**
    I see no use of:
    - `sorry`,
    - `admit`,
@@ -11530,7 +11530,7 @@ What the student did:
 
    The proof is built from their own recursive function and lemma.
 
-5. **From-scratch implementation**  
+5. **From-scratch implementation**
    They do use Lean/Mathlib infrastructure (`omega`, arithmetic facts, etc.), but not a pre-existing binary search implementation. That is fine.
 
 Minor note:
@@ -12528,32 +12528,32 @@ Although there is no `sorry` or `admit`, using classical existence and choice to
 opus-5-thinking,Opus 5 (thinking),fast_exponential,True,False,True,True,True,True,False,"The student’s submission does implement exponentiation by squaring, and it does so through the required auxiliary function `exponentiation_by_squaring_aux`.
 
 What matches the natural-language requirements:
-1. **Required structure used**:  
+1. **Required structure used**:
    The main function `exponentiation` calls `exponentiation_by_squaring_aux 1 b.toNat e.toNat`, so the required structure is present.
 
-2. **Correct algorithmic idea**:  
+2. **Correct algorithmic idea**:
    The auxiliary function is exactly the standard fast exponentiation pattern:
    - if exponent is 0, return accumulator
    - if exponent is odd, multiply accumulator by base, square the base, halve the exponent
-   - if exponent is even, square the base, halve the exponent  
+   - if exponent is even, square the base, halve the exponent
    This is exponentiation by squaring, not a linear repeated multiplication algorithm.
 
-3. **Logarithmic-time recursive structure**:  
+3. **Logarithmic-time recursive structure**:
    The recursion decreases `e` to `e / 2`, which is the intended logarithmic-time structure.
 
-4. **Correctness proof shape**:  
+4. **Correctness proof shape**:
    The student provides:
    - an algebraic lemma `sq_pow_eq` for `(b*b)^k = b^(2*k)`
    - a conservation/invariant-style theorem `exponentiation_by_squaring_aux_eq` showing the accumulator semantics
-   - a final theorem connecting the implementation to `b^e`  
+   - a final theorem connecting the implementation to `b^e`
    This aligns with the required proof ingredients.
 
-5. **No obvious cheating tricks**:  
+5. **No obvious cheating tricks**:
    There is no use of `sorry`, `admit`, empty bodies, or calling an existing exponentiation routine to replace the implementation. The code is an actual recursive implementation from scratch.
 
 However, there is one important semantic issue with respect to the safety requirement:
 
-6. **Overflow-safety of intermediate UInt64 operations is not really established in the intended way**:  
+6. **Overflow-safety of intermediate UInt64 operations is not really established in the intended way**:
    The natural language explicitly requires proving that “neither the accumulator updates nor the squaring of the base ever cause a `UInt64` overflow,” and specifically that the base is never squared if it would exceed `UInt64` limits, or that such squaring is avoided when unnecessary.
 
    The student avoids this issue by implementing the auxiliary algorithm over `Nat`, not `UInt64`, and only converting to `UInt64` once at the end. This means there are **no intermediate `UInt64` multiplications at all**. So in one sense, overflow of intermediate `UInt64` computations cannot happen. But the problem description strongly suggests that the implementation is supposed to address and verify the safety of the algorithm’s intermediate updates relative to the `UInt64` model, especially the subtle issue of unnecessary squaring. The student’s approach sidesteps that challenge rather than proving that the algorithm’s intermediate `UInt64`-level updates are safe or avoided.
@@ -13096,10 +13096,10 @@ This is not an explicit linear-search implementation over the array. Instead, it
 
 This is problematic for two reasons:
 
-1. **Algorithm requirement violation**  
+1. **Algorithm requirement violation**
    The task asks for a linear search implementation. The code does not define a recursive/iterative scan over indices `0, 1, 2, ...`; it uses `Nat.find` to obtain the minimal witness. Even though mathematically this corresponds to the lower-bound index, it is not the required implementation approach.
 
-2. **Use of an existing powerful function instead of implementing from scratch**  
+2. **Use of an existing powerful function instead of implementing from scratch**
    The instructions explicitly forbid solving the problem by directly calling existing verified/built-in functionality instead of implementing the algorithm. `Nat.find` is exactly such a shortcut: it avoids implementing the search logic.
 
 On the other hand, I do **not** see cheating in the sense of `sorry`, `admit`, empty bodies, or fake placeholders. The proof and definitions are nonempty and genuine Lean code. So the issue is not proof cheating, but failure to implement the specified algorithm.
@@ -13116,13 +13116,13 @@ What the student implemented:
 - This uses Lean’s existing `Nat.find` operator to obtain the least natural number satisfying the predicate.
 
 Why this is not acceptable:
-1. **Not an explicit linear search implementation**  
+1. **Not an explicit linear search implementation**
    The student did not implement the search loop / recursion that scans the array element by element. Instead, they delegated the core algorithmic work to a library mechanism (`Nat.find`).
 
-2. **Uses an existing powerful search primitive**  
+2. **Uses an existing powerful search primitive**
    This falls under the kind of shortcut the problem statement explicitly warns against: using existing functions instead of implementing the algorithm from scratch.
 
-3. **Algorithmic requirement not met**  
+3. **Algorithmic requirement not met**
    Even though the returned value may match the lower-bound specification, the submission does not demonstrate the required linear-search implementation approach.
 
 What is okay:
@@ -13437,19 +13437,19 @@ So semantically, the returned value is exactly the standard recursive LCS value 
 
 Now checking for possible issues relative to the natural-language requirement:
 
-1. **Does it implement LCS?**  
+1. **Does it implement LCS?**
    Yes. It directly uses the standard recursive LCS definition.
 
-2. **Does it satisfy the required algorithmic intent?**  
+2. **Does it satisfy the required algorithmic intent?**
    The problem asks to implement the LCS algorithm and verify correctness, with postcondition that the result equals the standard recursive LCS specification. The student’s implementation is literally that recursive specification, so it matches the intended algorithm at least semantically. There is no evidence they replaced it with an unrelated algorithm.
 
-3. **Is there cheating via `sorry`, `admit`, empty body, or unimplemented placeholders?**  
+3. **Is there cheating via `sorry`, `admit`, empty body, or unimplemented placeholders?**
    No. There is no `sorry`, `admit`, `axiom`, opaque placeholder, or empty implementation body.
 
-4. **Is the student improperly calling an existing library LCS function instead of implementing from scratch?**  
+4. **Is the student improperly calling an existing library LCS function instead of implementing from scratch?**
    No. They define `lcs_spec` themselves and use it directly. `import Mathlib` is present, but no built-in LCS routine is used.
 
-5. **Any concern that they only returned the specification instead of a separate implementation?**  
+5. **Any concern that they only returned the specification instead of a separate implementation?**
    Since the natural language only requires implementing LCS and proving correctness with respect to the recursive specification, directly implementing the recursive specification is acceptable here. There was no extra requirement such as dynamic programming, efficiency, or a distinct executable algorithm separate from the spec.
 
 Therefore, the answer appears to satisfy the semantic requirements and does not use cheating tricks.","The student defines `lcs_spec` using the standard recursive LCS recurrence:
@@ -13695,10 +13695,10 @@ Semantically, this does compute the size of a maximum matching: a matching is ex
 
 But there are two important issues relative to the problem statement:
 
-1. **It is not the intended matching algorithmic approach.**  
+1. **It is not the intended matching algorithmic approach.**
    The natural language description asks to “implement an algorithm to find the Maximum Bipartite Matching” and explicitly mentions verification challenges around a maintained match array and augmenting paths / Berge's lemma. This indicates the expected solution is an actual bipartite matching algorithm (e.g. Kuhn/DFS augmenting paths, Hopcroft–Karp, etc.), not brute-force subset enumeration.
 
-2. **It does not implement the described algorithmic structure.**  
+2. **It does not implement the described algorithmic structure.**
    There is no maintained match array, no search for augmenting paths, and no proof idea corresponding to Berge's lemma. Instead, the student sidesteps the intended algorithmic content by exhaustive search over all subsets of edges. This is mathematically correct for the specification they prove, but it does not satisfy the natural-language requirement to implement the maximum bipartite matching algorithm in the intended sense.
 
 This is not “cheating” in the sense of using placeholders or library calls, but it is still not the required implementation approach when judged against the natural language description.
@@ -13737,15 +13737,15 @@ What the student implemented:
 - This takes the entire underlying list after appending `v` and sorts the whole list in descending order.
 
 Why this is not acceptable:
-1. **Wrong algorithm**  
-   The required operation is heap insertion by local restructuring (append + bubble-up).  
+1. **Wrong algorithm**
+   The required operation is heap insertion by local restructuring (append + bubble-up).
    The student instead performs a full sort of all elements. This is a different algorithm.
 
-2. **Not a heap-specific implementation**  
-   A heap is not represented by a globally sorted array; it only needs the parent/child heap property.  
+2. **Not a heap-specific implementation**
+   A heap is not represented by a globally sorted array; it only needs the parent/child heap property.
    Sorting the entire list is stronger than necessary and bypasses the intended heap push logic.
 
-3. **Uses a library algorithm instead of implementing from scratch**  
+3. **Uses a library algorithm instead of implementing from scratch**
    The student directly calls `List.insertionSort`, an existing library sorting function. The problem is intended to test implementing and verifying the heap push operation itself, not solving it by reducing it to a built-in/library sort.
 
 Cheating/tricks check:
@@ -14365,16 +14365,16 @@ So semantically, for the dequeue behavior itself, the implementation is correct 
 
 This matches the required semantic behavior from the natural language description:
 
-1. **Returns the front element**  
+1. **Returns the front element**
    The front of the logical sequence is index 0 of `view`, and the code returns exactly the head of `rb.view`.
 
-2. **Structural update is the tail of the old view**  
+2. **Structural update is the tail of the old view**
    The new buffer’s view is `rb.view.tail`, which is exactly the old logical sequence with the first element removed, preserving the relative order of the remaining elements.
 
-3. **Capacity unchanged**  
+3. **Capacity unchanged**
    The new ring buffer keeps `capacity := rb.capacity`.
 
-4. **Verification/proof provided**  
+4. **Verification/proof provided**
    The theorem proves the stated postcondition, including that the old view is `val :: new_rb.view`.
 
 As for the ring-buffer-specific implementation requirement: the natural language mentions a fixed-size array and a head pointer, but the student’s representation is only:
@@ -14563,16 +14563,16 @@ opus-5-thinking,Opus 5 (thinking),segmenttree_build,False,True,True,True,False,F
 
 On the semantic side:
 
-1. **Builds a tree for range `[l, r)`**  
+1. **Builds a tree for range `[l, r)`**
    Yes. `buildAux l r` creates `Node.mk 0 l r ...`, and the proved lemmas/postcondition show the root range is exactly `[l, r)`.
 
-2. **Initialized to 0**  
+2. **Initialized to 0**
    Yes. Every constructed node has value `0`, and the proof establishes that the view returns `0` for all in-range indices.
 
-3. **Segment tree structure / invariants**  
+3. **Segment tree structure / invariants**
    Yes, the tree is recursively split into left `[l, mid)` and right `[mid, r)` subranges, with parent value `max left.val right.val`. Since both children are built with value `0`, the max invariant is satisfied.
 
-4. **From scratch implementation**  
+4. **From scratch implementation**
    Yes. No forbidden built-in segment tree or range-max implementation is used.
 
 However, there is a critical issue regarding cheating / incomplete proof obligations:
@@ -15573,7 +15573,7 @@ Minor note:
 
 Overall, the student implemented the required BST delete approach and did not appear to cheat.","The student’s submission does implement a BST datatype, a set-valued model `view`, a BST invariant `is_bst`, and a delete operation `del` together with proofs that:
 
-1. the resulting tree is still a BST (`bst_del`), and  
+1. the resulting tree is still a BST (`bst_del`), and
 2. the resulting model set is the original set minus the deleted value (`view_del`).
 
 On the algorithmic side, the delete implementation is a standard naive BST delete:
@@ -16086,13 +16086,13 @@ This is exactly the standard Zig-Zig / double right rotation for the left-left c
 
 On the semantic requirements:
 
-1. **Set preservation**  
+1. **Set preservation**
    The student proves `view result = view t`.
 
-2. **BST invariant preservation**  
+2. **BST invariant preservation**
    The student proves `is_bst result`.
 
-3. **Structural correctness**  
+3. **Structural correctness**
    The postcondition only explicitly states that `X` becomes the new root, but the actual implementation itself has the correct full structure:
    - root is `X`
    - right child is `P`
@@ -18069,7 +18069,7 @@ def rotate_right_precond (t : Node) : Prop :=
 
 and even comments:
 
-> Only require Left child to be Red.  
+> Only require Left child to be Red.
 > The Double-Red context is checked by the caller (insert), not this helper.
 
 This directly conflicts with the problem statement, which requires the helper itself to be for the double-red-on-left case, i.e. left child red and left-left grandchild red. The task is not just to rotate whenever the left child is red; it is specifically to implement and verify the fixup rotation for the double-left-red violation.
@@ -18558,7 +18558,7 @@ opus-5-no-thinking,Opus 5 (no thinking),maxheap_push,True,False,True,True,False,
 
 However, the natural language requirement is specifically to implement the **Push operation for a binary max-heap** by:
 
-1. inserting the new value at the end, and  
+1. inserting the new value at the end, and
 2. bubbling it up to restore the heap property.
 
 The student does **not** implement that algorithm.
@@ -19748,23 +19748,23 @@ Therefore:
 
 However, the answer does **not** satisfy the semantic requirements as stated, for two independent reasons:
 
-1. **Use of `sorry` (cheating / incomplete verification).**  
+1. **Use of `sorry` (cheating / incomplete verification).**
    The definitions
    - `view`
    - `is_segment_tree`
-   
+
    both contain
    `decreasing_by all_goals sorry`.
-   
+
    This is explicitly one of the forbidden tricks. Even if the file compiles, `sorry` means the student has left proof obligations unresolved and relied on Lean’s placeholder mechanism. That is not an acceptable fully verified solution.
 
-2. **The required implementation approach is not really the segment-tree query algorithm.**  
-   The natural language task asks for the **query operation for a Range Maximum Segment Tree**. A standard segment-tree query should use the tree structure to recursively restrict to relevant subsegments and combine maxima.  
-   
+2. **The required implementation approach is not really the segment-tree query algorithm.**
+   The natural language task asks for the **query operation for a Range Maximum Segment Tree**. A standard segment-tree query should use the tree structure to recursively restrict to relevant subsegments and combine maxima.
+
    Instead, the student defines:
    - `view : Node → Int → Option Int`, which retrieves the value at a single index by descending to a leaf;
    - `query` as `intMaxRange (tva node) ql (qr - ql - 1).toNat`, i.e. it linearly scans every index in `[ql, qr)` and computes the maximum over point queries.
-   
+
    This does use the tree to answer each point lookup, but the overall query is not the intended segment-tree range-query algorithm. It is effectively a brute-force range scan over the interval, not a recursive segment-tree range maximum query over nodes/segments. Since the prompt specifically asks to implement the segment tree query operation, this does not meet the algorithmic requirement from the natural language description.
 
 There is no evidence of calling a built-in segment tree query, so that specific kind of cheating is absent. But the presence of `sorry` alone is already disqualifying, and the algorithmic mismatch reinforces that conclusion.","The submitted `query` computes the maximum by directly enumerating every integer index in `[ql, qr)` through `intMaxRange (tva node) ...`. Although this produces the required range maximum, it does not implement the query operation as a segment-tree traversal: it does not inspect node intervals, exploit stored node maxima, or recursively select/merge relevant subtrees. Thus it is essentially a linear range scan rather than a Range Maximum Segment Tree query.
@@ -20420,13 +20420,13 @@ So the implementation approach is appropriate for topological sort.
 
 On the semantic requirements:
 
-1. **If returning `Some(order)`, produce a valid topological order.**  
+1. **If returning `Some(order)`, produce a valid topological order.**
    The student’s proof structure is aimed at exactly this: the result list is shown to be a permutation of the node set, and edges are shown to go forward in the order. This matches the intended requirement.
 
-2. **If returning `None`, prove the graph contains a cycle.**  
+2. **If returning `None`, prove the graph contains a cycle.**
    The student also addresses this semantically, via lemmas `kahn_none`, `stuck_cycle`, etc., which are intended to derive a cycle when no source exists. This aligns with the problem’s requirement that failure is not spurious.
 
-3. **No cheating / no reliance on hidden implementations.**  
+3. **No cheating / no reliance on hidden implementations.**
    The code is self-contained and proves its own lemmas. It does not use forbidden shortcuts.
 
 The main potential issue is that the implementation uses a simple notion of “incoming from current set” by scanning adjacency lists, and the `none`-case reasoning reconstructs a cycle through custom lemmas rather than a standard graph-theoretic library result. But that is still a legitimate from-scratch implementation and proof strategy, not a semantic violation.
@@ -21599,15 +21599,15 @@ Overall, the student implemented the required naive BST insert and proved the in
 
 Checking against the natural language requirements:
 
-1. **Implements a BST structure**  
+1. **Implements a BST structure**
    Yes. The datatype
    `Empty | Node : Int → BinarySearchTree → BinarySearchTree → BinarySearchTree`
    is a standard BST representation.
 
-2. **Maintains the BST invariant**  
+2. **Maintains the BST invariant**
    Yes. The invariant is explicitly defined so that every element in the left subtree is `< v`, every element in the right subtree is `> v`, and both subtrees are themselves BSTs.
 
-3. **Focus on insert operation**  
+3. **Focus on insert operation**
    Yes. The main algorithm is `insertAux`, which is the standard naive BST insertion:
    - insert into left subtree if `v < w`
    - insert into right subtree if `v > w`
@@ -21615,21 +21615,21 @@ Checking against the natural language requirements:
 
    This matches the expected naive BST insert for a set-like BST.
 
-4. **Proves resulting tree maintains BST invariant**  
+4. **Proves resulting tree maintains BST invariant**
    Yes. The theorem `is_bst_insertAux` establishes exactly that.
 
-5. **Proves new model set is union of old set and inserted value**  
+5. **Proves new model set is union of old set and inserted value**
    Yes. The theorem `view_insertAux` proves
    `view (insertAux t v) = view t ∪ {v}`.
 
-6. **No cheating / no disallowed shortcuts**  
+6. **No cheating / no disallowed shortcuts**
    I do not see any cheating:
    - no `sorry`, `admit`, or placeholders,
    - no empty bodies,
    - no use of a built-in BST/set insertion to avoid implementation,
    - the insertion algorithm is explicitly implemented recursively.
 
-7. **Implements the required algorithm rather than some other one**  
+7. **Implements the required algorithm rather than some other one**
    Yes. This is clearly the naive BST insertion algorithm requested by the problem.
 
 So semantically, the student has satisfied the natural language requirements.","The student implements a conventional naive binary search tree insertion:
@@ -23337,7 +23337,7 @@ Key points:
 Overall, the submission appears to satisfy the semantic requirement: it implements and verifies an unbounded knapsack algorithm from scratch, with no cheating tricks.","The student implements an unbounded-knapsack dynamic program from scratch:
 
 - `knapList` constructs optimal values for capacities from `0` through `capacity`.
-- `candList` considers every item whose positive weight fits, using the recurrence  
+- `candList` considers every item whose positive weight fits, using the recurrence
   `value[i] + optimum(capacity - weight[i])`.
 - Because the same DP table is reused without removing an item, items may be selected repeatedly, as required for unbounded knapsack.
 - `bestAt` takes the maximum candidate, with `0` representing the empty strategy.
@@ -24905,7 +24905,7 @@ There are a few further reasons this does not satisfy the intended requirement:
 1. **Core result is justified by brute force, not push-relabel.**
    The comments explicitly say:
    > “Push-relabel's own optimality is not formally proved here, so the fallback is what carries the proof.”
-   
+
    This is essentially an admission that the verified correctness does not come from the push-relabel implementation.
 
 2. **The final returned value may come entirely from brute-force enumeration.**
