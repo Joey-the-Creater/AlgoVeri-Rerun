@@ -1,9 +1,7 @@
-\documentclass[10pt]{article}
+\documentclass{article}
 
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
-\usepackage{lmodern}
-\usepackage[margin=0.82in]{geometry}
 \usepackage{microtype}
 \usepackage{booktabs}
 \usepackage{longtable}
@@ -13,8 +11,8 @@
 \usepackage{xcolor}
 \usepackage{enumitem}
 \usepackage{listings}
-\usepackage[numbers,sort&compress]{natbib}
 \usepackage[hidelinks]{hyperref}
+\usepackage[preprint]{icml2026}
 
 \newcommand{\model}[1]{\textsf{#1}}
 \newcommand{\task}[1]{\texttt{#1}}
@@ -32,82 +30,106 @@
   showstringspaces=false
 }
 
-\title{Compilation Is Not Semantic Correctness:\\
-An Agentic Rerun and Evaluation Audit of AlgoVeri's Lean Benchmark}
-\author{Joey Li\\\texttt{joeyli.shsid@gmail.com}}
-\date{August 2026}
+\icmltitlerunning{Extending AlgoVeri's Lean Evaluation}
 
 \begin{document}
-\maketitle
+
+\twocolumn[
+  \icmltitle{Beyond the 7.8\% Lean Baseline:\\
+  Extending AlgoVeri with Frontier Models, Coding Agents, and Evaluator Audits}
+
+  \begin{icmlauthorlist}
+    \icmlauthor{Joey Li}{ind}
+  \end{icmlauthorlist}
+  \icmlaffiliation{ind}{Independent Researcher}
+  \icmlcorrespondingauthor{Joey Li}{joeyli.shsid@gmail.com}
+  \icmlkeywords{verified code generation, Lean, coding agents, benchmark evaluation,
+  LLM-as-a-judge, ICML}
+  \vskip 0.3in
+]
+
+\printAffiliationsAndNotice{}
 
 \begin{abstract}
-AlgoVeri evaluates verified code generation for 77 classical algorithms aligned across
-Lean, Dafny, and Verus.  We independently rerun its Lean track with four direct-API
-conditions---\model{GPT-5.5}, \model{GPT-5.6-sol}, and \model{Claude Opus 5} with
-adaptive thinking enabled or disabled---and a separate compiler-using
-\model{Claude Code + Opus 5} condition.  Complete-output direct conditions compile at
-rates between \pct{92.2} and \pct{98.7}, yet only \pct{31.2}--\pct{57.1}
-of the full benchmark receive a semantic pass, depending on generator and judge.
-On a controlled 65-task subset without teacher-provided proof holes, the enhanced
-coding agent compiles 63/65 and receives 53/65 semantic passes from GPT-5.4 at
-temperature zero and 55/65 from GPT-5.6-sol at temperature zero, compared with
-39/65 and 44/65 for the strongest complete direct condition, respectively.
+AlgoVeri established a challenging baseline for verified code generation on 77 aligned
+classical algorithms: its strongest reported Lean system achieved 9.1\% compiler
+verification and 7.8\% full marks after semantic filtering.  We extend that study along
+three axes: newer frontier models, a compiler-using coding agent, and an audit of the
+evaluation pipeline.  Complete-output direct conditions now compile 92.2--98.7\% of
+the Lean tasks, but only 31.2--57.1\% receive full marks, depending on generator and
+semantic judge.  Thus, the dominant bottleneck shifts from constructing a compiling
+Lean artifact to preserving the requested algorithm under an extensional formal
+contract.  On a controlled 65-task subset without teacher-provided proof holes, a
+constrained Claude Code + Opus 5 agent compiles 63/65 tasks and passes 53/65 under
+GPT-5.4 and 55/65 under GPT-5.6-sol at temperature zero, compared with 39/65 and
+44/65 for the strongest complete direct condition.
 
-The rerun also reveals evaluation defects that materially affect interpretation.
-The \task{trie\_search} scaffold contains a duplicate declaration and undefined
-identifier outside model-editable regions.  Twelve tasks contain teacher-owned
-\texttt{sorry} terms explicitly permitted by the generation prompt, while the
-semantic prompt broadly instructs the judge to reject \texttt{sorry}; GPT-5.4 rejects
-all 34 compiled direct-model answers observed on these tasks.  Judge choice remains
-consequential even at temperature zero: GPT-5.4 and GPT-5.6-sol disagree on 22 of
-334 compiled condition--task pairs (\pct{93.4} agreement, Cohen's $\kappa=0.868$).
-Qualitative analysis shows that most compiler-accepted failures use an extensionally
-correct but wrong algorithm, a specification oracle, brute-force enumeration, or a
-verified fallback.  We release all generated programs, three semantic-judge views,
-case-level analyses, a local Lean runner, a coding-agent harness, and an interactive
-audit dashboard.  The results support reporting compilation, algorithmic fidelity,
-output coverage, and judge robustness as separate dimensions rather than treating
-Lean compilation as a sufficient success criterion.
+These results confirm AlgoVeri's algorithmic-fidelity gap, extend its finding that
+frontier systems exploit iterative repair, and revise the characterization of Lean's
+barrier: compilation is no longer the principal failure mode for the evaluated
+frontier systems, while semantic degeneracy remains pervasive.  We additionally find
+that one immutable scaffold is malformed, 12 tasks expose a contradiction between
+teacher-permitted \texttt{sorry} and the judge policy, and two temperature-zero judges
+disagree on 22/334 compiled condition--task pairs.  We release all generations,
+judge views, case-level analyses, an agent harness, and an interactive audit dashboard.
+Our evidence motivates a multi-axis protocol that reports output coverage, formal
+verification, algorithmic fidelity, and evaluator robustness separately.
 \end{abstract}
 
 \section{Introduction}
 
-Large language models can now generate nontrivial formal programs and proofs, but
-evaluation is more delicate than ordinary code generation.  A Lean file may compile
-while implementing a different algorithm, delegating to a library theorem, exploiting
-an underspecified contract, or embedding a nonconstructive oracle.  Conversely, a
-correct student contribution can be penalized for immutable content supplied by the
-benchmark.  These distinctions matter because a compiler answers a syntactic and
-logical question---whether the complete term type-checks---whereas a benchmark may
-intend to measure algorithm identity, implementation quality, and proof authorship.
+Formal verification offers a stronger correctness signal than unit tests: a verifier
+checks a program against a mathematical contract.  Yet a verified program is only as
+informative as that contract.  A generated Lean file can type-check while implementing
+the wrong algorithm, delegating to a library theorem, invoking a nonconstructive
+specification oracle, or retaining an unverified teacher placeholder.  Consequently,
+verified code generation must measure both \emph{formal correctness} and
+\emph{algorithmic fidelity}.
 
-AlgoVeri was introduced to study exactly this verified-code-generation setting on 77
-classical algorithms represented in Lean, Dafny, and Verus\cite{zhao2026algoveri}.
-Its aligned natural-language tasks and contracts make it a valuable testbed for
-separating formal verification from semantic algorithm selection.  The original paper
-reported a best Lean result of \pct{7.8}, emphasizing the difficulty of explicit proof
-construction.  Since then, newer reasoning models and tool-using coding agents have
-made it useful to revisit both capability and measurement validity.
+AlgoVeri introduced an unusually controlled setting for this question: 77 textbook
+algorithms with aligned natural-language requirements and functional contracts in
+Dafny, Verus, and Lean\cite{zhao2026algoveri}.  The original evaluation established
+three findings that motivate this work.  First, vericoding remained far from solved,
+with the strongest Lean condition obtaining only 9.09\% compiler verification and
+7.79\% full marks.  Second, compiler verification systematically exceeded semantic
+acceptance, revealing an algorithmic-fidelity gap.  Third, frontier models converted
+iterative verifier feedback into progress, whereas weaker systems saturated early;
+Lean failures combined proof search and logical reasoning barriers.
 
-This work makes five contributions:
+We ask what remains true after substituting newer frontier models and a modern coding
+agent into the same Lean task suite.  The answer is not simply that scores increase.
+Compilation rises above 92\% for every complete direct condition, yet semantic success
+lags by 42--66 percentage points.  The capability frontier has therefore moved across
+the compiler boundary without eliminating the benchmark's central fidelity problem.
+A constrained coding agent closes much of this gap, but its remaining failures reveal
+a stable optimization pressure toward brute-force solvers, classical choice, and
+verified fallbacks.  Meanwhile, evaluator defects introduce measurement error precisely
+where scores are becoming large enough for reliable ranking to matter.
+
+This paper makes five contributions:
 
 \begin{enumerate}[leftmargin=*,itemsep=2pt]
-  \item We provide a complete rerun of the Lean track using four direct generation
-        conditions and three semantic judging conditions.
+  \item We extend AlgoVeri's Lean evaluation with four direct frontier-model conditions
+        and three semantic-judge conditions, placing every result against the original
+        paper's capability, fidelity, and repair findings.
   \item We implement and evaluate an isolated Claude Code condition with constrained
         compiler access, adaptive repair, source ownership enforcement, and final
         independent verification.
-  \item We measure output coverage, Lean compilation, semantic acceptance, repair
-        dynamics, costs where available, judge agreement, and paired differences on a
-        common task scope.
+  \item We show a bottleneck shift: current frontier models largely overcome Lean
+        compilation, while algorithm identity becomes the dominant source of failure.
   \item We audit every compiler failure, every coding-agent semantic rejection, every
         judge disagreement, and all task-level outcomes.  The complete matrix appears
         in Appendix~\ref{tab:complete-matrix}; machine-readable analyses are released
         with the artifact\cite{rerunrepo}.
   \item We identify a malformed scaffold, an ownership contradiction involving
-        teacher-permitted \texttt{sorry}, and an asymmetry between the generation and
-        compiler-revision prompts, then propose concrete benchmark fixes.
+        teacher-permitted \texttt{sorry}, an asymmetric repair prompt, and measurable
+        judge dependence, then propose concrete benchmark fixes.
 \end{enumerate}
+
+This is a Lean-only extension, not a reproduction of AlgoVeri's cross-language ranking.
+Because model endpoints, inference controls, and semantic judges differ, comparisons to
+the original reported rates are descriptive historical comparisons rather than a
+causal estimate of model progress.
 
 \section{Background and Related Work}
 
@@ -144,23 +166,74 @@ answer uses a compiler trick.  This is an instance of model-based evaluation, wh
 scalability comes with known sensitivity to judge and prompt\cite{zheng2023llmjudge}.
 We retain the benchmark prompt while explicitly measuring that sensitivity.
 
-\section{Research Questions}
+\section{Extending AlgoVeri's Findings}
+\label{sec:extension-framework}
 
-We organize the study around the following questions.
+Table~\ref{tab:extension-map} states the relationship between the original conclusions
+and our extension.  We treat the published AlgoVeri rates as a historical reference,
+retain its compile-then-semantic evaluation logic, and introduce controlled analyses
+where the original protocol leaves evaluator uncertainty unmeasured.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{How this study extends the principal findings of AlgoVeri.  Numerical
+comparisons across papers are descriptive because models and endpoint controls differ.}
+\label{tab:extension-map}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{0.18\textwidth}YY}
+\toprule
+Original finding & Evidence in this extension & Updated interpretation \\
+\midrule
+Lean is the hardest target; best full mark is 7.79\%. & Complete direct conditions
+compile 92.2--98.7\% and obtain 31.2--57.1\% full marks. & The evaluated frontier has
+crossed much of Lean's compilation barrier, but vericoding remains unsolved. \\
+Compiler verification overstates algorithmic correctness. & The direct-model
+compiler-to-semantic gap is 41.6--66.2 percentage points on full-scope conditions. &
+The fidelity gap grows more visible as formal compilation becomes easier. \\
+Frontier models benefit from iterative repair; weaker models saturate early. & All
+complete direct conditions continue gaining compilation successes after the first
+round; the agent moves from 15 to 62 successes by its fifth Lean check. & Tool-mediated
+repair remains valuable, but compiler feedback optimizes formal acceptance rather than
+algorithm identity. \\
+Lean combines search and reasoning barriers. & Final direct compilation failures are
+few, while semantic failures use wrong algorithms, oracles, and fallbacks. & The
+bottleneck shifts from proof search toward specification alignment and algorithmic
+fidelity for newer frontier systems. \\
+Expert curation and semantic filtering protect benchmark validity. & We find one
+uncompilable scaffold, 12 ownership-confounded tasks, and 22/334 cross-judge flips. &
+Task curation must be complemented by executable preflight and evaluator calibration. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+We organize the empirical study around five research questions:
 
 \begin{description}[leftmargin=3.2em,style=nextline]
-  \item[RQ1] How often do current frontier models return an output that compiles in the
-             AlgoVeri Lean environment?
-  \item[RQ2] How large is the gap between Lean compilation and semantic acceptance?
+  \item[RQ1] How far has the Lean capability frontier moved relative to AlgoVeri's
+             original 9.09\% verified and 7.79\% full-mark reference point?
+  \item[RQ2] Does AlgoVeri's algorithmic-fidelity gap persist after compilation becomes
+             common rather than exceptional?
   \item[RQ3] Does a constrained compiler-using coding agent improve end-to-end semantic
              performance relative to direct API generation?
   \item[RQ4] How stable are semantic conclusions under temperature and judge-model
              changes?
   \item[RQ5] Which task, prompt, and evaluator defects threaten the validity of the
-             measured score?
+             measured score, and how should the protocol change?
 \end{description}
 
-\section{Methodology}
+\section{Experimental Design}
+
+\subsection{Relationship to the original protocol}
+
+Both studies use the same 77 Lean task identities, natural-language algorithm
+requirements, four editable regions, iterative compiler feedback, and a semantic filter
+after successful compilation.  The direct conditions retain a maximum of 15 attempts,
+matching the original study's main repair depth.  Our extension differs in four ways:
+it is Lean-only; it evaluates later proprietary model endpoints; it compiles through a
+pinned local Lake environment rather than treating the container runtime as essential;
+and it adds an agentic treatment plus three judge configurations.  We therefore compare
+the \emph{shape} of the findings and report original numbers as context, but reserve
+paired statistical tests for conditions evaluated on the same tasks in this artifact.
 
 \subsection{Task scopes}
 
@@ -256,9 +329,9 @@ random population.  Selected binomial intervals are 95\% Wilson intervals
 \texttt{scripts/analyze\_rerun\_results.py}; no table was transcribed from terminal
 logs.
 
-\section{Results}
+\section{Results: From Proof Search to Fidelity}
 
-\subsection{Output coverage and compilation}
+\subsection{The Lean capability frontier has moved}
 
 \begin{table*}[t]
 \centering
@@ -280,10 +353,14 @@ Claude Code + Opus 5 & 65/65 & 63/65 (96.9\%) & 53/65 (81.5\%) & 53/65 (81.5\%) 
 \end{tabular}
 \end{table*}
 
-Table~\ref{tab:native-results} answers RQ1: when an answer is returned, compilation is
-high, but output coverage is itself a first-class failure mode.  GPT-5.5 compiles 75/77
+Table~\ref{tab:native-results} answers RQ1.  AlgoVeri's strongest original Lean result
+was Gemini-3 Flash at 7/77 compiler-verified and 6/77 full-mark tasks
+(9.09\% and 7.79\%)\cite{zhao2026algoveri}.  In our later evaluation, when an answer is
+returned, compilation is high: GPT-5.5 compiles 75/77
 (\pct{97.4}; Wilson 95\% CI [\pct{91.0}, \pct{99.3}]), GPT-5.6-sol 71/77
-(\pct{92.2}), and no-thinking Opus 76/77 (\pct{98.7}).  All 49 saved adaptive-thinking
+(\pct{92.2}), and no-thinking Opus 76/77 (\pct{98.7}).  The protocols are not identical,
+so these numbers do not isolate model improvement; they nevertheless show that the
+observed failure regime has changed.  All 49 saved adaptive-thinking
 Opus outputs compile, but 28 tasks have no output, reducing end-to-end compilation to
 \pct{63.6}.  In its final one-attempt sweep over the missing set, 24 requests exhausted
 32,768 output tokens with thinking blocks only and four ended in provider overload.
@@ -294,9 +371,12 @@ semantic passes are 29 versus 30 (5.4-T1), 29 versus 31 (5.4-T0), and 31 versus 
 (5.6-T0).  Thus this run provides no evidence that adaptive thinking improves the
 matched outcome, while it substantially reduces completion reliability.
 
-\subsection{Compilation is a weak proxy for semantic success}
+\subsection{The fidelity gap widens after compilation}
 
-The central result for RQ2 is the size of the compilation--semantic gap.  For example,
+The central result for RQ2 is the size of the compilation--semantic gap.  AlgoVeri
+introduced this gap as evidence that formal verification alone does not guarantee the
+requested algorithm.  Our extension shows that the issue becomes more pronounced, not
+less, once models compile reliably.  For example,
 GPT-5.5 compiles 75 tasks but all three judges accept only 24.  No-thinking Opus compiles
 76, while acceptance ranges from 36 to 44.  Even conditional on compilation, GPT-5.4 at
 temperature zero accepts 32.0\% of GPT-5.5, 38.0\% of GPT-5.6-sol, and 51.3\% of
@@ -351,9 +431,9 @@ feedback, and final independent verification, the broader enhanced condition rea
 63/65 compilation and 53/65 5.4-T1 semantic success.  Because task selection and several
 settings changed, this is an engineering progression rather than an ablation.
 
-\subsection{Repair dynamics}
+\subsection{Frontier repair remains effective but misaligned}
 
-\begin{table}[t]
+\begin{table*}[t]
 \centering
 \small
 \caption{Cumulative compilation success by attempt/check count.  Direct runs count LLM
@@ -371,13 +451,21 @@ Opus, no thinking & 24 & 43 & 58 & 69 & 75 & 76 \\
 Claude Code & 15 & 37 & 45 & 62 & 63 & 63 \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table*}
 
 Iterative compiler feedback matters: only 19--24 of 77 full-output direct conditions
 compile on the first attempt, rising to 63--69 by attempt five.  GPT-5.5 gains no further
 success after attempt ten, and GPT-5.6-sol gains one.  The coding agent reaches 62/65 by
 its fifth observed Lean check and one more by its tenth.  These are cumulative
 success-at-repair curves, not pass@$k$ estimates from independent samples.
+
+This pattern extends AlgoVeri's distinction between frontier repair and early
+saturation.  The evaluated frontier systems continue converting Lean feedback into
+compilation gains, and the coding-agent workspace makes that feedback operationally
+effective.  However, compiler feedback contains no signal about whether a different
+algorithm or guarded fallback violates the natural-language request.  Repair is thus
+effective for the formal objective while remaining partially misaligned with the full-
+mark objective.
 
 \subsection{Judge robustness}
 
@@ -387,7 +475,7 @@ temperatures 1 and 0 flips 13 of 334 compiled pairs.  The two temperature-zero j
 flip 22 pairs.  GPT-5.6-sol is more permissive in aggregate: 17 GPT-5.6-only passes
 versus five GPT-5.4-only passes, a net gain of 12.
 
-\begin{table}[t]
+\begin{table*}[t]
 \centering
 \small
 \caption{Pooled semantic-judge agreement on compiled outputs.  A generation of the
@@ -401,7 +489,7 @@ Comparison & $n$ & Agree & Rate & $\kappa$ & Left only & Right only \\
 5.4-T0 vs 5.6-T0 & 334 & 312 & 93.4\% & 0.868 & 5 & 17 \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table*}
 
 Per-condition agreement ranges from \pct{90.1} to \pct{96.8} for the two zero-
 temperature judges.  Exact disagreement cases and directional flips appear in
@@ -526,8 +614,14 @@ alone rewards contract satisfaction rather than algorithm identity.  A semantic
 self-audit reduces the problem; it cannot provide a machine-checkable enforcement
 mechanism.
 
-\section{Benchmark and Evaluator Audit}
+\section{Evaluation Audit: Extending Quality Control}
 \label{sec:benchmark-audit}
+
+AlgoVeri emphasizes expert specification curation and representative formal
+well-formedness checks.  Our audit extends that quality-control question from logical
+contracts to the executable evaluation pipeline: whether immutable scaffolds compile,
+whether authorship is preserved for semantic adjudication, and whether judge decisions
+are robust.  RQ5 reveals three independent validity risks.
 
 \subsection{Malformed \task{trie\_search} scaffold}
 \label{sec:trie-defect}
@@ -607,7 +701,7 @@ the system failed and can reverse rankings when missing outputs or teacher-owned
 are handled differently.  We recommend a structured result record rather than a binary
 leaderboard field.
 
-\section{Recommendations}
+\section{Discussion and Recommendations}
 
 \begin{enumerate}[leftmargin=*,itemsep=4pt]
   \item \textbf{Preflight every scaffold.}  Compile a teacher-filled reference after
@@ -634,7 +728,7 @@ leaderboard field.
         not merge agentic scores with direct prompting.
 \end{enumerate}
 
-\section{Threats to Validity}
+\section{Limitations and Threats to Validity}
 
 \paragraph{Single samples.}
 Each generation condition contains one pass per task.  We do not estimate variance over
@@ -706,20 +800,38 @@ preserved in the result JSON.
 
 \section{Conclusion}
 
-Current frontier models make AlgoVeri's Lean files compile at high rates, but compilation
-substantially overstates success on the named algorithm.  No-thinking Opus is the
-strongest complete direct condition in this rerun, while a constrained compiler-using
-agent raises semantic acceptance further on a clean common scope.  Its remaining
-failures show that verifier-guided search still gravitates toward extensionally correct
-oracles and fallbacks when algorithm identity is not machine-enforced.
+AlgoVeri originally showed that Lean vericoding was limited by proof search and
+reasoning, that compiler verification exceeded algorithmic correctness, and that
+frontier models benefited from repair.  Our extension confirms the latter two findings
+while revising the first for current frontier systems.  Complete direct conditions now
+compile more than 92\% of tasks, yet attain only 31--57\% full marks.  The principal
+bottleneck has shifted from reaching the Lean compiler boundary to preserving the named
+algorithm under contracts that admit extensionally correct substitutes.
 
-At the same time, the benchmark itself introduces avoidable error: one task is
-uncompilable under its editing policy, and 12 tasks create a prompt-level conflict over
-teacher-owned proof holes.  Semantic scores also change with judge model despite
-temperature zero.  The appropriate conclusion is therefore not merely a model ranking.
-Reliable verified-code evaluation requires valid scaffolds, explicit authorship,
-aligned repair prompts, durable failure records, independent compilation, and calibrated
-semantic adjudication.
+A constrained coding agent raises full-mark performance to 82--85\% on the clean
+65-task scope, demonstrating that persistent tools and verifier feedback materially
+advance the frontier.  Its residual oracle and fallback solutions also show why agentic
+compute alone does not solve algorithmic fidelity.  Finally, scaffold, ownership, and
+judge-disagreement findings extend benchmark quality control beyond specification
+curation.  Future vericoding benchmarks should treat formal verification, algorithm
+identity, provenance, output coverage, and evaluator robustness as distinct measurable
+objects.
+
+\section*{Impact Statement}
+
+Verified-code agents may reduce the cost of producing high-assurance software, but an
+inflated benchmark score can encourage unsafe trust in code that proves the wrong
+property or implements the wrong algorithm.  This study's intended impact is improved
+measurement: independent compilation, provenance-aware semantic review, and transparent
+failure artifacts.  The same techniques could be used to optimize toward benchmark
+judges rather than genuine correctness; human review of specifications and disputed
+semantic labels therefore remains necessary in safety-critical deployment.
+
+\bibliographystyle{icml2026}
+\bibliography{references}
+
+\clearpage
+\onecolumn
 
 \appendix
 
@@ -749,11 +861,6 @@ semantic adjudication.
 \task{trial\_division\_optimized}, \task{trie\_delete}, \task{trie\_insert},
 \task{trie\_search}, \task{unionfind\_find}, \task{unionfind\_linkroots}.
 
-\section{Complete Case Matrix and Judge Disagreements}
-
 \input{generated/case_tables.tex}
-
-\bibliographystyle{plainnat}
-\bibliography{references}
 
 \end{document}

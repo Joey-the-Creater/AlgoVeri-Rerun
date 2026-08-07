@@ -6,7 +6,8 @@ condition. The local modifications remove the Lean runner's dependency on
 Apptainer, add OpenAI and Anthropic model runners, preserve three independent
 semantic-judge views, and provide a result-audit dashboard.
 
-The complete academic report is available as both
+The complete academic report frames the rerun as an extension of AlgoVeri's original
+ICML 2026 findings and uses the official conference preprint format. It is available as both
 [`reports/algoveri_rerun_report.tex`](reports/algoveri_rerun_report.tex) and the
 compiled [`reports/algoveri_rerun_report.pdf`](reports/algoveri_rerun_report.pdf).
 
