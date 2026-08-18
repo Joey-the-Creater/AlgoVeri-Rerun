@@ -1,0 +1,310 @@
+{
+  "verified": false,
+  "details": {
+    "rounds": 12,
+    "llm_response": {
+      "code": "",
+      "comment": "Candidate validation failed: candidate 'code' section contains prohibited term 'sorry'"
+    },
+    "verifier_response": {
+      "verified": false,
+      "feedback": "Candidate validation failed: candidate 'code' section contains prohibited term 'sorry'",
+      "raw": null
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": false,
+        "verifier_response": {
+          "verified": false,
+          "feedback": "Candidate validation failed: candidate 'code' section contains prohibited term 'sorry'",
+          "raw": null
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "df5927ab-5c9f-4e6f-a04e-8f026ba49921",
+          "subtype": "error_progress_governor",
+          "provider_subtype": "error_during_execution",
+          "is_error": true,
+          "total_cost_usd": 0.08990549999999999,
+          "duration_ms": 365592,
+          "duration_api_ms": 16782,
+          "num_turns": 8,
+          "returncode": 143,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/topological_sort/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "1fc472d593c23493b2c308644abcee84e1a7de7af31cae8f88b06aaa081660d8",
+          "budget_usd": 2.0,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 600,
+              "pre_edit_thinking_tokens": 30000,
+              "post_edit_check_timeout_seconds": 300,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": true
+            },
+            "governor_stop_reason": "no durable edit before 30000 thinking tokens",
+            "max_thinking_tokens_observed": 30100,
+            "seconds_to_first_progress": null,
+            "seconds_to_first_check": null,
+            "pending_tool_recovery": []
+          }
+        }
+      },
+      {
+        "compiler_pass": 2,
+        "verified": false,
+        "verifier_response": {
+          "verified": false,
+          "feedback": "Candidate validation failed: candidate 'code' section contains prohibited term 'sorry'",
+          "raw": null
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "61bc42a7-b1fa-449a-b5b5-74afaf828a52",
+          "subtype": "error_progress_governor",
+          "provider_subtype": "error_during_execution",
+          "is_error": true,
+          "total_cost_usd": 0.05683125,
+          "duration_ms": 369283,
+          "duration_api_ms": 10578,
+          "num_turns": 5,
+          "returncode": 143,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/topological_sort/agent_events.jsonl",
+          "pass_number": 2,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "ec0891d9529cabc798d8e3cf1d34cb360ff033323bd47f82f35b4ee8b464d4b3",
+          "budget_usd": 2.0,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 600,
+              "pre_edit_thinking_tokens": 30000,
+              "post_edit_check_timeout_seconds": 300,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": true
+            },
+            "governor_stop_reason": "no durable edit before 30000 thinking tokens",
+            "max_thinking_tokens_observed": 30000,
+            "seconds_to_first_progress": null,
+            "seconds_to_first_check": null,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 80172,
+      "output": 926,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "61bc42a7-b1fa-449a-b5b5-74afaf828a52",
+      "subtype": "error_progress_governor",
+      "provider_subtype": "error_during_execution",
+      "is_error": true,
+      "total_cost_usd": 0.14673674999999997,
+      "duration_ms": 734875,
+      "duration_api_ms": 27360,
+      "num_turns": 13,
+      "returncode": 143,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/topological_sort/agent_events.jsonl",
+      "pass_number": 2,
+      "prompt_kind": "compiler_repair",
+      "prompt_sha256": "ec0891d9529cabc798d8e3cf1d34cb360ff033323bd47f82f35b4ee8b464d4b3",
+      "budget_usd": 2.0,
+      "lastdance_profile": "robust",
+      "features": {
+        "profile": "robust",
+        "algorithm_plan": true,
+        "lemma_plan": true,
+        "leansearch": true,
+        "semantic_audit": true,
+        "semantic_reminder": true,
+        "early_check": true,
+        "feedback_mode": "structured",
+        "backtracking": true,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": true,
+          "progress_governor": true,
+          "pre_edit_timeout_seconds": 600,
+          "pre_edit_thinking_tokens": 30000,
+          "post_edit_check_timeout_seconds": 300,
+          "planning_mode": false,
+          "diagnostic_wrapper": false,
+          "rescue_mode": true
+        },
+        "governor_stop_reason": "no durable edit before 30000 thinking tokens",
+        "max_thinking_tokens_observed": 30000,
+        "seconds_to_first_progress": null,
+        "seconds_to_first_check": null,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 2,
+      "total_sessions": 2,
+      "selected_session": 2,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "df5927ab-5c9f-4e6f-a04e-8f026ba49921",
+          "subtype": "error_progress_governor",
+          "provider_subtype": "error_during_execution",
+          "is_error": true,
+          "total_cost_usd": 0.08990549999999999,
+          "duration_ms": 365592,
+          "duration_api_ms": 16782,
+          "num_turns": 8,
+          "returncode": 143,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/topological_sort/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "1fc472d593c23493b2c308644abcee84e1a7de7af31cae8f88b06aaa081660d8",
+          "budget_usd": 2.0,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 600,
+              "pre_edit_thinking_tokens": 30000,
+              "post_edit_check_timeout_seconds": 300,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": true
+            },
+            "governor_stop_reason": "no durable edit before 30000 thinking tokens",
+            "max_thinking_tokens_observed": 30100,
+            "seconds_to_first_progress": null,
+            "seconds_to_first_check": null,
+            "pending_tool_recovery": []
+          }
+        },
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "61bc42a7-b1fa-449a-b5b5-74afaf828a52",
+          "subtype": "error_progress_governor",
+          "provider_subtype": "error_during_execution",
+          "is_error": true,
+          "total_cost_usd": 0.05683125,
+          "duration_ms": 369283,
+          "duration_api_ms": 10578,
+          "num_turns": 5,
+          "returncode": 143,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/topological_sort/agent_events.jsonl",
+          "pass_number": 2,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "ec0891d9529cabc798d8e3cf1d34cb360ff033323bd47f82f35b4ee8b464d4b3",
+          "budget_usd": 2.0,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 600,
+              "pre_edit_thinking_tokens": 30000,
+              "post_edit_check_timeout_seconds": 300,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": true
+            },
+            "governor_stop_reason": "no durable edit before 30000 thinking tokens",
+            "max_thinking_tokens_observed": 30000,
+            "seconds_to_first_progress": null,
+            "seconds_to_first_check": null,
+            "pending_tool_recovery": []
+          }
+        }
+      ]
+    },
+    "provenance": {},
+    "targeted_diagnostics": [],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/topological_sort/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/topological_sort/AlgorithmPlan.md",
+      "proof_state": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/topological_sort/ProofState.md",
+      "leansearch_queries": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/topological_sort/.lastdance/leansearch_queries.jsonl",
+      "checkpoints": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/topological_sort/.lastdance/checkpoints/manifest.jsonl",
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/topological_sort/.lastdance/prompts"
+    }
+  }
+}

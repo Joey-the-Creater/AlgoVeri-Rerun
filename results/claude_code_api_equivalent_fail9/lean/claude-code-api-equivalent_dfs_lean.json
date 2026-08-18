@@ -1,0 +1,250 @@
+{
+  "verified": true,
+  "details": {
+    "rounds": 13,
+    "llm_response": {
+      "code": "import Mathlib\n\nstructure DFSGraph where\n  adj : Array (Array Nat)\n\ndef DFSGraph.well_formed (g : DFSGraph) : Prop :=\n  \u2200 u, u < g.adj.size \u2192\n    \u2200 v, v \u2208 g.adj.getD u #[] \u2192 v < g.adj.size\n\ndef DFSGraph.size (g : DFSGraph) : Nat :=\n  g.adj.size\n\ndef DFSGraph.has_edge (g : DFSGraph) (u v : Nat) : Prop :=\n  u < g.adj.size \u2227\n  v \u2208 g.adj.getD u #[]\n\ndef DFSGraph.is_path (g : DFSGraph) (p : List Nat) : Prop :=\n  p.length > 0 \u2227\n  \u2200 i, i + 1 < p.length \u2192\n    g.has_edge (p.getD i 0) (p.getD (i + 1) 0)\n\ndef DFSGraph.reachable (g : DFSGraph) (start target : Nat) : Prop :=\n  \u2203 p, g.is_path p \u2227 p.head? = some start \u2227 p.getLast? = some target\n\n-- Precondition definitions\n@[reducible, simp]\ndef dfs_check_reachability_precond (graph : DFSGraph) (start target : Nat) : Prop :=\n  -- !benchmark @start precond\n  graph.well_formed \u2227 start < graph.size \u2227 target < graph.size\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n/-- `reachIn g k u t` is true iff there is a path from `u` to `t` using at most\n    `k` edges (i.e. at most `k+1` nodes). -/\ndef reachIn (g : DFSGraph) : Nat \u2192 Nat \u2192 Nat \u2192 Bool\n  | 0, u, t => u == t\n  | k + 1, u, t => (u == t) || (g.adj.getD u #[]).toList.any (fun v => reachIn g k v t)\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef dfs_check_reachability (graph : DFSGraph) (start target : Nat)\n    (h_precond : dfs_check_reachability_precond graph start target) : Bool :=\n  -- !benchmark @start code\n  reachIn graph graph.size start target\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef dfs_check_reachability_postcond (graph : DFSGraph) (start target : Nat) (result : Bool)\n    (_ : dfs_check_reachability_precond graph start target) : Prop :=\n  -- !benchmark @start postcond\n  result = graph.reachable start target\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\nlemma adj_empty_of_ge (g : DFSGraph) (u : Nat) (h : \u00ac u < g.adj.size) :\n    g.adj.getD u #[] = #[] := by\n  simp [Array.getD, h]\n\nlemma getLast?_cons_ne_nil {\u03b1 : Type*} (a : \u03b1) (l : List \u03b1) (h : l \u2260 []) :\n    (a :: l).getLast? = l.getLast? := by\n  cases l with\n  | nil => exact absurd rfl h\n  | cons b bs => simp\n\nlemma getLast?_append_cons {\u03b1 : Type*} (l\u2081 l\u2082 : List \u03b1) (a : \u03b1) :\n    (l\u2081 ++ a :: l\u2082).getLast? = (a :: l\u2082).getLast? := by\n  induction l\u2081 with\n  | nil => simp\n  | cons b bs ih =>\n    rw [List.cons_append]\n    rw [getLast?_cons_ne_nil b (bs ++ a :: l\u2082) (by simp)]\n    exact ih\n\nlemma chain_of_path (g : DFSGraph) : \u2200 (p : List Nat),\n    (\u2200 i, i + 1 < p.length \u2192 g.has_edge (p.getD i 0) (p.getD (i + 1) 0)) \u2192\n    List.IsChain g.has_edge p := by\n  intro p\n  induction p with\n  | nil => intro _; simp\n  | cons a l ih =>\n    cases l with\n    | nil => intro _; simp\n    | cons b l' =>\n      intro h\n      rw [List.isChain_cons_cons]\n      refine \u27e8by simpa using h 0 (by simp), ?_\u27e9\n      refine ih (fun i hi => ?_)\n      have := h (i + 1) (by simp only [List.length_cons] at hi \u22a2; omega)\n      simpa using this\n\nlemma path_of_chain (g : DFSGraph) : \u2200 (p : List Nat), List.IsChain g.has_edge p \u2192\n    \u2200 i, i + 1 < p.length \u2192 g.has_edge (p.getD i 0) (p.getD (i + 1) 0) := by\n  intro p\n  induction p with\n  | nil => intro _ i hi; simp at hi\n  | cons a l ih =>\n    cases l with\n    | nil => intro _ i hi; simp at hi\n    | cons b l' =>\n      intro h i hi\n      rw [List.isChain_cons_cons] at h\n      cases i with\n      | zero => simpa using h.1\n      | succ j =>\n        have := ih h.2 j (by simp only [List.length_cons] at hi \u22a2; omega)\n        simpa using this\n\nlemma is_path_iff (g : DFSGraph) (p : List Nat) :\n    g.is_path p \u2194 p \u2260 [] \u2227 List.IsChain g.has_edge p := by\n  constructor\n  \u00b7 rintro \u27e8hlen, hedge\u27e9\n    refine \u27e8fun h => by simp [h] at hlen, chain_of_path g p hedge\u27e9\n  \u00b7 rintro \u27e8hne, hc\u27e9\n    refine \u27e8?_, path_of_chain g p hc\u27e9\n    cases p with\n    | nil => exact absurd rfl hne\n    | cons a l => simp\n\nlemma chain_mem_lt (g : DFSGraph) (hwf : g.well_formed) :\n    \u2200 (p : List Nat) (x : Nat), List.IsChain g.has_edge p \u2192 p.head? = some x \u2192\n      x < g.adj.size \u2192 \u2200 y \u2208 p, y < g.adj.size := by\n  intro p\n  induction p with\n  | nil => intro x _ hh _ y hy; simp at hy\n  | cons a l ih =>\n    intro x hc hh hx y hy\n    rw [List.head?_cons, Option.some_inj] at hh\n    subst hh\n    rcases List.mem_cons.mp hy with rfl | hy'\n    \u00b7 exact hx\n    \u00b7 cases l with\n      | nil => simp at hy'\n      | cons b l' =>\n        rw [List.isChain_cons_cons] at hc\n        have hb : b < g.adj.size := hwf _ hc.1.1 b hc.1.2\n        exact ih b hc.2 rfl hb y hy'\n\nlemma not_nodup_decomp {\u03b1 : Type*} :\n    \u2200 (p : List \u03b1), \u00ac p.Nodup \u2192 \u2203 a l\u2081 l\u2082 l\u2083, p = l\u2081 ++ a :: (l\u2082 ++ a :: l\u2083) := by\n  intro p\n  induction p with\n  | nil => intro h; simp at h\n  | cons x xs ih =>\n    intro h\n    rw [List.nodup_cons] at h\n    by_cases hx : x \u2208 xs\n    \u00b7 obtain \u27e8l\u2082, l\u2083, rfl\u27e9 := List.append_of_mem hx\n      exact \u27e8x, [], l\u2082, l\u2083, by simp\u27e9\n    \u00b7 have hnd : \u00ac xs.Nodup := by tauto\n      obtain \u27e8a, l\u2081, l\u2082, l\u2083, rfl\u27e9 := ih hnd\n      exact \u27e8a, x :: l\u2081, l\u2082, l\u2083, by simp\u27e9\n\nlemma exists_nodup_chain {\u03b1 : Type*} (R : \u03b1 \u2192 \u03b1 \u2192 Prop) :\n    \u2200 (n : \u2115) (p : List \u03b1), p.length \u2264 n \u2192 p \u2260 [] \u2192 List.IsChain R p \u2192\n      \u2203 q : List \u03b1, q \u2260 [] \u2227 List.IsChain R q \u2227 q.head? = p.head? \u2227\n        q.getLast? = p.getLast? \u2227 q.Nodup \u2227 \u2200 y \u2208 q, y \u2208 p := by\n  intro n\n  induction n with\n  | zero =>\n    intro p hlen hne _\n    exact absurd (List.eq_nil_of_length_eq_zero (Nat.le_zero.mp hlen)) hne\n  | succ n ih =>\n    intro p hlen hne hc\n    by_cases hnd : p.Nodup\n    \u00b7 exact \u27e8p, hne, hc, rfl, rfl, hnd, fun y hy => hy\u27e9\n    \u00b7 obtain \u27e8a, l\u2081, l\u2082, l\u2083, rfl\u27e9 := not_nodup_decomp p hnd\n      have hcA := List.isChain_append.mp hc\n      have hB : List.IsChain R ((a :: l\u2082) ++ (a :: l\u2083)) := by\n        rw [List.cons_append]; exact hcA.2.1\n      have hB2 := List.isChain_append.mp hB\n      have hc' : List.IsChain R (l\u2081 ++ a :: l\u2083) := by\n        rw [List.isChain_append]\n        refine \u27e8hcA.1, hB2.2.1, ?_\u27e9\n        intro x hx y hy\n        exact hcA.2.2 x hx y (by simpa using hy)\n      have hlen' : (l\u2081 ++ a :: l\u2083).length \u2264 n := by\n        simp only [List.length_append, List.length_cons] at hlen \u22a2\n        omega\n      have hne' : (l\u2081 ++ a :: l\u2083) \u2260 [] := by simp\n      obtain \u27e8q, hq0, hqc, hqh, hql, hqn, hqm\u27e9 := ih _ hlen' hne' hc'\n      refine \u27e8q, hq0, hqc, ?_, ?_, hqn, ?_\u27e9\n      \u00b7 rw [hqh]\n        cases l\u2081 with\n        | nil => simp\n        | cons b bs => simp\n      \u00b7 rw [hql, getLast?_append_cons, getLast?_append_cons, \u2190 List.cons_append,\n          getLast?_append_cons]\n      \u00b7 intro y hy\n        have hmem := hqm y hy\n        simp only [List.mem_append, List.mem_cons] at hmem \u22a2\n        tauto\n\nlemma nodup_length_le (q : List Nat) (n : Nat) (h : \u2200 y \u2208 q, y < n) (hq : q.Nodup) :\n    q.length \u2264 n := by\n  have h1 : q.toFinset \u2286 Finset.range n := by\n    intro x hx\n    rw [List.mem_toFinset] at hx\n    rw [Finset.mem_range]\n    exact h x hx\n  have h2 := Finset.card_le_card h1\n  rwa [List.toFinset_card_of_nodup hq, Finset.card_range] at h2\n\nlemma reachIn_sound (g : DFSGraph) : \u2200 (k u t : Nat), reachIn g k u t = true \u2192\n    \u2203 p : List Nat, p \u2260 [] \u2227 List.IsChain g.has_edge p \u2227 p.head? = some u \u2227\n      p.getLast? = some t := by\n  intro k\n  induction k with\n  | zero =>\n    intro u t h\n    simp only [reachIn, beq_iff_eq] at h\n    subst h\n    exact \u27e8[u], by simp, by simp, by simp, by simp\u27e9\n  | succ k ih =>\n    intro u t h\n    simp only [reachIn, Bool.or_eq_true, beq_iff_eq, List.any_eq_true] at h\n    rcases h with h | \u27e8v, hv, hr\u27e9\n    \u00b7 subst h\n      exact \u27e8[u], by simp, by simp, by simp, by simp\u27e9\n    \u00b7 obtain \u27e8q, hq0, hqc, hqh, hql\u27e9 := ih v t hr\n      have hu : u < g.adj.size := by\n        by_contra hcon\n        rw [adj_empty_of_ge g u hcon] at hv\n        simp at hv\n      have he : g.has_edge u v := \u27e8hu, by rw [Array.mem_def]; exact hv\u27e9\n      cases q with\n      | nil => exact absurd rfl hq0\n      | cons b q' =>\n        rw [List.head?_cons, Option.some_inj] at hqh\n        subst hqh\n        refine \u27e8u :: b :: q', by simp, ?_, by simp, ?_\u27e9\n        \u00b7 rw [List.isChain_cons_cons]\n          exact \u27e8he, hqc\u27e9\n        \u00b7 rw [getLast?_cons_ne_nil u (b :: q') (by simp)]\n          exact hql\n\nlemma reachIn_complete (g : DFSGraph) : \u2200 (k : Nat) (p : List Nat) (u t : Nat),\n    p.length \u2264 k + 1 \u2192 List.IsChain g.has_edge p \u2192 p.head? = some u \u2192 p.getLast? = some t \u2192\n    reachIn g k u t = true := by\n  intro k\n  induction k with\n  | zero =>\n    intro p u t hlen hc hh hl\n    cases p with\n    | nil => simp at hh\n    | cons a l =>\n      rw [List.head?_cons, Option.some_inj] at hh\n      subst hh\n      have hnil : l = [] := by\n        simp only [List.length_cons] at hlen\n        exact List.eq_nil_of_length_eq_zero (by omega)\n      subst hnil\n      simp only [List.getLast?_singleton, Option.some_inj] at hl\n      subst hl\n      simp [reachIn]\n  | succ k ih =>\n    intro p u t hlen hc hh hl\n    cases p with\n    | nil => simp at hh\n    | cons a l =>\n      rw [List.head?_cons, Option.some_inj] at hh\n      subst hh\n      cases l with\n      | nil =>\n        simp only [List.getLast?_singleton, Option.some_inj] at hl\n        subst hl\n        simp [reachIn]\n      | cons b l' =>\n        rw [List.isChain_cons_cons] at hc\n        have hlen' : (b :: l').length \u2264 k + 1 := by\n          simp only [List.length_cons] at hlen \u22a2\n          omega\n        have hl' : (b :: l').getLast? = some t := by\n          rwa [getLast?_cons_ne_nil _ (b :: l') (by simp)] at hl\n        have hrec : reachIn g k b t = true := ih (b :: l') b t hlen' hc.2 rfl hl'\n        simp only [reachIn, Bool.or_eq_true, beq_iff_eq, List.any_eq_true]\n        right\n        exact \u27e8b, by rw [\u2190 Array.mem_def]; exact hc.1.2, hrec\u27e9\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem dfs_check_reachability_postcond_satisfied (graph : DFSGraph) (start target : Nat)\n    (h_precond : dfs_check_reachability_precond graph start target) :\n    dfs_check_reachability_postcond graph start target\n      (dfs_check_reachability graph start target h_precond) h_precond := by\n  -- !benchmark @start proof\n  obtain \u27e8hwf, hs, ht\u27e9 := h_precond\n  simp only [dfs_check_reachability_postcond, dfs_check_reachability]\n  rw [eq_iff_iff]\n  constructor\n  \u00b7 intro h\n    obtain \u27e8p, hp0, hpc, hph, hpl\u27e9 := reachIn_sound graph _ _ _ h\n    exact \u27e8p, (is_path_iff graph p).mpr \u27e8hp0, hpc\u27e9, hph, hpl\u27e9\n  \u00b7 rintro \u27e8p, hip, hph, hpl\u27e9\n    obtain \u27e8hp0, hpc\u27e9 := (is_path_iff graph p).mp hip\n    obtain \u27e8q, hq0, hqc, hqh, hql, hqn, hqm\u27e9 :=\n      exists_nodup_chain graph.has_edge p.length p le_rfl hp0 hpc\n    have hmem : \u2200 y \u2208 p, y < graph.adj.size := chain_mem_lt graph hwf p start hpc hph hs\n    have hlen : q.length \u2264 graph.adj.size :=\n      nodup_length_le q _ (fun y hy => hmem y (hqm y hy)) hqn\n    have hsz : graph.size = graph.adj.size := rfl\n    exact reachIn_complete graph graph.size q start target (by rw [hsz]; omega) hqc\n      (hqh.trans hph) (hql.trans hpl)\n  -- !benchmark @end proof\n",
+      "comment": "**LEAN VERIFIED** \u2014 `Solution.lean` compiles with no errors and no `sorry`/axioms (only an unused-variable warning for the unused precondition binder in the implementation).\n\n## Approach\n\nRather than an imperative stack-based DFS (whose termination and visited-set invariant are painful), I used a **bounded reachability** formulation that is extensionally the same search but structurally recursive:\n\n```lean\ndef reachIn (g : DFSGraph) : Nat \u2192 Nat \u2192 Nat \u2192 Bool\n  | 0,     u, t => u == t\n  | k + 1, u, t => (u == t) || (g.adj.getD u #[]).toList.any (fun v => reachIn g k v t)\n```\n\n`dfs_check_reachability = reachIn graph graph.size start target`. Recursion is on the fuel `k`, so **termination** is free even with cycles.\n\nThe three obligations from the task:\n\n1. **Soundness** (`reachIn_sound`): induction on `k` constructs an explicit witness path \u2014 `[u]` in the base/equal case, `u :: q` when a neighbour `v` succeeds. The `u < adj.size` side condition comes from the fact that `Array.getD` returns `#[]` out of bounds, so a successful `any` forces the index to be in range (`adj_empty_of_ge`).\n\n2. **Completeness** (`reachIn_complete` + the cycle-removal chain): induction on `k` shows any path with `\u2264 k+1` nodes is found. To close the gap for arbitrary (possibly long, cyclic) paths, this replaces the visited-set invariant:\n   - `not_nodup_decomp`: a non-`Nodup` list splits as `l\u2081 ++ a :: (l\u2082 ++ a :: l\u2083)`.\n   - `exists_nodup_chain`: strong induction on length \u2014 splice out the cycle to get `l\u2081 ++ a :: l\u2083`, which is still a chain (via `List.isChain_append`) with the same head and last, and is strictly shorter. Yields a `Nodup` path with the same endpoints, all of whose nodes come from the original.\n   - `chain_mem_lt` (using `well_formed` and `start < size`) puts every node of the path in `[0, size)`, so `nodup_length_le` (via `Finset.range`) bounds the `Nodup` path at `size` nodes \u2014 exactly the fuel supplied.\n\n3. Bridging the spec's index-based `is_path` with `List.IsChain` is done by `chain_of_path` / `path_of_chain` (`is_path_iff`); the final theorem converts the `Bool = Prop` postcondition with `eq_iff_iff` and proves both directions.\n\nNote: this Mathlib version has deprecated `List.Chain'` in favour of `List.IsChain`, and `List.chain'_iff_getElem` doesn't exist \u2014 hence the inductive proof of `is_path_iff`."
+    },
+    "verifier_response": {
+      "verified": true,
+      "feedback": "Verified successfully.",
+      "raw": {
+        "stdout": "claude_code_dfs_final_1786242824529.lean:42:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+        "stderr": "",
+        "returncode": 0
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": true,
+        "verifier_response": {
+          "verified": true,
+          "feedback": "Verified successfully.",
+          "raw": {
+            "stdout": "claude_code_dfs_final_1786242824529.lean:42:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+            "stderr": "",
+            "returncode": 0
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "336422ba-421c-42f9-af91-ffd50e7a70a0",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 1.3697625,
+          "duration_ms": 396507,
+          "duration_api_ms": 381728,
+          "num_turns": 14,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/dfs/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "3dfe4157cbad5773407277a482ada6896b337c0c9547d71a1ee7e74054f2e48a",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 16600,
+            "seconds_to_first_progress": 241.361,
+            "seconds_to_first_check": 248.534,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 432658,
+      "output": 35309,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "336422ba-421c-42f9-af91-ffd50e7a70a0",
+      "subtype": "success",
+      "provider_subtype": "success",
+      "is_error": false,
+      "total_cost_usd": 1.3697625,
+      "duration_ms": 396507,
+      "duration_api_ms": 381728,
+      "num_turns": 14,
+      "returncode": 0,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/dfs/agent_events.jsonl",
+      "pass_number": 1,
+      "prompt_kind": "initial",
+      "prompt_sha256": "3dfe4157cbad5773407277a482ada6896b337c0c9547d71a1ee7e74054f2e48a",
+      "budget_usd": null,
+      "lastdance_profile": "api",
+      "features": {
+        "profile": "api",
+        "algorithm_plan": false,
+        "lemma_plan": false,
+        "leansearch": false,
+        "semantic_audit": false,
+        "semantic_reminder": false,
+        "early_check": false,
+        "feedback_mode": "exact",
+        "backtracking": false,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": false,
+          "progress_governor": false,
+          "pre_edit_timeout_seconds": 300,
+          "pre_edit_thinking_tokens": 12000,
+          "post_edit_check_timeout_seconds": 180,
+          "planning_mode": false,
+          "diagnostic_wrapper": false,
+          "rescue_mode": false
+        },
+        "governor_stop_reason": null,
+        "max_thinking_tokens_observed": 16600,
+        "seconds_to_first_progress": 241.361,
+        "seconds_to_first_check": 248.534,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 1,
+      "total_sessions": 1,
+      "selected_session": 1,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "336422ba-421c-42f9-af91-ffd50e7a70a0",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 1.3697625,
+          "duration_ms": 396507,
+          "duration_api_ms": 381728,
+          "num_turns": 14,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/dfs/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "3dfe4157cbad5773407277a482ada6896b337c0c9547d71a1ee7e74054f2e48a",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 16600,
+            "seconds_to_first_progress": 241.361,
+            "seconds_to_first_check": 248.534,
+            "pending_tool_recovery": []
+          }
+        }
+      ],
+      "compiler_checks_observed": 3,
+      "max_compiler_checks": 15
+    },
+    "provenance": {
+      "schema_version": 1,
+      "ownership": {
+        "model_owned_sections": [
+          "auxcode",
+          "code",
+          "lemma",
+          "proof"
+        ],
+        "teacher_owned": "all source outside the four marker regions",
+        "teacher_owned_sorry_present": false,
+        "model_section_ranges": {
+          "auxcode": {
+            "start_line": 32,
+            "end_line": 38
+          },
+          "code": {
+            "start_line": 43,
+            "end_line": 45
+          },
+          "lemma": {
+            "start_line": 55,
+            "end_line": 279
+          },
+          "proof": {
+            "start_line": 286,
+            "end_line": 304
+          }
+        }
+      },
+      "hashes": {
+        "original_sha256": "1a13f1f0afc11989cbd59928233c63d46dd2f1067d7e34ad27e6bb57669710c0",
+        "candidate_sha256": "ce69784a26c87db1edb005f17bb9fbb9ed70d722e7c8fc996ce48c71318e798a",
+        "merged_sha256": "ce69784a26c87db1edb005f17bb9fbb9ed70d722e7c8fc996ce48c71318e798a",
+        "model_sections_sha256": {
+          "auxcode": "0f65f61dc90d5d4c9fee2d3ed3e6920ff3b96a1cdc7b845638797327c4ecf338",
+          "code": "53747764b9f2789b0b561e6e650a6172dfa5dbbb0675bbcee3bc57c567baf237",
+          "lemma": "932af3181bcc0fcef4b19da8c8795d48d02a5a3fa9c2ac74e5b6996d68cdecd5",
+          "proof": "c061a40e9eb6eab87f3618fe8cd60ab0c659a6cc28abdd1ea71704db7a6723d4"
+        }
+      }
+    },
+    "targeted_diagnostics": [],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/dfs/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": null,
+      "proof_state": null,
+      "leansearch_queries": null,
+      "checkpoints": null,
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/dfs/.lastdance/prompts"
+    }
+  }
+}

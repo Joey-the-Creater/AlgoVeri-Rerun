@@ -9,6 +9,8 @@ let experiments = [];
 let selectedRun = null;
 let comparisonData = null;
 let comparisonSignature = null;
+let comparisonPolling = false;
+let lastComparisonFetch = 0;
 let windowRestoreGeneration = 0;
 let stateSignature = null;
 let detailSignature = null;
@@ -231,11 +233,24 @@ function renderDetail() {
     renderDiff(taskDetail.diff || "");
     const semantic = taskDetail.experiment?.semantic_analysis;
     const verifier = taskDetail.result?.feedback || taskDetail.experiment?.verifier_feedback;
+    const robust = taskDetail.robust_artifacts || {};
+    const robustSections = [
+      robust.diagnostics && `Source-mapped diagnostics:\n${robust.diagnostics}`,
+      robust.leansearch_queries?.length && `LeanSearch queries:\n${JSON.stringify(robust.leansearch_queries, null, 2)}`,
+    ].filter(Boolean);
     setScrollableText(
       byId("feedback-content"),
-      [semantic && `Semantic judge:\n${semantic}`, verifier && `Verifier:\n${verifier}`].filter(Boolean).join("\n\n") || "No saved verifier feedback.",
+      [semantic && `Semantic judge:\n${semantic}`, verifier && `Verifier:\n${verifier}`, ...robustSections].filter(Boolean).join("\n\n") || "No saved verifier feedback.",
     );
     setScrollableText(byId("stderr-content"), taskDetail.stderr || "No stderr output.");
+    setScrollableText(
+      byId("algorithm-plan-content"),
+      robust.algorithm_plan || "AlgorithmPlan.md is not available for this run.",
+    );
+    setScrollableText(
+      byId("proof-state-content"),
+      robust.proof_state || "ProofState.md is not available for this run.",
+    );
   });
 }
 
@@ -370,6 +385,7 @@ function renderMatrix() {
     const value = row.models[id] || {state: "missing", out_of_scope: true};
     const tryCopy = value.success_try ? ` · try ${value.success_try}` : "";
     const locCopy = Number.isInteger(value.loc_added) ? ` · +${value.loc_added} LOC` : "";
+    const sourceCopy = value.source_label ? ` · source: ${value.source_label}` : "";
     let description = {
       semantic_success: "compiled and passed semantic check",
       compiled_no_semantic_pass: value.semantic_evaluated === false
@@ -380,7 +396,7 @@ function renderMatrix() {
     }[value.state] || value.state;
     if (value.out_of_scope) description = "not part of this run's task scope";
     const disabled = value.out_of_scope ? "disabled" : "";
-    return `<td class="matrix-cell"><button class="matrix-result" data-run="${escapeHtml(id)}" data-task="${escapeHtml(row.task)}" title="${value.out_of_scope ? "" : "Open result: "}${escapeHtml(description + tryCopy + locCopy)}" ${disabled}><span class="matrix-mark ${escapeHtml(value.state)}"></span></button></td>`;
+    return `<td class="matrix-cell"><button class="matrix-result" data-run="${escapeHtml(id)}" data-task="${escapeHtml(row.task)}" title="${value.out_of_scope ? "" : "Open result: "}${escapeHtml(description + tryCopy + locCopy + sourceCopy)}" ${disabled}><span class="matrix-mark ${escapeHtml(value.state)}"></span></button></td>`;
   }).join("")}</tr>`).join("");
   document.querySelectorAll(".matrix-result:not(:disabled)").forEach((button) => button.addEventListener("click", () => {
     selectedRun = button.dataset.run;
@@ -406,10 +422,13 @@ function renderComparison() {
   });
 }
 
-async function fetchComparison() {
+async function fetchComparison(force = false) {
+  const now = Date.now();
+  if (comparisonPolling || (!force && now - lastComparisonFetch < 10000)) return;
   const ids = selectedExperimentIds();
   if (!ids.length) return;
   const scope = byId("scope-select").value;
+  comparisonPolling = true;
   try {
     const response = await fetch(`/api/comparison?ids=${encodeURIComponent(ids.join(","))}&scope=${encodeURIComponent(scope)}`, {cache: "no-store"});
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -424,6 +443,9 @@ async function fetchComparison() {
     renderComparison();
   } catch (error) {
     console.error("Could not load comparison", error);
+  } finally {
+    comparisonPolling = false;
+    lastComparisonFetch = Date.now();
   }
 }
 
@@ -439,13 +461,13 @@ function renderExperimentControls() {
       ${items.map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === selectedRun ? "selected" : ""}>${escapeHtml(item.label)}</option>`).join("")}
     </optgroup>`).join("");
   byId("model-toggles").innerHTML = [...groups.entries()].map(([group, items]) => `
-    <section class="model-toggle-group">
-      <p>${escapeHtml(group)}</p>
+    <details class="model-toggle-group" ${group === "Architecture results by budget" ? "open" : ""}>
+      <summary><span>${escapeHtml(group)}</span><small>${items.length} run${items.length === 1 ? "" : "s"}</small></summary>
       <div class="model-toggle-items">
         ${items.map((item) => `<label class="model-toggle" style="--model-color:${escapeHtml(item.color)}"><input type="checkbox" value="${escapeHtml(item.id)}" ${item.comparison_default ? "checked" : ""}><span class="model-swatch"></span><span><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(item.condition)}</small></span></label>`).join("")}
       </div>
-    </section>`).join("");
-  document.querySelectorAll(".model-toggle input").forEach((input) => input.addEventListener("change", fetchComparison));
+    </details>`).join("");
+  document.querySelectorAll(".model-toggle input").forEach((input) => input.addEventListener("change", () => fetchComparison(true)));
 }
 
 function applyComparisonPreset(view) {
@@ -458,6 +480,11 @@ function applyComparisonPreset(view) {
       ? experiment?.judge_temperature === 0 && experiment?.judge_model === judgeModel
       : Boolean(experiment?.comparison_default);
   });
+  if (judgeModel) {
+    document.querySelectorAll(".model-toggle-group").forEach((group) => {
+      group.open = [...group.querySelectorAll("input")].some((input) => input.checked);
+    });
+  }
   byId("comparison-title").textContent = judgeModel
     ? `${judgeModel === "gpt-5.4" ? "GPT-5.4" : "GPT-5.6 Sol"} temperature 0 semantic comparison`
     : "Model comparison";
@@ -476,7 +503,7 @@ async function bootstrap() {
     experiments = data.experiments;
     selectedRun = data.default_run || experiments[0]?.id || null;
     renderExperimentControls();
-    await Promise.all([poll(), fetchComparison()]);
+    await Promise.all([poll(), fetchComparison(true)]);
   } catch (error) {
     console.error("Dashboard bootstrap failed", error);
     poll();
@@ -500,11 +527,11 @@ document.querySelectorAll(".view-button").forEach((button) => button.addEventLis
   byId("comparison-view").classList.toggle("hidden", !comparisonView);
   if (comparisonView) {
     applyComparisonPreset(view);
-    fetchComparison();
+    fetchComparison(true);
   }
 }));
 
-byId("scope-select").addEventListener("change", fetchComparison);
+byId("scope-select").addEventListener("change", () => fetchComparison(true));
 byId("try-slider").addEventListener("input", renderComparison);
 
 bootstrap();

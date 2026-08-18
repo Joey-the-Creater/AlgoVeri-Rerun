@@ -1,0 +1,395 @@
+{
+    "verified": false,
+    "details": {
+        "rounds": 29,
+        "llm_response": {
+            "code": "import Mathlib\n\nstructure WeightedGraph where\n  adj : Array (Array (Nat \u00d7 Int))\n\ndef WeightedGraph.size (g : WeightedGraph) : Nat :=\n  g.adj.size\n\ndef WeightedGraph.has_edge (g : WeightedGraph) (u v : Nat) (w : Int) : Prop :=\n  u < g.size \u2227\n  \u2203 pair, pair \u2208 g.adj.getD u #[] \u2227 pair.1 = v \u2227 pair.2 = w\n\ndef WeightedGraph.well_formed (g : WeightedGraph) : Prop :=\n  \u2200 u, u < g.size \u2192\n    -- Bounds check\n    (\u2200 pair, pair \u2208 g.adj.getD u #[] \u2192 pair.1 < g.size) \u2227\n    -- Simple graph check (matches Dafny)\n    (\u2200 p1 p2, p1 \u2208 g.adj.getD u #[] \u2192 p2 \u2208 g.adj.getD u #[] \u2192 p1.1 = p2.1 \u2192 p1 = p2)\n\nstructure MSTEdge where\n  u : Nat\n  v : Nat\n  w : Int\n\n-- 1. Validity\ndef MSTEdge.is_valid (e : MSTEdge) (g : WeightedGraph) : Prop :=\n  g.has_edge e.u e.v e.w\n\n-- 2. Connectivity for Solution Edges (Undirected View)\n-- Dafny: `edge_in_set` checks (u, v) || (v, u)\ndef edges_contain (edges : List MSTEdge) (u v : Nat) : Prop :=\n  \u2203 e, e \u2208 edges \u2227 ((e.u = u \u2227 e.v = v) \u2228 (e.u = v \u2227 e.v = u))\n\ndef path_follows_edges (edges : List MSTEdge) (p : List Nat) : Prop :=\n  p.length > 0 \u2227\n  \u2200 i, i + 1 < p.length \u2192\n    edges_contain edges (p.getD i 0) (p.getD (i + 1) 0)\n\ndef is_connected_with_edges (g : WeightedGraph) (edges : List MSTEdge) : Prop :=\n  \u2200 u v, u < g.size \u2192 v < g.size \u2192\n    \u2203 p, p.head? = some u \u2227 p.getLast? = some v \u2227 path_follows_edges edges p\n\n-- 3. Spanning Tree Definition\ndef is_spanning_tree (g : WeightedGraph) (edges : List MSTEdge) : Prop :=\n  edges.length = g.size - 1 \u2227\n  (\u2200 e, e \u2208 edges \u2192 e.is_valid g) \u2227\n  is_connected_with_edges g edges\n  -- Note: |V|-1 edges + Connected implies Acyclic (Tree)\n\ndef total_weight (edges : List MSTEdge) : Int :=\n  edges.foldl (\u03bb sum e => sum + e.w) 0\n\n-- 4. Optimality (MST)\ndef is_mst (g : WeightedGraph) (edges : List MSTEdge) : Prop :=\n  is_spanning_tree g edges \u2227\n  \u2200 other, is_spanning_tree g other \u2192 total_weight edges \u2264 total_weight other\n\n-- 5. Graph Connectivity (Precondition)\n-- Dafny uses directed edges for the graph path check: `graph_has_any_edge`\ndef path_follows_graph (g : WeightedGraph) (p : List Nat) : Prop :=\n  p.length > 0 \u2227\n  \u2200 i, i + 1 < p.length \u2192\n    \u2203 w, g.has_edge (p.getD i 0) (p.getD (i + 1) 0) w\n\ndef WeightedGraph.is_connected (g : WeightedGraph) : Prop :=\n  \u2200 u v, u < g.size \u2192 v < g.size \u2192\n    \u2203 p, p.head? = some u \u2227 p.getLast? = some v \u2227 path_follows_graph g p\n\ndef WeightedGraph.weights_bounded (g : WeightedGraph) : Prop :=\n  g.size \u2264 100000 \u2227\n  \u2200 u v w, g.has_edge u v w \u2192 w \u2265 -100000 \u2227 w \u2264 100000\n\n-- Precondition definitions\n@[reducible, simp]\ndef kruskal_mst_precond (graph : WeightedGraph) : Prop :=\n  -- !benchmark @start precond\n  graph.well_formed \u2227\n  graph.size > 0 \u2227\n  graph.is_connected \u2227\n  graph.weights_bounded\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n\n/-- Disjoint-set (union-find) forest: `parent` with self-parent at roots, and\n`sz` holding subtree sizes for union-by-size. -/\nstructure UF where\n  parent : Array Nat\n  sz : Array Nat\n\n/-- `n` singleton components. -/\ndef UF.init (n : Nat) : UF :=\n  { parent := Array.ofFn (fun i : Fin n => i.val)\n    sz := Array.replicate n 1 }\n\n/-- Follow parent pointers, structurally recursive on `fuel`. -/\ndef UF.findAux (p : Array Nat) (x : Nat) : Nat \u2192 Nat\n  | 0 => x\n  | fuel + 1 =>\n      let q := p.getD x x\n      if q = x then x else UF.findAux p q fuel\n\n/-- Representative of `x`.  `parent.size` bounds any parent chain because\nunion-by-size never creates a chain of length `\u2265 n`. -/\ndef UF.find (u : UF) (x : Nat) : Nat :=\n  UF.findAux u.parent x u.parent.size\n\n/-- Link the smaller root under the larger one. -/\ndef UF.union (u : UF) (a b : Nat) : UF :=\n  let ra := u.find a\n  let rb := u.find b\n  if ra = rb then u\n  else\n    let sa := u.sz.getD ra 1\n    let sb := u.sz.getD rb 1\n    if sa < sb then\n      { parent := u.parent.setIfInBounds ra rb, sz := u.sz.setIfInBounds rb (sa + sb) }\n    else\n      { parent := u.parent.setIfInBounds rb ra, sz := u.sz.setIfInBounds ra (sa + sb) }\n\n/-- Every directed adjacency entry, as an `MSTEdge`. -/\ndef allEdges (g : WeightedGraph) : List MSTEdge :=\n  (List.range g.size).flatMap\n    (fun u => (g.adj.getD u #[]).toList.map (fun pr => \u27e8u, pr.1, pr.2\u27e9))\n\n/-- Greedy scan of the weight-sorted edge list: accept an edge only when its\nendpoints lie in different components. -/\ndef kruskalLoop : List MSTEdge \u2192 UF \u2192 List MSTEdge \u2192 List MSTEdge\n  | [], _, acc => acc.reverse\n  | e :: rest, uf, acc =>\n      if uf.find e.u = uf.find e.v then\n        kruskalLoop rest uf acc\n      else\n        kruskalLoop rest (uf.union e.u e.v) (e :: acc)\n\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef kruskal_mst (graph : WeightedGraph)\n    (h_precond : kruskal_mst_precond graph) : List MSTEdge :=\n  -- !benchmark @start code\n  kruskalLoop\n    ((allEdges graph).mergeSort (fun a b => decide (a.w \u2264 b.w)))\n    (UF.init graph.size) []\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef kruskal_mst_postcond (graph : WeightedGraph) (result : List MSTEdge)\n    (_ : kruskal_mst_precond graph) : Prop :=\n  -- !benchmark @start postcond\n  is_mst graph result\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\n\n/-- The greedy scan only ever returns edges taken from its input list or its\naccumulator: it never invents an edge. -/\ntheorem mem_kruskalLoop :\n    \u2200 (l : List MSTEdge) (uf : UF) (acc : List MSTEdge) {e : MSTEdge},\n      e \u2208 kruskalLoop l uf acc \u2192 e \u2208 l \u2228 e \u2208 acc := by\n  intro l\n  induction l with\n  | nil =>\n      intro uf acc e h\n      simp only [kruskalLoop, List.mem_reverse] at h\n      exact Or.inr h\n  | cons a t ih =>\n      intro uf acc e h\n      rw [kruskalLoop] at h\n      split at h\n      \u00b7 rcases ih _ _ h with h' | h'\n        \u00b7 exact Or.inl (List.mem_cons_of_mem _ h')\n        \u00b7 exact Or.inr h'\n      \u00b7 rcases ih _ _ h with h' | h'\n        \u00b7 exact Or.inl (List.mem_cons_of_mem _ h')\n        \u00b7 rcases List.mem_cons.mp h' with rfl | h''\n          \u00b7 exact Or.inl (List.mem_cons_self ..)\n          \u00b7 exact Or.inr h''\n\n/-- Every candidate edge produced from the adjacency lists is a genuine edge. -/\ntheorem valid_of_mem_allEdges (g : WeightedGraph) {e : MSTEdge}\n    (he : e \u2208 allEdges g) : e.is_valid g := by\n  simp only [allEdges, List.mem_flatMap, List.mem_map, List.mem_range] at he\n  obtain \u27e8u, hu, pr, hpr, rfl\u27e9 := he\n  refine \u27e8hu, pr, ?_, rfl, rfl\u27e9\n  simpa using hpr\n\n/-- Validity of the returned list (invariant I1 of AlgorithmPlan.md). -/\ntheorem kruskal_mst_valid (graph : WeightedGraph) (h : kruskal_mst_precond graph) :\n    \u2200 e \u2208 kruskal_mst graph h, e.is_valid graph := by\n  intro e he\n  simp only [kruskal_mst] at he\n  rcases mem_kruskalLoop _ _ _ he with h' | h'\n  \u00b7 exact valid_of_mem_allEdges graph ((List.mergeSort_perm _ _).mem_iff.mp h')\n  \u00b7 simp at h'\n\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem kruskal_mst_postcond_satisfied (graph : WeightedGraph)\n    (h_precond : kruskal_mst_precond graph) :\n    kruskal_mst_postcond graph (kruskal_mst graph h_precond) h_precond := by\n  -- !benchmark @start proof\n  refine \u27e8\u27e8?_, ?_, ?_\u27e9, ?_\u27e9\n  \u00b7 skip\n  \u00b7 exact kruskal_mst_valid graph h_precond\n  \u00b7 skip\n  \u00b7 skip\n  -- !benchmark @end proof",
+            "comment": ""
+        },
+        "verifier_response": {
+            "verified": false,
+            "feedback": "Stdout:\nclaude_code_kruskal_final_1786100519414.lean:140:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786100519414.lean:206:2: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskal_mst graph h_precond).length = graph.size - 1\nclaude_code_kruskal_final_1786100519414.lean:208:2: error: unsolved goals\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskal_mst graph h_precond)\nclaude_code_kruskal_final_1786100519414.lean:209:2: error: unsolved goals\ncase refine_4\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge),\n    is_spanning_tree graph other \u2192 total_weight (kruskal_mst graph h_precond) \u2264 total_weight other\n\n\nStderr:\n",
+            "raw": {
+                "stdout": "claude_code_kruskal_final_1786100519414.lean:140:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786100519414.lean:206:2: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskal_mst graph h_precond).length = graph.size - 1\nclaude_code_kruskal_final_1786100519414.lean:208:2: error: unsolved goals\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskal_mst graph h_precond)\nclaude_code_kruskal_final_1786100519414.lean:209:2: error: unsolved goals\ncase refine_4\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge),\n    is_spanning_tree graph other \u2192 total_weight (kruskal_mst graph h_precond) \u2264 total_weight other\n",
+                "stderr": "",
+                "returncode": 1
+            }
+        },
+        "history": [
+            {
+                "compiler_pass": 1,
+                "verified": false,
+                "verifier_response": {
+                    "verified": false,
+                    "feedback": "Stdout:\nclaude_code_kruskal_final_1786100348318.lean:140:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786100348318.lean:206:2: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskal_mst graph h_precond).length = graph.size - 1\nclaude_code_kruskal_final_1786100348318.lean:208:2: error: unsolved goals\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskal_mst graph h_precond)\nclaude_code_kruskal_final_1786100348318.lean:209:2: error: unsolved goals\ncase refine_4\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge),\n    is_spanning_tree graph other \u2192 total_weight (kruskal_mst graph h_precond) \u2264 total_weight other\n\n\nStderr:\n",
+                    "raw": {
+                        "stdout": "claude_code_kruskal_final_1786100348318.lean:140:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786100348318.lean:206:2: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskal_mst graph h_precond).length = graph.size - 1\nclaude_code_kruskal_final_1786100348318.lean:208:2: error: unsolved goals\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskal_mst graph h_precond)\nclaude_code_kruskal_final_1786100348318.lean:209:2: error: unsolved goals\ncase refine_4\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge),\n    is_spanning_tree graph other \u2192 total_weight (kruskal_mst graph h_precond) \u2264 total_weight other\n",
+                        "stderr": "",
+                        "returncode": 1
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "ba4ba74c-da3b-42f8-8932-4d4ba0eed073",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.88142525,
+                    "duration_ms": 276053,
+                    "duration_api_ms": 265382,
+                    "num_turns": 21,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/kruskal/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "prompt_sha256": "048cdb5eca8e5ab91ee918b8a2b1911e572b2fff355a62ffa5fd759777f7fe26",
+                    "budget_usd": 2.0,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": false
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 2850,
+                        "seconds_to_first_progress": 135.65,
+                        "seconds_to_first_check": 141.058,
+                        "pending_tool_recovery": []
+                    }
+                }
+            },
+            {
+                "compiler_pass": 2,
+                "verified": false,
+                "verifier_response": {
+                    "verified": false,
+                    "feedback": "Stdout:\nclaude_code_kruskal_final_1786100519414.lean:140:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786100519414.lean:206:2: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskal_mst graph h_precond).length = graph.size - 1\nclaude_code_kruskal_final_1786100519414.lean:208:2: error: unsolved goals\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskal_mst graph h_precond)\nclaude_code_kruskal_final_1786100519414.lean:209:2: error: unsolved goals\ncase refine_4\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge),\n    is_spanning_tree graph other \u2192 total_weight (kruskal_mst graph h_precond) \u2264 total_weight other\n\n\nStderr:\n",
+                    "raw": {
+                        "stdout": "claude_code_kruskal_final_1786100519414.lean:140:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786100519414.lean:206:2: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskal_mst graph h_precond).length = graph.size - 1\nclaude_code_kruskal_final_1786100519414.lean:208:2: error: unsolved goals\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskal_mst graph h_precond)\nclaude_code_kruskal_final_1786100519414.lean:209:2: error: unsolved goals\ncase refine_4\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge),\n    is_spanning_tree graph other \u2192 total_weight (kruskal_mst graph h_precond) \u2264 total_weight other\n",
+                        "stderr": "",
+                        "returncode": 1
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "3d275b14-986a-42fd-82d5-d284e903a386",
+                    "subtype": "error_during_execution",
+                    "is_error": true,
+                    "total_cost_usd": 0.09872,
+                    "duration_ms": 165582,
+                    "duration_api_ms": 16163,
+                    "num_turns": 9,
+                    "returncode": 143,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/kruskal/agent_events.jsonl",
+                    "pass_number": 2,
+                    "prompt_kind": "compiler_repair",
+                    "prompt_sha256": "7ac5a4bafd02fe05e82124bf0361f3ba53914b9968ca3a3e5c768c7006d33b84",
+                    "budget_usd": 2.0,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": false
+                        },
+                        "governor_stop_reason": "no durable edit before 12000 thinking tokens",
+                        "max_thinking_tokens_observed": 12000,
+                        "seconds_to_first_progress": null,
+                        "seconds_to_first_check": null,
+                        "pending_tool_recovery": []
+                    }
+                }
+            }
+        ],
+        "tokens": {
+            "input": 401564,
+            "output": 21448,
+            "reasoning": 0
+        },
+        "agent": {
+            "kind": "claude-code",
+            "cli_version": "2.1.220 (Claude Code)",
+            "model": "claude-opus-5",
+            "effort": "medium",
+            "session_id": "3d275b14-986a-42fd-82d5-d284e903a386",
+            "subtype": "error_during_execution",
+            "is_error": true,
+            "total_cost_usd": 0.9801452500000001,
+            "duration_ms": 441635,
+            "duration_api_ms": 281545,
+            "num_turns": 30,
+            "returncode": 143,
+            "timed_out": false,
+            "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/kruskal/agent_events.jsonl",
+            "pass_number": 2,
+            "prompt_kind": "compiler_repair",
+            "prompt_sha256": "7ac5a4bafd02fe05e82124bf0361f3ba53914b9968ca3a3e5c768c7006d33b84",
+            "budget_usd": 2.0,
+            "lastdance_profile": "robust",
+            "features": {
+                "profile": "robust",
+                "algorithm_plan": true,
+                "lemma_plan": true,
+                "leansearch": true,
+                "semantic_audit": true,
+                "semantic_reminder": true,
+                "early_check": true,
+                "feedback_mode": "structured",
+                "backtracking": true,
+                "stagnation_threshold": 2
+            },
+            "run_control": {
+                "control": {
+                    "recover_pending_tool": true,
+                    "progress_governor": true,
+                    "pre_edit_timeout_seconds": 300,
+                    "pre_edit_thinking_tokens": 12000,
+                    "post_edit_check_timeout_seconds": 180,
+                    "planning_mode": false,
+                    "diagnostic_wrapper": false
+                },
+                "governor_stop_reason": "no durable edit before 12000 thinking tokens",
+                "max_thinking_tokens_observed": 12000,
+                "seconds_to_first_progress": null,
+                "seconds_to_first_check": null,
+                "pending_tool_recovery": []
+            },
+            "compiler_passes": 2,
+            "total_sessions": 2,
+            "selected_session": 2,
+            "sessions": [
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "ba4ba74c-da3b-42f8-8932-4d4ba0eed073",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.88142525,
+                    "duration_ms": 276053,
+                    "duration_api_ms": 265382,
+                    "num_turns": 21,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/kruskal/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "prompt_sha256": "048cdb5eca8e5ab91ee918b8a2b1911e572b2fff355a62ffa5fd759777f7fe26",
+                    "budget_usd": 2.0,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": false
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 2850,
+                        "seconds_to_first_progress": 135.65,
+                        "seconds_to_first_check": 141.058,
+                        "pending_tool_recovery": []
+                    }
+                },
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "3d275b14-986a-42fd-82d5-d284e903a386",
+                    "subtype": "error_during_execution",
+                    "is_error": true,
+                    "total_cost_usd": 0.09872,
+                    "duration_ms": 165582,
+                    "duration_api_ms": 16163,
+                    "num_turns": 9,
+                    "returncode": 143,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/kruskal/agent_events.jsonl",
+                    "pass_number": 2,
+                    "prompt_kind": "compiler_repair",
+                    "prompt_sha256": "7ac5a4bafd02fe05e82124bf0361f3ba53914b9968ca3a3e5c768c7006d33b84",
+                    "budget_usd": 2.0,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": false
+                        },
+                        "governor_stop_reason": "no durable edit before 12000 thinking tokens",
+                        "max_thinking_tokens_observed": 12000,
+                        "seconds_to_first_progress": null,
+                        "seconds_to_first_check": null,
+                        "pending_tool_recovery": []
+                    }
+                }
+            ]
+        },
+        "provenance": {
+            "schema_version": 1,
+            "ownership": {
+                "model_owned_sections": [
+                    "auxcode",
+                    "code",
+                    "lemma",
+                    "proof"
+                ],
+                "teacher_owned": "all source outside the four marker regions",
+                "teacher_owned_sorry_present": false,
+                "model_section_ranges": {
+                    "auxcode": {
+                        "start_line": 83,
+                        "end_line": 136
+                    },
+                    "code": {
+                        "start_line": 141,
+                        "end_line": 145
+                    },
+                    "lemma": {
+                        "start_line": 155,
+                        "end_line": 198
+                    },
+                    "proof": {
+                        "start_line": 204,
+                        "end_line": 210
+                    }
+                }
+            },
+            "hashes": {
+                "original_sha256": "5d113897367eab13dcafd39f60958ee1b9214a9d84ea9e1722486def30fe9a70",
+                "candidate_sha256": "f0ac591922ce447c022e7d712a2029f757ef96f1c476ae87de591daa94317254",
+                "merged_sha256": "f0ac591922ce447c022e7d712a2029f757ef96f1c476ae87de591daa94317254",
+                "model_sections_sha256": {
+                    "auxcode": "ec7795dd4ad10f15ad1dc54bc2dedf5a3d2a63ffcc76159240a37daf5eb8a2c4",
+                    "code": "69659b38c8d2ad57a132794c11a7952d664e0107a7696e129a15ffa1aa9032ab",
+                    "lemma": "c9685856adea8aba886831377df75ab9bc3e9f51896b1f3cfea19a42a99835fc",
+                    "proof": "3b685dc8533773cefa1fc0fba8eb1ef5bce6fc9fb7cfa6601788c82622135daa"
+                }
+            }
+        },
+        "targeted_diagnostics": [
+            {
+                "line": 140,
+                "column": 5,
+                "kind": "warning",
+                "message": "unused variable `h_precond`",
+                "section": "teacher-owned-or-generated",
+                "nearest_declaration": "kruskal_mst"
+            },
+            {
+                "line": 206,
+                "column": 2,
+                "kind": "error",
+                "message": "unsolved goals",
+                "section": "proof",
+                "nearest_declaration": "kruskal_mst_postcond_satisfied"
+            },
+            {
+                "line": 208,
+                "column": 2,
+                "kind": "error",
+                "message": "unsolved goals",
+                "section": "proof",
+                "nearest_declaration": "kruskal_mst_postcond_satisfied"
+            },
+            {
+                "line": 209,
+                "column": 2,
+                "kind": "error",
+                "message": "unsolved goals",
+                "section": "proof",
+                "nearest_declaration": "kruskal_mst_postcond_satisfied"
+            }
+        ],
+        "lastdance_artifacts": {
+            "ledger": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/kruskal/.lastdance/run_ledger.jsonl",
+            "algorithm_plan": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/kruskal/AlgorithmPlan.md",
+            "proof_state": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/kruskal/ProofState.md",
+            "leansearch_queries": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/kruskal/.lastdance/leansearch_queries.jsonl",
+            "checkpoints": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/kruskal/.lastdance/checkpoints/manifest.jsonl",
+            "prompts": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/kruskal/.lastdance/prompts"
+        }
+    },
+    "parsed": false,
+    "verdict": false,
+    "analysis": "",
+    "semantic_judge": {
+        "model": "gpt-5.4",
+        "temperature": 0.0,
+        "reasoning_effort": "medium",
+        "provenance_aware": true
+    }
+}

@@ -63,6 +63,20 @@ class PublishedExperimentCatalogTests(unittest.TestCase):
             self.assertEqual(successes, sorted(successes), summary["id"])
             self.assertLessEqual(successes[-1], summary["compile_success"])
 
+    def test_lightweight_catalog_preserves_grouping_without_result_metrics(self) -> None:
+        metadata = self.catalog.list_metadata()
+        self.assertEqual(
+            [item["id"] for item in metadata[:4]],
+            [
+                "architecture-legacy-combined",
+                "architecture-enhanced-combined",
+                "architecture-current-capped-combined",
+                "lastdance-current-unlimited-fail9",
+            ],
+        )
+        self.assertNotIn("compile_success", metadata[0])
+        self.assertIn("comparison_default", metadata[0])
+
     def test_common_scope_applies_to_summary_and_matrix(self) -> None:
         comparison = self.catalog.compare(
             ["gpt-5.5", "claude-code-hard10"], scope_mode="common"
@@ -170,6 +184,94 @@ class PublishedExperimentCatalogTests(unittest.TestCase):
         self.assertEqual(summary["total"], 65)
         self.assertNotIn("trie_search", experiment.task_names)
         self.assertIn("stack_push", experiment.task_names)
+
+    def test_dashboard_splits_current_runs_by_budget_and_tracks_legacy_scope(self) -> None:
+        visible = self.catalog.list()
+        self.assertEqual(
+            [item["id"] for item in visible[:4]],
+            [
+                "architecture-legacy-combined",
+                "architecture-enhanced-combined",
+                "architecture-current-capped-combined",
+                "lastdance-current-unlimited-fail9",
+            ],
+        )
+        self.assertTrue(
+            all(item["group"] == "Architecture results by budget" for item in visible[:4])
+        )
+        self.assertTrue(all(item["comparison_default"] for item in visible[:4]))
+        self.assertFalse(any(item["comparison_default"] for item in visible[4:]))
+        self.assertIn("maximum $4/task", visible[2]["condition"])
+        self.assertIn("uncapped", visible[3]["label"])
+
+        legacy = self.catalog.get("claude-code-legacy65")
+        self.assertEqual(legacy.summary()["total"], 65)
+        self.assertNotIn("trie_search", legacy.task_names)
+        self.assertIn("stack_push", legacy.task_names)
+        self.assertNotIn(
+            "claude-code-api-equivalent-fail9",
+            {item["id"] for item in visible},
+        )
+        self.assertNotIn(
+            "architecture-current-combined",
+            {item["id"] for item in visible},
+        )
+        self.assertNotIn(
+            "lastdance-current-enhanced-fail5",
+            {item["id"] for item in visible},
+        )
+
+    def test_combined_architectures_merge_completed_sources_with_provenance(self) -> None:
+        legacy = self.catalog.get("architecture-legacy-combined")
+        enhanced = self.catalog.get("architecture-enhanced-combined")
+        current = self.catalog.get("architecture-current-combined")
+        capped_current = self.catalog.get("architecture-current-capped-combined")
+
+        legacy_summary = legacy.summary()
+        self.assertEqual(legacy_summary["outputs"], legacy_summary["total"])
+        self.assertLessEqual(legacy_summary["total"], 65)
+        self.assertEqual(enhanced.summary()["total"], 65)
+        self.assertTrue(
+            any(
+                source.get("results_root")
+                == "results/claude_code_original_plus_repair30"
+                for source in enhanced.source_configs
+            )
+        )
+        self.assertEqual(
+            enhanced.task_result("max_matching")["source_label"],
+            "Enhanced 65 · GPT-5.4 T0",
+        )
+        self.assertEqual(current.summary()["total"], 11)
+        capped_summary = capped_current.summary()
+        self.assertEqual(capped_summary["total"], 18)
+        self.assertEqual(capped_summary["outputs"], 18)
+        self.assertEqual(
+            capped_current.task_result("bellman_ford")["source_label"],
+            "Current capped · budget-13 batch",
+        )
+        self.assertEqual(
+            capped_current.task_result("bubble_sort")["source_label"],
+            "Current capped · fail-5 batch",
+        )
+
+        self.assertEqual(
+            current.task_result("ac_automata")["source_label"],
+            "Current · uncapped fail-9",
+        )
+        self.assertEqual(
+            current.task_result("bubble_sort")["source_label"],
+            "Current · Enhanced failure-set run",
+        )
+        self.assertEqual(
+            current.task_result("polymul_naive")["source_label"],
+            "Current · Enhanced failure-set run",
+        )
+        self.assertNotIn("bellman_ford", current.task_names)
+        self.assertNotIn(
+            "claude-code-original-plus-repair30",
+            {item["id"] for item in self.catalog.list()},
+        )
 
     def test_temperature_zero_dashboard_condition_is_separate(self) -> None:
         expected = {

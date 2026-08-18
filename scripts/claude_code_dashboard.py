@@ -52,7 +52,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_json({"ok": True, "pid": os.getpid()})
             return
         if parsed.path == "/api/experiments":
-            self.send_json({"default_run": self.default_run, "experiments": self.catalog.list()})
+            self.send_json(
+                {
+                    "default_run": self.default_run,
+                    "experiments": self.catalog.list_metadata(),
+                }
+            )
             return
         if parsed.path == "/api/comparison":
             query = parse_qs(parsed.query)

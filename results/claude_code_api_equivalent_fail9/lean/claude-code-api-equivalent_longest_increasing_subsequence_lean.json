@@ -1,0 +1,250 @@
+{
+  "verified": true,
+  "details": {
+    "rounds": 10,
+    "llm_response": {
+      "code": "import Mathlib\n\n-- Precondition definitions\n@[reducible, simp]\ndef longest_increasing_subsequence_precond (seq : List Int) : Prop :=\n  -- !benchmark @start precond\n  True\n  -- !benchmark @end precond\n\n\n-- !benchmark @start auxcode\n/-- All lists of length `k` whose entries are `< n`. -/\ndef lisAllLists : Nat \u2192 Nat \u2192 List (List Nat)\n  | 0, _ => [[]]\n  | (k + 1), n => (List.range n).flatMap (fun x => (lisAllLists k n).map (fun l => x :: l))\n\n/-- Decidable twin of `inc_nat`. -/\ndef lisIncB (l : List Nat) : Bool :=\n  decide (\u2200 i < l.length, \u2200 j < l.length, i < j \u2192 l.getD i 0 < l.getD j 0)\n\n/-- Decidable twin of `inc_vals`. -/\ndef lisIncValsB (seq : List Int) (l : List Nat) : Bool :=\n  decide (\u2200 i < l.length, \u2200 j < l.length, i < j \u2192\n    seq.getD (l.getD i 0) 0 < seq.getD (l.getD j 0) 0)\n\n/-- Decidable twin of `is_valid_is`. -/\ndef lisValidB (seq : List Int) (l : List Nat) : Bool :=\n  lisIncB l && l.all (fun i => decide (i < seq.length)) && lisIncValsB seq l\n\n/-- All valid increasing subsequences (as index lists) of `seq`. -/\ndef lisCands (seq : List Int) : List (List Nat) :=\n  ((List.range (seq.length + 1)).flatMap\n    (fun k => lisAllLists k seq.length)).filter (lisValidB seq)\n\ndef lisMaxOf (M : List Nat) : Nat := M.foldr max 0\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef longest_increasing_subsequence (seq : List Int)\n    (h_precond : longest_increasing_subsequence_precond seq) : Nat :=\n  -- !benchmark @start code\n  lisMaxOf ((lisCands seq).map List.length)\n  -- !benchmark @end code\n\n/-\n  Post\u2011condition auxiliary predicates.\n-/\n\n/-- `inc_nat l` states that the list `l` of natural numbers is strictly increasing. -/\ndef inc_nat (l : List Nat) : Prop :=\n  \u2200 i j, i < j \u2192 i < l.length \u2192 j < l.length \u2192 l.getD i 0 < l.getD j 0\n\n/-- `inc_vals seq indices` states that the values of `seq` at the given (strictly increasing)\n    indices form a strictly increasing sequence. -/\ndef inc_vals (seq : List Int) (indices : List Nat) : Prop :=\n  \u2200 i j, i < j \u2192 i < indices.length \u2192 j < indices.length \u2192\n    seq.getD (indices.getD i 0) 0 < seq.getD (indices.getD j 0) 0\n\n/-- `is_valid_is seq indices` bundles the three necessary conditions for a list of indices\n    to represent a valid increasing subsequence of `seq`. -/\ndef is_valid_is (seq : List Int) (indices : List Nat) : Prop :=\n  inc_nat indices \u2227\n  (\u2200 i, i \u2208 indices \u2192 i < seq.length) \u2227\n  inc_vals seq indices\n\n-- Postcondition definitions\n@[reducible, simp]\ndef longest_increasing_subsequence_postcond\n    (seq : List Int) (result : Nat)\n    (h_precond : longest_increasing_subsequence_precond seq) : Prop :=\n  -- !benchmark @start postcond\n  (\u2200 sub : List Nat, is_valid_is seq sub \u2192 sub.length \u2264 result) \u2227\n  (\u2203 sub : List Nat, is_valid_is seq sub \u2227 sub.length = result)\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\n/-- The enumeration is complete: any list with entries `< n` occurs in it. -/\ntheorem lis_mem_allLists (n : Nat) :\n    \u2200 l : List Nat, (\u2200 x \u2208 l, x < n) \u2192 l \u2208 lisAllLists l.length n := by\n  intro l\n  induction l with\n  | nil => intro _; exact List.mem_singleton.mpr rfl\n  | cons x t ih =>\n    intro h\n    have hx : x < n := h x (List.mem_cons_self ..)\n    have ht : t \u2208 lisAllLists t.length n := ih (fun y hy => h y (List.mem_cons_of_mem _ hy))\n    have he : lisAllLists (x :: t).length n\n        = (List.range n).flatMap (fun y => (lisAllLists t.length n).map (fun l => y :: l)) := rfl\n    rw [he]\n    exact List.mem_flatMap.mpr \u27e8x, List.mem_range.mpr hx, List.mem_map.mpr \u27e8t, ht, rfl\u27e9\u27e9\n\n/-- In a strictly increasing list of naturals the `i`-th entry is at least `i`. -/\ntheorem lis_index_le (l : List Nat)\n    (h : \u2200 i < l.length, \u2200 j < l.length, i < j \u2192 l.getD i 0 < l.getD j 0) :\n    \u2200 i, i < l.length \u2192 i \u2264 l.getD i 0 := by\n  intro i\n  induction i with\n  | zero => intro _; exact Nat.zero_le _\n  | succ k ih =>\n    intro hk\n    have hk' : k < l.length := Nat.lt_of_succ_lt hk\n    have h1 : k \u2264 l.getD k 0 := ih hk'\n    have h2 : l.getD k 0 < l.getD (k + 1) 0 := h k hk' (k + 1) hk (Nat.lt_succ_self k)\n    omega\n\n/-- A valid index list cannot be longer than the sequence itself. -/\ntheorem lis_len_le (seq : List Int) (l : List Nat)\n    (h : \u2200 i < l.length, \u2200 j < l.length, i < j \u2192 l.getD i 0 < l.getD j 0)\n    (hb : \u2200 x \u2208 l, x < seq.length) : l.length \u2264 seq.length := by\n  by_contra hc\n  push_neg at hc\n  have h1 : seq.length \u2264 l.getD seq.length 0 := lis_index_le l h seq.length hc\n  have h3 : l.getD seq.length 0 \u2208 l := by\n    rw [List.getD_eq_getElem l 0 hc]\n    exact List.getElem_mem hc\n  have h4 := hb _ h3\n  omega\n\ntheorem lis_valid_iff (seq : List Int) (l : List Nat) :\n    is_valid_is seq l \u2194 lisValidB seq l = true := by\n  constructor\n  \u00b7 rintro \u27e8h1, h2, h3\u27e9\n    simp only [lisValidB, lisIncB, lisIncValsB, Bool.and_eq_true, decide_eq_true_eq,\n      List.all_eq_true]\n    exact \u27e8\u27e8fun i hi j hj hij => h1 i j hij hi hj, fun x hx => by simpa using h2 x hx\u27e9,\n      fun i hi j hj hij => h3 i j hij hi hj\u27e9\n  \u00b7 intro h\n    simp only [lisValidB, lisIncB, lisIncValsB, Bool.and_eq_true, decide_eq_true_eq,\n      List.all_eq_true] at h\n    obtain \u27e8\u27e8h1, h2\u27e9, h3\u27e9 := h\n    exact \u27e8fun i j hij hi hj => h1 i hi j hj hij, fun x hx => by simpa using h2 x hx,\n      fun i j hij hi hj => h3 i hi j hj hij\u27e9\n\ntheorem lis_le_max (M : List Nat) (x : Nat) (hx : x \u2208 M) : x \u2264 lisMaxOf M := by\n  induction M with\n  | nil => cases hx\n  | cons a t ih =>\n    have he : lisMaxOf (a :: t) = max a (lisMaxOf t) := rfl\n    rcases List.mem_cons.mp hx with h | h\n    \u00b7 rw [he, h]; exact le_max_left _ _\n    \u00b7 have := ih h\n      rw [he]\n      exact le_trans this (le_max_right _ _)\n\ntheorem lis_max_mem (M : List Nat) : lisMaxOf M = 0 \u2228 lisMaxOf M \u2208 M := by\n  induction M with\n  | nil => left; rfl\n  | cons a t ih =>\n    have he : lisMaxOf (a :: t) = max a (lisMaxOf t) := rfl\n    rcases max_choice a (lisMaxOf t) with hm | hm\n    \u00b7 right; rw [he, hm]; simp\n    \u00b7 rcases ih with h | h\n      \u00b7 left; rw [he, hm, h]\n      \u00b7 right; rw [he, hm]; exact List.mem_cons_of_mem _ h\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem longest_increasing_subsequence_postcond_satisfied\n    (seq : List Int) (h_precond : longest_increasing_subsequence_precond seq) :\n    longest_increasing_subsequence_postcond\n      seq (longest_increasing_subsequence seq h_precond) h_precond := by\n  -- !benchmark @start proof\n  simp only [longest_increasing_subsequence_postcond, longest_increasing_subsequence]\n  constructor\n  \u00b7 intro sub hsub\n    have hb : \u2200 x \u2208 sub, x < seq.length := hsub.2.1\n    have hinc : \u2200 i < sub.length, \u2200 j < sub.length, i < j \u2192 sub.getD i 0 < sub.getD j 0 :=\n      fun i hi j hj hij => hsub.1 i j hij hi hj\n    have hlen : sub.length \u2264 seq.length := lis_len_le seq sub hinc hb\n    have hmem : sub \u2208 lisCands seq := by\n      rw [lisCands, List.mem_filter]\n      refine \u27e8?_, (lis_valid_iff seq sub).mp hsub\u27e9\n      exact List.mem_flatMap.mpr\n        \u27e8sub.length, List.mem_range.mpr (by omega), lis_mem_allLists seq.length sub hb\u27e9\n    exact lis_le_max _ _ (List.mem_map.mpr \u27e8sub, hmem, rfl\u27e9)\n  \u00b7 rcases lis_max_mem ((lisCands seq).map List.length) with h | h\n    \u00b7 exact \u27e8[], by simp [is_valid_is, inc_nat, inc_vals], by simp [h]\u27e9\n    \u00b7 obtain \u27e8l, hl, hlen\u27e9 := List.mem_map.mp h\n      rw [lisCands, List.mem_filter] at hl\n      exact \u27e8l, (lis_valid_iff seq l).mpr hl.2, hlen\u27e9\n  -- !benchmark @end proof\n",
+      "comment": "Verified on the first compiler check \u2014 only pre-existing `unused variable` warnings, and `LEAN VERIFIED`.\n\n**What I did** (only in the four marker regions of `Solution.lean`):\n\n- **auxcode** \u2014 `lisAllLists k n` (all length-`k` lists with entries `< n`), Boolean twins `lisIncB`/`lisIncValsB`/`lisValidB` of the spec's predicates (decidable via bounded quantifiers), `lisCands` (enumerate lengths `0..seq.length`, filter by validity), and `lisMaxOf = foldr max 0`.\n- **code** \u2014 `lisMaxOf ((lisCands seq).map List.length)`.\n- **lemma** \u2014\n  - `lis_mem_allLists`: the enumeration is complete for entry-bounded lists.\n  - `lis_index_le` \u2192 `lis_len_le`: a strictly increasing list satisfies `i \u2264 l.getD i 0`, so any valid index list has length `\u2264 seq.length` \u2014 this is what makes the finite search space sound.\n  - `lis_valid_iff`: `is_valid_is seq l \u2194 lisValidB seq l = true` (needed because the spec predicates are declared *after* the code region).\n  - `lis_le_max`, `lis_max_mem`: the fold is an upper bound and is either `0` or attained.\n- **proof** \u2014 Upper bound: any valid `sub` lands in `lisCands`, so its length is `\u2264` the fold. Existence: the max is either attained by some candidate (valid via `lis_valid_iff`) or is `0`, witnessed by `[]`, which is vacuously valid.\n\nOne thing worth flagging: this is a brute-force enumeration, not the O(n log n) patience-sorting algorithm. It satisfies the stated postconditions exactly and is total/computable (no `sorry`, `partial`, or escapes), but it is exponential in `seq.length`, so it is a specification-faithful implementation rather than a practical one. Proving optimality of the fast algorithm against this spec would be a substantially larger development; say the word if you want that instead."
+    },
+    "verifier_response": {
+      "verified": true,
+      "feedback": "Verified successfully.",
+      "raw": {
+        "stdout": "claude_code_longest_increasing_subsequence_final_1786248089196.lean:5:44: warning: unused variable `seq`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_longest_increasing_subsequence_final_1786248089196.lean:40:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_longest_increasing_subsequence_final_1786248089196.lean:70:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+        "stderr": "",
+        "returncode": 0
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": true,
+        "verifier_response": {
+          "verified": true,
+          "feedback": "Verified successfully.",
+          "raw": {
+            "stdout": "claude_code_longest_increasing_subsequence_final_1786248089196.lean:5:44: warning: unused variable `seq`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_longest_increasing_subsequence_final_1786248089196.lean:40:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_longest_increasing_subsequence_final_1786248089196.lean:70:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+            "stderr": "",
+            "returncode": 0
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "021463e7-cf14-4526-8e8d-e214e3d372af",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.69474325,
+          "duration_ms": 192903,
+          "duration_api_ms": 188900,
+          "num_turns": 11,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/longest_increasing_subsequence/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "0d3420172fa2f3d79ca4f82e694964f2e6c41f0a20400b2116852672d900b311",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 11800,
+            "seconds_to_first_progress": 146.323,
+            "seconds_to_first_check": 183.668,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 225806,
+      "output": 17237,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "021463e7-cf14-4526-8e8d-e214e3d372af",
+      "subtype": "success",
+      "provider_subtype": "success",
+      "is_error": false,
+      "total_cost_usd": 0.69474325,
+      "duration_ms": 192903,
+      "duration_api_ms": 188900,
+      "num_turns": 11,
+      "returncode": 0,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/longest_increasing_subsequence/agent_events.jsonl",
+      "pass_number": 1,
+      "prompt_kind": "initial",
+      "prompt_sha256": "0d3420172fa2f3d79ca4f82e694964f2e6c41f0a20400b2116852672d900b311",
+      "budget_usd": null,
+      "lastdance_profile": "api",
+      "features": {
+        "profile": "api",
+        "algorithm_plan": false,
+        "lemma_plan": false,
+        "leansearch": false,
+        "semantic_audit": false,
+        "semantic_reminder": false,
+        "early_check": false,
+        "feedback_mode": "exact",
+        "backtracking": false,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": false,
+          "progress_governor": false,
+          "pre_edit_timeout_seconds": 300,
+          "pre_edit_thinking_tokens": 12000,
+          "post_edit_check_timeout_seconds": 180,
+          "planning_mode": false,
+          "diagnostic_wrapper": false,
+          "rescue_mode": false
+        },
+        "governor_stop_reason": null,
+        "max_thinking_tokens_observed": 11800,
+        "seconds_to_first_progress": 146.323,
+        "seconds_to_first_check": 183.668,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 1,
+      "total_sessions": 1,
+      "selected_session": 1,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "021463e7-cf14-4526-8e8d-e214e3d372af",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.69474325,
+          "duration_ms": 192903,
+          "duration_api_ms": 188900,
+          "num_turns": 11,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/longest_increasing_subsequence/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "0d3420172fa2f3d79ca4f82e694964f2e6c41f0a20400b2116852672d900b311",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 11800,
+            "seconds_to_first_progress": 146.323,
+            "seconds_to_first_check": 183.668,
+            "pending_tool_recovery": []
+          }
+        }
+      ],
+      "compiler_checks_observed": 1,
+      "max_compiler_checks": 15
+    },
+    "provenance": {
+      "schema_version": 1,
+      "ownership": {
+        "model_owned_sections": [
+          "auxcode",
+          "code",
+          "lemma",
+          "proof"
+        ],
+        "teacher_owned": "all source outside the four marker regions",
+        "teacher_owned_sorry_present": false,
+        "model_section_ranges": {
+          "auxcode": {
+            "start_line": 11,
+            "end_line": 36
+          },
+          "code": {
+            "start_line": 41,
+            "end_line": 43
+          },
+          "lemma": {
+            "start_line": 76,
+            "end_line": 155
+          },
+          "proof": {
+            "start_line": 162,
+            "end_line": 181
+          }
+        }
+      },
+      "hashes": {
+        "original_sha256": "2d65fae2def583775c57c84a2cd63ebf72de265e7ba57275e37284a5c280fc2f",
+        "candidate_sha256": "d8d3b03549ada0fc8db77304f22071eca8125c9c40ab51f71240d0c596f80e3e",
+        "merged_sha256": "d8d3b03549ada0fc8db77304f22071eca8125c9c40ab51f71240d0c596f80e3e",
+        "model_sections_sha256": {
+          "auxcode": "90462caecd939e25d71fe6432d6d31bab6f0cafe6fce4c6cd7f1d34838af566f",
+          "code": "7760d85dc97694d7b1fb0e8842cf005bf22ecb94974479705ba34ee467ff1bf5",
+          "lemma": "c6a97f17b23d7c77ab3c2629d503efaf87128f67b4abc13bc69b8ca823942c4d",
+          "proof": "0452c8ef8fab6ead089f6c2931227fac7efc9251cd04919114da95d7a624b5a7"
+        }
+      }
+    },
+    "targeted_diagnostics": [],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/longest_increasing_subsequence/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": null,
+      "proof_state": null,
+      "leansearch_queries": null,
+      "checkpoints": null,
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/longest_increasing_subsequence/.lastdance/prompts"
+    }
+  }
+}

@@ -1,0 +1,250 @@
+{
+  "verified": true,
+  "details": {
+    "rounds": 10,
+    "llm_response": {
+      "code": "import Mathlib\n\nstructure VerifiableQueue (T : Type) where\n  data : List T\n\ndef VerifiableQueue.view {T} (q : VerifiableQueue T) : List T :=\n  q.data\n\ndef VerifiableQueue.is_valid {T} (q : VerifiableQueue T) : Prop :=\n  True\n\n-- Precondition definitions\n@[reducible, simp]\ndef dequeue_precond {T} (q : VerifiableQueue T) : Prop :=\n  -- !benchmark @start precond\n  q.is_valid \u2227 q.view.length > 0\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\ntheorem dequeue_data_ne_nil {T} (q : VerifiableQueue T) (h : dequeue_precond q) :\n    q.data \u2260 [] := by\n  intro hnil\n  have h2 := h.2\n  rw [VerifiableQueue.view, hnil] at h2\n  simp at h2\n-- !benchmark @end auxcode\n\n-- Main function definition\n-- Returns the projected pair (val, new_queue)\ndef dequeue {T} (q : VerifiableQueue T)\n    (h_precond : dequeue_precond q) : T \u00d7 VerifiableQueue T :=\n  -- !benchmark @start code\n  (q.data.head (dequeue_data_ne_nil q h_precond), \u27e8q.data.tail\u27e9)\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef dequeue_postcond {T} (q : VerifiableQueue T) (result : T \u00d7 VerifiableQueue T)\n    (_ : dequeue_precond q) : Prop :=\n  -- !benchmark @start postcond\n  let (val, new_queue) := result\n  new_queue.is_valid \u2227\n  -- Concise & Proof-Free: The old queue consists of the return value followed by the new queue.\n  q.view = val :: new_queue.view\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem dequeue_postcond_satisfied {T} (q : VerifiableQueue T)\n    (h_precond : dequeue_precond q) :\n    dequeue_postcond q (dequeue q h_precond) h_precond := by\n  -- !benchmark @start proof\n  refine \u27e8trivial, ?_\u27e9\n  show q.view = _\n  simp only [VerifiableQueue.view]\n  exact (List.cons_head_tail (dequeue_data_ne_nil q h_precond)).symm\n  -- !benchmark @end proof\n",
+      "comment": "**LEAN VERIFIED** \u2014 no `sorry`, no warnings other than one pre-existing in the given skeleton (`is_valid`'s unused `q`).\n\nApproach:\n\n- **auxcode** (`Solution.lean:19-26`): a helper `dequeue_data_ne_nil` deriving `q.data \u2260 []` from the precondition's `q.view.length > 0`. Keeping it out of the function body means `dequeue` reduces directly to a pair.\n- **code** (`Solution.lean:33`): `dequeue q h = (q.data.head (dequeue_data_ne_nil q h), \u27e8q.data.tail\u27e9)` \u2014 returns the front element and the queue holding the tail, preserving relative order by construction.\n- **proof** (`Solution.lean:54-58`): `is_valid` is `True` (`trivial`); the FIFO equation `q.view = val :: new_queue.view` unfolds to `q.data = q.data.head h :: q.data.tail`, which is `List.cons_head_tail` reversed."
+    },
+    "verifier_response": {
+      "verified": true,
+      "feedback": "Verified successfully.",
+      "raw": {
+        "stdout": "claude_code_queue_dequeue_final_1786249629477.lean:9:34: warning: unused variable `q`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+        "stderr": "",
+        "returncode": 0
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": true,
+        "verifier_response": {
+          "verified": true,
+          "feedback": "Verified successfully.",
+          "raw": {
+            "stdout": "claude_code_queue_dequeue_final_1786249629477.lean:9:34: warning: unused variable `q`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+            "stderr": "",
+            "returncode": 0
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "04034d2c-d432-4a1e-9f1e-ec0bdc5007ef",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.21343475,
+          "duration_ms": 56937,
+          "duration_api_ms": 48846,
+          "num_turns": 11,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/queue_dequeue/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "acde09414b5798d6506590ef90abd468872ac82cd44e118a474db7c43ae37e50",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 900,
+            "seconds_to_first_progress": 27.259,
+            "seconds_to_first_check": 38.793,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 103135,
+      "output": 3585,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "04034d2c-d432-4a1e-9f1e-ec0bdc5007ef",
+      "subtype": "success",
+      "provider_subtype": "success",
+      "is_error": false,
+      "total_cost_usd": 0.21343475,
+      "duration_ms": 56937,
+      "duration_api_ms": 48846,
+      "num_turns": 11,
+      "returncode": 0,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/queue_dequeue/agent_events.jsonl",
+      "pass_number": 1,
+      "prompt_kind": "initial",
+      "prompt_sha256": "acde09414b5798d6506590ef90abd468872ac82cd44e118a474db7c43ae37e50",
+      "budget_usd": null,
+      "lastdance_profile": "api",
+      "features": {
+        "profile": "api",
+        "algorithm_plan": false,
+        "lemma_plan": false,
+        "leansearch": false,
+        "semantic_audit": false,
+        "semantic_reminder": false,
+        "early_check": false,
+        "feedback_mode": "exact",
+        "backtracking": false,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": false,
+          "progress_governor": false,
+          "pre_edit_timeout_seconds": 300,
+          "pre_edit_thinking_tokens": 12000,
+          "post_edit_check_timeout_seconds": 180,
+          "planning_mode": false,
+          "diagnostic_wrapper": false,
+          "rescue_mode": false
+        },
+        "governor_stop_reason": null,
+        "max_thinking_tokens_observed": 900,
+        "seconds_to_first_progress": 27.259,
+        "seconds_to_first_check": 38.793,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 1,
+      "total_sessions": 1,
+      "selected_session": 1,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "04034d2c-d432-4a1e-9f1e-ec0bdc5007ef",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.21343475,
+          "duration_ms": 56937,
+          "duration_api_ms": 48846,
+          "num_turns": 11,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/queue_dequeue/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "acde09414b5798d6506590ef90abd468872ac82cd44e118a474db7c43ae37e50",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 900,
+            "seconds_to_first_progress": 27.259,
+            "seconds_to_first_check": 38.793,
+            "pending_tool_recovery": []
+          }
+        }
+      ],
+      "compiler_checks_observed": 2,
+      "max_compiler_checks": 15
+    },
+    "provenance": {
+      "schema_version": 1,
+      "ownership": {
+        "model_owned_sections": [
+          "auxcode",
+          "code",
+          "lemma",
+          "proof"
+        ],
+        "teacher_owned": "all source outside the four marker regions",
+        "teacher_owned_sorry_present": false,
+        "model_section_ranges": {
+          "auxcode": {
+            "start_line": 19,
+            "end_line": 26
+          },
+          "code": {
+            "start_line": 32,
+            "end_line": 34
+          },
+          "lemma": {
+            "start_line": 47,
+            "end_line": 48
+          },
+          "proof": {
+            "start_line": 54,
+            "end_line": 59
+          }
+        }
+      },
+      "hashes": {
+        "original_sha256": "19ed87f560e2edc2d05dcba395be7425c426b9fd26397b0eaa400634fb979126",
+        "candidate_sha256": "e705b3ad437d568f18ed69606c185decbd058b521670a4803a6792b5354692b1",
+        "merged_sha256": "e705b3ad437d568f18ed69606c185decbd058b521670a4803a6792b5354692b1",
+        "model_sections_sha256": {
+          "auxcode": "6383965493f81c538ba58dc9f14cf464bb5fcb09793f2cff0775b3adbac32bab",
+          "code": "6eba5af2a9598fc997b3a144dece1291888509820d49d1a9b9fe3b569ca2a357",
+          "lemma": "c4a00fdeeaea16ecb54620d7ccdf35c574b7bc40f94254ddd403472aa18f7440",
+          "proof": "30a163729ab015a867de42a652cf10d6e70f333f214da502b051afc1a723dc5c"
+        }
+      }
+    },
+    "targeted_diagnostics": [],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/queue_dequeue/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": null,
+      "proof_state": null,
+      "leansearch_queries": null,
+      "checkpoints": null,
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/queue_dequeue/.lastdance/prompts"
+    }
+  }
+}

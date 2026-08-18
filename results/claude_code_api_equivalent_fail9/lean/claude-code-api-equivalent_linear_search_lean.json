@@ -1,0 +1,250 @@
+{
+  "verified": true,
+  "details": {
+    "rounds": 10,
+    "llm_response": {
+      "code": "import Mathlib\n\n-- Precondition definitions\n@[reducible, simp]\ndef linear_search_lower_bound_precond (seq : Array Int) (target : Int) : Prop :=\n  -- !benchmark @start precond\n  seq.size \u2264 0x7FFFFFFF \u2227\n  (\u2200 i j : Nat, i < j \u2227 j < seq.size \u2192 seq.getD i 0 \u2264 seq.getD j 0)\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n/-- Scan from index `i`, using `n` as fuel, returning the first index whose\nelement is `\u2265 target` (or the stopping index if the scan runs out). -/\ndef linear_search_aux (seq : Array Int) (target : Int) : Nat \u2192 Nat \u2192 Nat\n  | i, 0 => i\n  | i, (n + 1) =>\n    if i < seq.size \u2227 \u00ac (target \u2264 seq.getD i 0) then\n      linear_search_aux seq target (i + 1) n\n    else\n      i\n-- !benchmark @end auxcode\n\n-- Main function definitions\ndef linear_search_lower_bound (seq : Array Int) (target : Int) (h_precond : linear_search_lower_bound_precond seq target) : Nat :=\n  -- !benchmark @start code\n  linear_search_aux seq target 0 seq.size\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef linear_search_lower_bound_postcond (seq : Array Int) (target : Int) (result : Nat) (h_precond : linear_search_lower_bound_precond seq target) : Prop :=\n  -- !benchmark @start postcond\n  result \u2264 seq.size \u2227\n  (\u2200 i : Nat, i < result \u2192 seq.getD i 0 < target) \u2227\n  (\u2200 i : Nat, result \u2264 i \u2227 i < seq.size \u2192 seq.getD i 0 \u2265 target)\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\ntheorem linear_search_aux_step (seq : Array Int) (target : Int) (i n : Nat) :\n    linear_search_aux seq target i (n + 1) =\n      if i < seq.size \u2227 \u00ac (target \u2264 seq.getD i 0) then\n        linear_search_aux seq target (i + 1) n\n      else\n        i := by\n  rfl\n\ntheorem linear_search_aux_spec (seq : Array Int) (target : Int) :\n    \u2200 n i : Nat, i \u2264 seq.size \u2192 seq.size - i \u2264 n \u2192\n      i \u2264 linear_search_aux seq target i n \u2227\n      linear_search_aux seq target i n \u2264 seq.size \u2227\n      (\u2200 j : Nat, i \u2264 j \u2192 j < linear_search_aux seq target i n \u2192 seq.getD j 0 < target) \u2227\n      (linear_search_aux seq target i n < seq.size \u2192\n        target \u2264 seq.getD (linear_search_aux seq target i n) 0) := by\n  intro n\n  induction n with\n  | zero =>\n    intro i hi hn\n    have hie : i = seq.size := by omega\n    have h0 : linear_search_aux seq target i 0 = i := rfl\n    rw [h0]\n    refine \u27e8le_refl _, hi, ?_, ?_\u27e9\n    \u00b7 intro j hj hj2\n      exact absurd hj2 (by omega)\n    \u00b7 intro h\n      exact absurd h (by omega)\n  | succ n ih =>\n    intro i hi hn\n    by_cases hc : i < seq.size \u2227 \u00ac (target \u2264 seq.getD i 0)\n    \u00b7 have hstep : linear_search_aux seq target i (n + 1) = linear_search_aux seq target (i + 1) n := by\n        rw [linear_search_aux_step, if_pos hc]\n      rw [hstep]\n      obtain \u27e8h1, h2, h3, h4\u27e9 := ih (i + 1) (by omega) (by omega)\n      refine \u27e8by omega, h2, ?_, h4\u27e9\n      intro j hj hj2\n      rcases Nat.eq_or_lt_of_le hj with heq | hlt\n      \u00b7 rw [\u2190 heq]\n        exact not_le.mp hc.2\n      \u00b7 exact h3 j (by omega) hj2\n    \u00b7 have hstep : linear_search_aux seq target i (n + 1) = i := by\n        rw [linear_search_aux_step, if_neg hc]\n      rw [hstep]\n      push_neg at hc\n      refine \u27e8le_refl _, hi, ?_, ?_\u27e9\n      \u00b7 intro j hj hj2\n        exact absurd hj2 (by omega)\n      \u00b7 intro h\n        exact hc h\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem linear_search_lower_bound_postcond_satisfied (seq : Array Int) (target : Int) (h_precond : linear_search_lower_bound_precond seq target) :\n    linear_search_lower_bound_postcond seq target (linear_search_lower_bound seq target h_precond) h_precond := by\n  -- !benchmark @start proof\n  unfold linear_search_lower_bound_postcond linear_search_lower_bound\n  obtain \u27e8_, hsorted\u27e9 := h_precond\n  obtain \u27e8h1, h2, h3, h4\u27e9 :=\n    linear_search_aux_spec seq target seq.size 0 (Nat.zero_le _) (by omega)\n  refine \u27e8h2, ?_, ?_\u27e9\n  \u00b7 intro i hi\n    exact h3 i (Nat.zero_le _) hi\n  \u00b7 intro i \u27e8hi1, hi2\u27e9\n    have hres : linear_search_aux seq target 0 seq.size < seq.size := by omega\n    have hval := h4 hres\n    rcases Nat.eq_or_lt_of_le hi1 with heq | hlt\n    \u00b7 rw [\u2190 heq]\n      exact hval\n    \u00b7 exact le_trans hval (hsorted _ _ \u27e8hlt, hi2\u27e9)\n  -- !benchmark @end proof\n",
+      "comment": "Verified on the first compiler check \u2014 only pre-existing unused-variable warnings remain.\n\n**Approach** (all edits confined to the marker regions in `Solution.lean`):\n\n- **auxcode**: `linear_search_aux` scans from index `i` with a structural fuel parameter `n`, stopping at the first index where `target \u2264 seq[i]`, or when `i` reaches `seq.size`.\n- **code**: `linear_search_aux seq target 0 seq.size` \u2014 fuel `seq.size` is always sufficient, giving the O(N) linear scan.\n- **lemma**: `linear_search_aux_step` (the unfolding equation, by `rfl`) and `linear_search_aux_spec`, proved by induction on the fuel generalized over `i` under the invariant `seq.size - i \u2264 n`. It establishes four facts: monotonicity (`i \u2264 result`), `result \u2264 seq.size`, all elements in `[i, result)` are `< target`, and if `result < seq.size` then `target \u2264 seq[result]`.\n- **proof**: postconditions 1 and 2 come directly from the spec at `i = 0`. Postcondition 3 uses the sortedness precondition: for `result \u2264 i < seq.size`, either `i = result` (direct from the spec's last clause) or `result < i`, where `target \u2264 seq[result] \u2264 seq[i]` by transitivity."
+    },
+    "verifier_response": {
+      "verified": true,
+      "feedback": "Verified successfully.",
+      "raw": {
+        "stdout": "claude_code_linear_search_final_1786246894831.lean:5:57: warning: unused variable `target`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_linear_search_final_1786246894831.lean:24:64: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_linear_search_final_1786246894831.lean:31:88: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+        "stderr": "",
+        "returncode": 0
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": true,
+        "verifier_response": {
+          "verified": true,
+          "feedback": "Verified successfully.",
+          "raw": {
+            "stdout": "claude_code_linear_search_final_1786246894831.lean:5:57: warning: unused variable `target`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_linear_search_final_1786246894831.lean:24:64: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_linear_search_final_1786246894831.lean:31:88: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+            "stderr": "",
+            "returncode": 0
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "6c9cb2f0-a4e3-487b-8e05-85f0d6e5589f",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.3659005,
+          "duration_ms": 96303,
+          "duration_api_ms": 92309,
+          "num_turns": 11,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/linear_search/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "e3cb976583e44404ac898d0b7ce378d81f6b878a05e4b6cc7dadfe6892694912",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 3750,
+            "seconds_to_first_progress": 53.8,
+            "seconds_to_first_check": 89.188,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 158018,
+      "output": 7716,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "6c9cb2f0-a4e3-487b-8e05-85f0d6e5589f",
+      "subtype": "success",
+      "provider_subtype": "success",
+      "is_error": false,
+      "total_cost_usd": 0.3659005,
+      "duration_ms": 96303,
+      "duration_api_ms": 92309,
+      "num_turns": 11,
+      "returncode": 0,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/linear_search/agent_events.jsonl",
+      "pass_number": 1,
+      "prompt_kind": "initial",
+      "prompt_sha256": "e3cb976583e44404ac898d0b7ce378d81f6b878a05e4b6cc7dadfe6892694912",
+      "budget_usd": null,
+      "lastdance_profile": "api",
+      "features": {
+        "profile": "api",
+        "algorithm_plan": false,
+        "lemma_plan": false,
+        "leansearch": false,
+        "semantic_audit": false,
+        "semantic_reminder": false,
+        "early_check": false,
+        "feedback_mode": "exact",
+        "backtracking": false,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": false,
+          "progress_governor": false,
+          "pre_edit_timeout_seconds": 300,
+          "pre_edit_thinking_tokens": 12000,
+          "post_edit_check_timeout_seconds": 180,
+          "planning_mode": false,
+          "diagnostic_wrapper": false,
+          "rescue_mode": false
+        },
+        "governor_stop_reason": null,
+        "max_thinking_tokens_observed": 3750,
+        "seconds_to_first_progress": 53.8,
+        "seconds_to_first_check": 89.188,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 1,
+      "total_sessions": 1,
+      "selected_session": 1,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "6c9cb2f0-a4e3-487b-8e05-85f0d6e5589f",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.3659005,
+          "duration_ms": 96303,
+          "duration_api_ms": 92309,
+          "num_turns": 11,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/linear_search/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "e3cb976583e44404ac898d0b7ce378d81f6b878a05e4b6cc7dadfe6892694912",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 3750,
+            "seconds_to_first_progress": 53.8,
+            "seconds_to_first_check": 89.188,
+            "pending_tool_recovery": []
+          }
+        }
+      ],
+      "compiler_checks_observed": 1,
+      "max_compiler_checks": 15
+    },
+    "provenance": {
+      "schema_version": 1,
+      "ownership": {
+        "model_owned_sections": [
+          "auxcode",
+          "code",
+          "lemma",
+          "proof"
+        ],
+        "teacher_owned": "all source outside the four marker regions",
+        "teacher_owned_sorry_present": false,
+        "model_section_ranges": {
+          "auxcode": {
+            "start_line": 11,
+            "end_line": 21
+          },
+          "code": {
+            "start_line": 25,
+            "end_line": 27
+          },
+          "lemma": {
+            "start_line": 38,
+            "end_line": 88
+          },
+          "proof": {
+            "start_line": 93,
+            "end_line": 108
+          }
+        }
+      },
+      "hashes": {
+        "original_sha256": "ccda7338ecfeabfa913632bd1a078797a7a367e68eca466c70c9c919bdd7ac74",
+        "candidate_sha256": "e9817d9ce976c19cc3a32307d0bd2bf0220f14f07da8faa1eacff29f45771b83",
+        "merged_sha256": "e9817d9ce976c19cc3a32307d0bd2bf0220f14f07da8faa1eacff29f45771b83",
+        "model_sections_sha256": {
+          "auxcode": "0c5411e7bd7c914e26ee1270396fbdb1d557e74d89fb8a93432f5a4be21761e8",
+          "code": "8a2e292e278a2cd4335a4e58c8110d9a8f41b4d0f00ee6a107b5ef576ee88344",
+          "lemma": "734723c84e082e36c5eb36edc0d0a94397379ae91b2036c7bceebd7359f54d9b",
+          "proof": "3b59436bf068bff6f89579eddbe3e9b0cd13cd73cc8bd0ce422216ae92b36998"
+        }
+      }
+    },
+    "targeted_diagnostics": [],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/linear_search/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": null,
+      "proof_state": null,
+      "leansearch_queries": null,
+      "checkpoints": null,
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/linear_search/.lastdance/prompts"
+    }
+  }
+}

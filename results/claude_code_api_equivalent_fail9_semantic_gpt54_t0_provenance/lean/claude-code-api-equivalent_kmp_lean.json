@@ -1,0 +1,259 @@
+{
+    "verified": true,
+    "details": {
+        "rounds": 20,
+        "llm_response": {
+            "code": "import Mathlib\n\n-- Precondition definitions\n@[reducible, simp]\ndef kmpSearch_precond (haystack : Array UInt8) (needle : Array UInt8) : Prop :=\n  -- !benchmark @start precond\n  haystack.size < 1000000 \u2227 \n  needle.size < 1000000\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n\n-- `Gm p s m` is the greatest `k \u2264 m` (and `k \u2264 |p|`) such that `p.take k` is a\n-- suffix of `s`.  This is the *specification* of the KMP state.\nopen scoped Classical in\nnoncomputable def Gm (p s : List UInt8) : Nat \u2192 Nat\n  | 0 => 0\n  | m + 1 => if (m + 1 \u2264 p.length \u2227 p.take (m + 1) <:+ s) then m + 1 else Gm p s m\n\n/-- The mathematical definition of the LPS (\"longest proper prefix that is also a\nsuffix\") table. -/\nnoncomputable def lpsSpec (p : List UInt8) (j : Nat) : Nat := Gm p (p.take j) (j - 1)\n\n/-- The KMP \"jump\" loop: on a mismatch, fall back along the border chain. -/\ndef stepFuel (p : Array UInt8) (lps : Array Nat) : Nat \u2192 Nat \u2192 UInt8 \u2192 Nat\n  | 0, _, _ => 0\n  | fuel + 1, j, c =>\n      if j < p.size \u2227 p[j]! = c then j + 1\n      else if j = 0 then 0\n      else stepFuel p lps fuel lps[j]! c\n\n/-- KMP preprocessing: `buildLps p i` holds the LPS values for indices `0 \u2026 i`. -/\ndef buildLps (p : Array UInt8) : Nat \u2192 Array Nat\n  | 0 => #[0]\n  | 1 => #[0, 0]\n  | i + 2 =>\n      let lps := buildLps p (i + 1)\n      lps.push (stepFuel p lps (i + 2) lps[i + 1]! p[i + 1]!)\n\n/-- KMP search loop: after `i` characters of text, the state is the matched\nprefix length together with the occurrences found so far. -/\ndef searchState (ha p : Array UInt8) (lps : Array Nat) : Nat \u2192 Nat \u00d7 Array Nat\n  | 0 => (0, if p.size = 0 then #[0] else #[])\n  | i + 1 =>\n      let st := searchState ha p lps i\n      let j := stepFuel p lps (st.1 + 1) st.1 ha[i]!\n      (j, if j = p.size then st.2.push (i + 1 - p.size) else st.2)\n\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef kmpSearch (haystack : Array UInt8) (needle : Array UInt8)\n    (_ : kmpSearch_precond haystack needle) : Array Nat :=\n  -- !benchmark @start code\n  (searchState haystack needle (buildLps needle needle.size) haystack.size).2\n  -- !benchmark @end code\n\n-- Postcondition auxiliary definitions\ndef matchesAt (haystack needle : Array UInt8) (i : Nat) : Prop :=\n  i + needle.size \u2264 haystack.size \u2227\n  (\u2200 j, j < needle.size \u2192 haystack.getD (i + j) 0 = needle.getD j 0)\n\n-- Postcondition definitions\n@[reducible, simp]\ndef kmpSearch_postcond (haystack : Array UInt8) (needle : Array UInt8)\n    (result : Array Nat) (_ : kmpSearch_precond haystack needle) : Prop :=\n  -- !benchmark @start postcond\n  (\u2200 i, i < result.size \u2192 matchesAt haystack needle (result.getD i 0)) \u2227 -- Soundness\n  (\u2200 i, matchesAt haystack needle i \u2192 \u2203 k, k < result.size \u2227 result.getD k 0 = i) -- Completeness\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\n\n/-! ### Basic properties of the specification function `Gm` -/\n\ntheorem Gm_le (p s : List UInt8) (m : Nat) : Gm p s m \u2264 m := by\n  induction m with\n  | zero => simp [Gm]\n  | succ m ih =>\n    simp only [Gm]\n    split\n    \u00b7 exact le_refl _\n    \u00b7 omega\n\ntheorem Gm_prop (p s : List UInt8) (m : Nat) :\n    Gm p s m \u2264 p.length \u2227 p.take (Gm p s m) <:+ s := by\n  induction m with\n  | zero => simp [Gm]\n  | succ m ih =>\n    simp only [Gm]\n    split\n    \u00b7 next hc => exact hc\n    \u00b7 exact ih\n\ntheorem Gm_max (p s : List UInt8) (m k : Nat) (h1 : k \u2264 m) (h2 : k \u2264 p.length)\n    (h3 : p.take k <:+ s) : k \u2264 Gm p s m := by\n  induction m with\n  | zero => simp only [Gm]; omega\n  | succ m ih =>\n    simp only [Gm]\n    split\n    \u00b7 exact h1\n    \u00b7 next hc =>\n      refine ih ?_\n      rcases Nat.lt_or_ge k (m + 1) with hlt | hge\n      \u00b7 omega\n      \u00b7 exact absurd \u27e8by omega, by rw [show m + 1 = k by omega]; exact h3\u27e9 hc\n\ntheorem Gm_zero (p s : List UInt8) : Gm p s 0 = 0 := Nat.le_zero.mp (Gm_le p s 0)\n\ntheorem Gm_bound_ge (p s : List UInt8) (M : Nat) (hM : p.length \u2264 M) :\n    Gm p s M = Gm p s p.length := by\n  obtain \u27e8h2, h3\u27e9 := Gm_prop p s M\n  obtain \u27e8h2', h3'\u27e9 := Gm_prop p s p.length\n  exact le_antisymm (Gm_max p s p.length _ h2 h2 h3)\n    (Gm_max p s M _ (le_trans h2' hM) h2' h3')\n\ntheorem Gm_nil (p : List UInt8) (m : Nat) : Gm p [] m = 0 := by\n  obtain \u27e8h2, h3\u27e9 := Gm_prop p [] m\n  have hnil : p.take (Gm p [] m) = [] := List.eq_nil_of_suffix_nil h3\n  have hlen : (p.take (Gm p [] m)).length = 0 := by rw [hnil]; rfl\n  rw [List.length_take] at hlen\n  omega\n\n/-! ### List lemmas -/\n\ntheorem take_suffix_take {p s : List UInt8} {a b : Nat} (hab : a \u2264 b)\n    (ha : p.take a <:+ s) (hb : p.take b <:+ s) : p.take a <:+ p.take b := by\n  refine List.suffix_of_suffix_length_le ha hb ?_\n  simp only [List.length_take]\n  omega\n\ntheorem take_succ_bang {p : List UInt8} {k : Nat} (h : k < p.length) :\n    p.take (k + 1) = p.take k ++ [p[k]!] := by\n  rw [List.take_succ, List.getElem?_eq_getElem h, getElem!_pos p k h]\n  rfl\n\ntheorem suffix_concat_iff (a s : List UInt8) (x c : UInt8) :\n    (a ++ [x]) <:+ (s ++ [c]) \u2194 (a <:+ s \u2227 x = c) := by\n  constructor\n  \u00b7 rintro \u27e8u, hu\u27e9\n    rw [\u2190 List.append_assoc] at hu\n    obtain \u27e8h1, h2\u27e9 := List.append_inj' hu (by simp)\n    exact \u27e8\u27e8u, h1\u27e9, by simpa using h2\u27e9\n  \u00b7 rintro \u27e8\u27e8u, hu\u27e9, rfl\u27e9\n    exact \u27e8u, by rw [\u2190 List.append_assoc, hu]\u27e9\n\ntheorem suffix_take_succ {p s : List UInt8} {c : UInt8} {k : Nat} (hk : k < p.length) :\n    (p.take (k + 1) <:+ s ++ [c]) \u2194 (p.take k <:+ s \u2227 p[k]! = c) := by\n  rw [take_succ_bang hk, suffix_concat_iff]\n\n/-! ### The border chain -/\n\ntheorem chain_lemma {p s : List UInt8} {j : Nat} (hj : p.take j <:+ s) :\n    Gm p s (j - 1) = lpsSpec p j := by\n  apply le_antisymm\n  \u00b7 obtain \u27e8h2, h3\u27e9 := Gm_prop p s (j - 1)\n    have h1 := Gm_le p s (j - 1)\n    exact Gm_max p (p.take j) (j - 1) _ h1 h2 (take_suffix_take (by omega) h3 hj)\n  \u00b7 obtain \u27e8h2, h3\u27e9 := Gm_prop p (p.take j) (j - 1)\n    have h1 := Gm_le p (p.take j) (j - 1)\n    exact Gm_max p s (j - 1) _ h1 h2 (h3.trans hj)\n\ntheorem lpsSpec_le (p : List UInt8) (j : Nat) : lpsSpec p j \u2264 j - 1 := Gm_le _ _ _\n\ntheorem lpsSpec_lt (p : List UInt8) (j : Nat) (hj : 0 < j) : lpsSpec p j < j := by\n  have := lpsSpec_le p j; omega\n\ntheorem lpsSpec_zero (p : List UInt8) : lpsSpec p 0 = 0 := Gm_zero _ _\n\ntheorem lpsSpec_one (p : List UInt8) : lpsSpec p 1 = 0 := Gm_zero _ _\n\n/-! ### Array / list bridging -/\n\ntheorem arr_get_bang (a : Array UInt8) (i : Nat) (h : i < a.size) : a[i]! = a.toList[i]! := by\n  rw [getElem!_pos a i h, getElem!_pos a.toList i (by simpa using h)]\n  simp\n\ntheorem arr_getD_bang (a : Array UInt8) (i : Nat) (hi : i < a.size) :\n    a.getD i 0 = a.toList[i]! := by\n  rw [getElem!_pos a.toList i (by simpa using hi)]\n  simp [Array.getD, hi]\n\ntheorem arr_getD_nat (a : Array Nat) (i : Nat) (hi : i < a.size) : a.getD i 0 = a[i] := by\n  simp [Array.getD, hi]\n\ntheorem push_get_lt (a : Array Nat) (v k : Nat) (h : k < a.size) :\n    (a.push v)[k]! = a[k]! := by\n  rw [getElem!_pos (a.push v) k (by simp; omega), getElem!_pos a k h]\n  simp [Array.getElem_push, h]\n\ntheorem push_get_eq (a : Array Nat) (v : Nat) : (a.push v)[a.size]! = v := by\n  rw [getElem!_pos (a.push v) a.size (by simp)]\n  simp\n\n/-! ### The master step lemma -/\n\ntheorem stepFuel_eq (p : Array UInt8) (lps : Array Nat) (B : Nat)\n    (hlps : \u2200 i, i \u2264 B \u2192 lps[i]! = lpsSpec p.toList i) (c : UInt8) (s : List UInt8) :\n    \u2200 fuel j m, j < fuel \u2192 j \u2264 B \u2192 j = Gm p.toList s m \u2192\n      stepFuel p lps fuel j c = Gm p.toList (s ++ [c]) (m + 1) := by\n  intro fuel\n  induction fuel with\n  | zero => intro j m hjf; omega\n  | succ fuel ih =>\n    intro j m hjf hjB hjm\n    obtain \u27e8hjlen, hjsuf\u27e9 : j \u2264 p.toList.length \u2227 p.toList.take j <:+ s := by\n      rw [hjm]; exact Gm_prop _ _ _\n    have hjm2 : j \u2264 m := by rw [hjm]; exact Gm_le _ _ _\n    have hdec : \u2200 k, Gm p.toList (s ++ [c]) (m + 1) = k + 1 \u2192\n        k < p.toList.length \u2227 p.toList.take k <:+ s \u2227 p.toList[k]! = c \u2227 k \u2264 j := by\n      intro k hk\n      obtain \u27e8h2, h3\u27e9 := Gm_prop p.toList (s ++ [c]) (m + 1)\n      rw [hk] at h2 h3\n      have hkl : k < p.toList.length := by omega\n      rw [suffix_take_succ hkl] at h3\n      have hkm : k \u2264 m := by\n        have := Gm_le p.toList (s ++ [c]) (m + 1); omega\n      exact \u27e8hkl, h3.1, h3.2, by rw [hjm]; exact Gm_max _ _ _ _ hkm (le_of_lt hkl) h3.1\u27e9\n    by_cases htest : j < p.size \u2227 p[j]! = c\n    \u00b7 have hstep : stepFuel p lps (fuel + 1) j c = j + 1 := by\n        simp only [stepFuel]\n        rw [if_pos htest]\n      rw [hstep]\n      have hjl : j < p.toList.length := by simpa using htest.1\n      have hchar : p.toList[j]! = c := by rw [\u2190 arr_get_bang p j htest.1]; exact htest.2\n      have hge : j + 1 \u2264 Gm p.toList (s ++ [c]) (m + 1) := by\n        refine Gm_max _ _ _ _ (by omega) (by omega) ?_\n        rw [suffix_take_succ hjl]\n        exact \u27e8hjsuf, hchar\u27e9\n      have hle : Gm p.toList (s ++ [c]) (m + 1) \u2264 j + 1 := by\n        rcases Nat.eq_zero_or_pos (Gm p.toList (s ++ [c]) (m + 1)) with hz | hz\n        \u00b7 omega\n        \u00b7 obtain \u27e8k, hk\u27e9 : \u2203 k, Gm p.toList (s ++ [c]) (m + 1) = k + 1 :=\n            \u27e8_, (Nat.succ_pred_eq_of_pos hz).symm\u27e9\n          have := (hdec k hk).2.2.2; omega\n      omega\n    \u00b7 by_cases hj0 : j = 0\n      \u00b7 have hstep : stepFuel p lps (fuel + 1) j c = 0 := by\n          simp only [stepFuel]\n          rw [if_neg htest, if_pos hj0]\n        rw [hstep]\n        rcases Nat.eq_zero_or_pos (Gm p.toList (s ++ [c]) (m + 1)) with hz | hz\n        \u00b7 omega\n        \u00b7 exfalso\n          obtain \u27e8k, hk\u27e9 : \u2203 k, Gm p.toList (s ++ [c]) (m + 1) = k + 1 :=\n            \u27e8_, (Nat.succ_pred_eq_of_pos hz).symm\u27e9\n          obtain \u27e8g1, g2, g3, g4\u27e9 := hdec k hk\n          have hk0 : k = j := by omega\n          rw [hk0] at g1 g3\n          have hkp : j < p.size := by simpa using g1\n          exact htest \u27e8hkp, by rw [arr_get_bang p j hkp]; exact g3\u27e9\n      \u00b7 have hstep : stepFuel p lps (fuel + 1) j c = stepFuel p lps fuel lps[j]! c := by\n          simp only [stepFuel]\n          rw [if_neg htest, if_neg hj0]\n        rw [hstep, hlps j hjB]\n        have hchain : lpsSpec p.toList j = Gm p.toList s (j - 1) := (chain_lemma hjsuf).symm\n        have hlt : lpsSpec p.toList j < j := lpsSpec_lt _ _ (Nat.pos_of_ne_zero hj0)\n        rw [ih (lpsSpec p.toList j) (j - 1) (by omega) (by omega) hchain]\n        have hj1 : j - 1 + 1 = j := by omega\n        rw [hj1]\n        apply le_antisymm\n        \u00b7 obtain \u27e8h2, h3\u27e9 := Gm_prop p.toList (s ++ [c]) j\n          exact Gm_max _ _ _ _ (by have := Gm_le p.toList (s ++ [c]) j; omega) h2 h3\n        \u00b7 obtain \u27e8h2, h3\u27e9 := Gm_prop p.toList (s ++ [c]) (m + 1)\n          refine Gm_max _ _ _ _ ?_ h2 h3\n          rcases Nat.eq_zero_or_pos (Gm p.toList (s ++ [c]) (m + 1)) with hz | hz\n          \u00b7 omega\n          \u00b7 obtain \u27e8k, hk\u27e9 : \u2203 k, Gm p.toList (s ++ [c]) (m + 1) = k + 1 :=\n              \u27e8_, (Nat.succ_pred_eq_of_pos hz).symm\u27e9\n            obtain \u27e8g1, g2, g3, g4\u27e9 := hdec k hk\n            have hkj : k \u2260 j := by\n              intro hkj\n              subst hkj\n              have hkp : k < p.size := by simpa using g1\n              exact htest \u27e8hkp, by rw [arr_get_bang p k hkp]; exact g3\u27e9\n            omega\n\n/-! ### Correctness of the preprocessing -/\n\ntheorem buildLps_size (p : Array UInt8) : \u2200 i, (buildLps p i).size = i + 1 := by\n  intro i\n  induction i using Nat.strong_induction_on with\n  | _ i ih =>\n    match i with\n    | 0 => simp [buildLps]\n    | 1 => simp [buildLps]\n    | (n + 2) =>\n      show ((buildLps p (n + 1)).push _).size = n + 3\n      rw [Array.size_push, ih (n + 1) (by omega)]\n\ntheorem buildLps_correct (p : Array UInt8) : \u2200 i, i \u2264 p.size \u2192 \u2200 k, k \u2264 i \u2192\n    (buildLps p i)[k]! = lpsSpec p.toList k := by\n  intro i\n  induction i using Nat.strong_induction_on with\n  | _ i ih =>\n    match i with\n    | 0 =>\n      intro _ k hk\n      have : k = 0 := by omega\n      subst this\n      rw [lpsSpec_zero]\n      show (#[0] : Array Nat)[0]! = 0\n      rfl\n    | 1 =>\n      intro _ k hk\n      interval_cases k\n      \u00b7 rw [lpsSpec_zero]; show (#[0, 0] : Array Nat)[0]! = 0; rfl\n      \u00b7 rw [lpsSpec_one]; show (#[0, 0] : Array Nat)[1]! = 0; rfl\n    | (n + 2) =>\n      intro hi k hk\n      have hsz : (buildLps p (n + 1)).size = n + 2 := buildLps_size p (n + 1)\n      have hIH : \u2200 q, q \u2264 n + 1 \u2192 (buildLps p (n + 1))[q]! = lpsSpec p.toList q :=\n        fun q hq => ih (n + 1) (by omega) (by omega) q hq\n      by_cases hk' : k \u2264 n + 1\n      \u00b7 have hval : (buildLps p (n + 2))[k]! = (buildLps p (n + 1))[k]! := by\n          show ((buildLps p (n + 1)).push _)[k]! = _\n          exact push_get_lt _ _ _ (by omega)\n        rw [hval]\n        exact hIH k hk'\n      \u00b7 have hk2 : k = n + 2 := by omega\n        subst hk2\n        have hval : (buildLps p (n + 2))[n + 2]! =\n            stepFuel p (buildLps p (n + 1)) (n + 2) (buildLps p (n + 1))[n + 1]! p[n + 1]! := by\n          show ((buildLps p (n + 1)).push _)[n + 2]! = _\n          rw [\u2190 hsz]\n          exact push_get_eq _ _\n        rw [hval, hIH (n + 1) (le_refl _)]\n        have hip : n + 1 < p.size := by omega\n        have hip' : n + 1 < p.toList.length := by simpa using hip\n        have hjlt : lpsSpec p.toList (n + 1) < n + 2 := by\n          have := lpsSpec_le p.toList (n + 1); omega\n        have hjB : lpsSpec p.toList (n + 1) \u2264 n + 1 := by\n          have := lpsSpec_le p.toList (n + 1); omega\n        have heq := stepFuel_eq p (buildLps p (n + 1)) (n + 1) hIH (p[n + 1]!)\n            (p.toList.take (n + 1)) (n + 2) (lpsSpec p.toList (n + 1)) n hjlt hjB rfl\n        rw [heq, arr_get_bang p (n + 1) hip, \u2190 take_succ_bang hip']\n        rfl\n\n/-! ### Correctness of the search loop -/\n\ntheorem searchState_spec (ha p : Array UInt8) (lps : Array Nat)\n    (hlps : \u2200 k, k \u2264 p.size \u2192 lps[k]! = lpsSpec p.toList k) :\n    \u2200 i, i \u2264 ha.size \u2192\n      (searchState ha p lps i).1 = Gm p.toList (ha.toList.take i) p.size \u2227\n      (\u2200 q, q \u2208 (searchState ha p lps i).2.toList \u2194\n        (q + p.size \u2264 i \u2227 p.toList <:+ ha.toList.take (q + p.size))) := by\n  have hpl : p.toList.length = p.size := by simp\n  have hpl_take : p.toList.take p.size = p.toList := by\n    rw [\u2190 hpl, List.take_length]\n  intro i\n  induction i with\n  | zero =>\n    intro _\n    constructor\n    \u00b7 show (0 : Nat) = _\n      rw [List.take_zero, Gm_nil]\n    \u00b7 intro q\n      by_cases hp : p.size = 0\n      \u00b7 have hnil : p.toList = [] := by\n          apply List.eq_nil_of_length_eq_zero\n          rw [hpl, hp]\n        show q \u2208 (if p.size = 0 then (#[0] : Array Nat) else #[]).toList \u2194 _\n        rw [if_pos hp, hp, hnil]\n        simp\n      \u00b7 show q \u2208 (if p.size = 0 then (#[0] : Array Nat) else #[]).toList \u2194 _\n        rw [if_neg hp]\n        constructor\n        \u00b7 intro hm; simp at hm\n        \u00b7 rintro \u27e8g1, -\u27e9\n          exfalso; omega\n  | succ i ih =>\n    intro hi\n    obtain \u27e8ih1, ih2\u27e9 := ih (by omega)\n    have hik : i < ha.size := by omega\n    have hik' : i < ha.toList.length := by simpa using hik\n    have hd1 : (searchState ha p lps (i + 1)).1 =\n        stepFuel p lps ((searchState ha p lps i).1 + 1) (searchState ha p lps i).1 ha[i]! := rfl\n    have hd2 : (searchState ha p lps (i + 1)).2 =\n        (if (searchState ha p lps (i + 1)).1 = p.size\n         then (searchState ha p lps i).2.push (i + 1 - p.size)\n         else (searchState ha p lps i).2) := by\n      conv_lhs => rw [show (i + 1) = (i + 1) from rfl]\n      rfl\n    have hjB : (searchState ha p lps i).1 \u2264 p.size := by\n      rw [ih1]\n      have := (Gm_prop p.toList (ha.toList.take i) p.size).1\n      omega\n    have htake : ha.toList.take i ++ [ha[i]!] = ha.toList.take (i + 1) := by\n      rw [arr_get_bang ha i hik, take_succ_bang hik']\n    have hnew : (searchState ha p lps (i + 1)).1 =\n        Gm p.toList (ha.toList.take (i + 1)) p.size := by\n      rw [hd1]\n      rw [stepFuel_eq p lps p.size hlps (ha[i]!) (ha.toList.take i)\n        ((searchState ha p lps i).1 + 1) (searchState ha p lps i).1 p.size\n        (by omega) hjB ih1]\n      rw [htake, Gm_bound_ge p.toList _ (p.size + 1) (by omega), hpl]\n    have hlen : (ha.toList.take (i + 1)).length = i + 1 := by\n      rw [List.length_take]\n      omega\n    have hEq : (searchState ha p lps (i + 1)).1 = p.size \u2194\n        (p.toList <:+ ha.toList.take (i + 1) \u2227 p.size \u2264 i + 1) := by\n      rw [hnew]\n      constructor\n      \u00b7 intro hg\n        obtain \u27e8h2, h3\u27e9 := Gm_prop p.toList (ha.toList.take (i + 1)) p.size\n        rw [hg, hpl_take] at h3\n        refine \u27e8h3, ?_\u27e9\n        have hll := h3.length_le\n        rw [hlen, hpl] at hll\n        exact hll\n      \u00b7 rintro \u27e8hs, _\u27e9\n        have h1 : p.size \u2264 Gm p.toList (ha.toList.take (i + 1)) p.size :=\n          Gm_max _ _ _ _ (le_refl _) (by omega) (by rw [hpl_take]; exact hs)\n        have h2 := (Gm_prop p.toList (ha.toList.take (i + 1)) p.size).1\n        omega\n    refine \u27e8hnew, ?_\u27e9\n    intro q\n    rw [hd2]\n    by_cases hcase : (searchState ha p lps (i + 1)).1 = p.size\n    \u00b7 rw [if_pos hcase]\n      obtain \u27e8hsuf, hle\u27e9 := hEq.mp hcase\n      rw [Array.toList_push, List.mem_append]\n      simp only [List.mem_singleton]\n      rw [ih2 q]\n      constructor\n      \u00b7 rintro (\u27e8g1, g2\u27e9 | rfl)\n        \u00b7 exact \u27e8by omega, g2\u27e9\n        \u00b7 refine \u27e8by omega, ?_\u27e9\n          rw [show i + 1 - p.size + p.size = i + 1 by omega]\n          exact hsuf\n      \u00b7 rintro \u27e8g1, g2\u27e9\n        rcases Nat.lt_or_ge (q + p.size) (i + 1) with hlt | hge\n        \u00b7 exact Or.inl \u27e8by omega, g2\u27e9\n        \u00b7 exact Or.inr (by omega)\n    \u00b7 rw [if_neg hcase, ih2 q]\n      constructor\n      \u00b7 rintro \u27e8g1, g2\u27e9; exact \u27e8by omega, g2\u27e9\n      \u00b7 rintro \u27e8g1, g2\u27e9\n        refine \u27e8?_, g2\u27e9\n        by_contra hcon\n        have hq : q + p.size = i + 1 := by omega\n        rw [hq] at g2\n        exact hcase (hEq.mpr \u27e8g2, by omega\u27e9)\n\n/-! ### Relating the suffix characterisation to `matchesAt` -/\n\ntheorem occ_iff (ha p : Array UInt8) (q : Nat) :\n    (q + p.size \u2264 ha.size \u2227 p.toList <:+ ha.toList.take (q + p.size)) \u2194 matchesAt ha p q := by\n  have hpl : p.toList.length = p.size := by simp\n  have hal : ha.toList.length = ha.size := by simp\n  unfold matchesAt\n  constructor\n  \u00b7 rintro \u27e8hq, hs\u27e9\n    refine \u27e8hq, ?_\u27e9\n    intro j hj\n    rw [List.take_add] at hs\n    obtain \u27e8u, hu\u27e9 := hs\n    obtain \u27e8-, h2\u27e9 := List.append_inj' hu (by\n      rw [List.length_take, List.length_drop]\n      omega)\n    have hj' : j < ((ha.toList.drop q).take p.size).length := by\n      rw [List.length_take, List.length_drop]; omega\n    have hgj : p.toList[j]! = ((ha.toList.drop q).take p.size)[j]! := by rw [h2]\n    rw [arr_getD_bang ha (q + j) (by omega), arr_getD_bang p j (by omega), hgj,\n      getElem!_pos _ j hj', getElem!_pos ha.toList (q + j) (by omega)]\n    simp\n  \u00b7 rintro \u27e8hq, hpt\u27e9\n    refine \u27e8hq, ?_\u27e9\n    rw [List.take_add]\n    refine \u27e8ha.toList.take q, ?_\u27e9\n    congr 1\n    apply List.ext_getElem\n    \u00b7 rw [List.length_take, List.length_drop]; omega\n    \u00b7 intro j h1 h2\n      have hj : j < p.size := by omega\n      have := hpt j hj\n      rw [arr_getD_bang ha (q + j) (by omega), arr_getD_bang p j (by omega)] at this\n      rw [getElem!_pos ha.toList (q + j) (by omega), getElem!_pos p.toList j (by omega)] at this\n      simp only [List.getElem_take, List.getElem_drop]\n      rw [this]\n\ntheorem final_step (ha p : Array UInt8) (res : Array Nat)\n    (hres : \u2200 q, q \u2208 res.toList \u2194 matchesAt ha p q) :\n    (\u2200 i, i < res.size \u2192 matchesAt ha p (res.getD i 0)) \u2227\n    (\u2200 i, matchesAt ha p i \u2192 \u2203 k, k < res.size \u2227 res.getD k 0 = i) := by\n  constructor\n  \u00b7 intro i hi\n    apply (hres _).mp\n    apply List.mem_iff_getElem.mpr\n    refine \u27e8i, by simpa using hi, ?_\u27e9\n    rw [arr_getD_nat res i hi]\n    simp\n  \u00b7 intro i hi\n    obtain \u27e8k, hk, hkv\u27e9 := List.mem_iff_getElem.mp ((hres i).mpr hi)\n    have hk' : k < res.size := by simpa using hk\n    refine \u27e8k, hk', ?_\u27e9\n    rw [arr_getD_nat res k hk']\n    simpa using hkv\n\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem kmpSearch_postcond_satisfied (haystack : Array UInt8) (needle : Array UInt8)\n    (h_precond : kmpSearch_precond haystack needle) :\n    kmpSearch_postcond haystack needle (kmpSearch haystack needle h_precond) h_precond := by\n  -- !benchmark @start proof\n  have hlps : \u2200 k, k \u2264 needle.size \u2192\n      (buildLps needle needle.size)[k]! = lpsSpec needle.toList k :=\n    fun k hk => buildLps_correct needle needle.size (le_refl _) k hk\n  obtain \u27e8-, hmem\u27e9 := searchState_spec haystack needle (buildLps needle needle.size) hlps\n    haystack.size (le_refl _)\n  apply final_step\n  intro q\n  rw [show (kmpSearch haystack needle h_precond) =\n    (searchState haystack needle (buildLps needle needle.size) haystack.size).2 from rfl]\n  rw [hmem q, \u2190 occ_iff]\n  -- !benchmark @end proof",
+            "comment": "`LEAN VERIFIED` \u2014 the proof compiles with no `sorry`, `axiom`, `partial`, or other escapes.\n\n## What's in `Solution.lean`\n\n**Implementation (auxcode + code):** genuine KMP.\n- `stepFuel p lps fuel j c` \u2014 the border-chain jump loop: on mismatch it falls back to `lps[j]`, otherwise advances. The `fuel` parameter (always instantiated to `j + 1`) gives structural termination; since `lps[j] < j`, the fuel is always sufficient.\n- `buildLps p i` \u2014 incremental LPS preprocessing, `lps[0] = lps[1] = 0` and `lps[i+1] = stepFuel \u2026 lps[i] p[i]`.\n- `searchState ha p lps i` \u2014 the search loop, carrying the matched-prefix length and the occurrences found so far; it uses the same jump logic and never rescans text.\n- `kmpSearch = (searchState haystack needle (buildLps needle needle.size) haystack.size).2`.\n\n**Proof architecture.** The pivot is a specification function `Gm p s m` = the greatest `k \u2264 m` (with `k \u2264 |p|`) such that `p.take k` is a suffix of `s`, defined by its own recursion so that maximality is available by construction (`Gm_le`, `Gm_prop`, `Gm_max`). Then `lpsSpec p j = Gm p (p.take j) (j-1)` is exactly the textbook LPS definition.\n\n- **`chain_lemma`**: if `p.take j <:+ s` then `Gm p s (j-1) = lpsSpec p j`. This is the \"safe skipping\" fact \u2014 the lps chain enumerates precisely the candidate match lengths, so no valid match is skipped.\n- **`stepFuel_eq`** (master lemma): if `j = Gm p s m`, then `stepFuel p lps fuel j c = Gm p (s ++ [c]) (m+1)`. Proved by induction on fuel, using `chain_lemma` at the fallback step.\n- This single lemma discharges *both* verification challenges: instantiated at `s := p.take i, m := i-1` it yields `buildLps_correct` (the LPS table meets its mathematical definition); instantiated at `s := t.take i, m := |p|` it yields the loop invariant in `searchState_spec`, namely that the state is the longest prefix of the needle that is a suffix of the text read so far, and that the accumulator holds exactly the occurrences ending at or before position `i`.\n- `occ_iff` converts the suffix characterisation to the postcondition's index-wise `matchesAt`, giving soundness and completeness.\n\n**One practical caveat worth flagging:** `searchState` recurses once per text character and is not tail-recursive, so on inputs near the 10\u2076 precondition bound it may exhaust the stack when actually executed. That affects runtime behaviour only, not the verified correctness properties; converting it to a tail-recursive/`Nat.fold` form would require redoing the invariant proof against the new recursion shape, so I left the structure that the proof is built on."
+        },
+        "verifier_response": {
+            "verified": true,
+            "feedback": "Verified successfully.",
+            "raw": {
+                "stdout": "",
+                "stderr": "",
+                "returncode": 0
+            }
+        },
+        "history": [
+            {
+                "compiler_pass": 1,
+                "verified": true,
+                "verifier_response": {
+                    "verified": true,
+                    "feedback": "Verified successfully.",
+                    "raw": {
+                        "stdout": "",
+                        "stderr": "",
+                        "returncode": 0
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "2a1d412c-52dd-41c4-ae15-d49ff10f5ee9",
+                    "subtype": "success",
+                    "provider_subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 3.62878275,
+                    "duration_ms": 926097,
+                    "duration_api_ms": 910223,
+                    "num_turns": 21,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/kmp/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "prompt_sha256": "d3941a182b922b98cf20c3d109831e4bdf99a44a190bc30d68d0a402d3a7b356",
+                    "budget_usd": null,
+                    "lastdance_profile": "api",
+                    "features": {
+                        "profile": "api",
+                        "algorithm_plan": false,
+                        "lemma_plan": false,
+                        "leansearch": false,
+                        "semantic_audit": false,
+                        "semantic_reminder": false,
+                        "early_check": false,
+                        "feedback_mode": "exact",
+                        "backtracking": false,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": false,
+                            "progress_governor": false,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": false,
+                            "rescue_mode": false
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 51000,
+                        "seconds_to_first_progress": 728.348,
+                        "seconds_to_first_check": 738.349,
+                        "pending_tool_recovery": []
+                    }
+                }
+            }
+        ],
+        "tokens": {
+            "input": 1607424,
+            "output": 89850,
+            "reasoning": 0
+        },
+        "agent": {
+            "kind": "claude-code",
+            "cli_version": "2.1.220 (Claude Code)",
+            "model": "claude-opus-5",
+            "effort": "medium",
+            "session_id": "2a1d412c-52dd-41c4-ae15-d49ff10f5ee9",
+            "subtype": "success",
+            "provider_subtype": "success",
+            "is_error": false,
+            "total_cost_usd": 3.62878275,
+            "duration_ms": 926097,
+            "duration_api_ms": 910223,
+            "num_turns": 21,
+            "returncode": 0,
+            "timed_out": false,
+            "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/kmp/agent_events.jsonl",
+            "pass_number": 1,
+            "prompt_kind": "initial",
+            "prompt_sha256": "d3941a182b922b98cf20c3d109831e4bdf99a44a190bc30d68d0a402d3a7b356",
+            "budget_usd": null,
+            "lastdance_profile": "api",
+            "features": {
+                "profile": "api",
+                "algorithm_plan": false,
+                "lemma_plan": false,
+                "leansearch": false,
+                "semantic_audit": false,
+                "semantic_reminder": false,
+                "early_check": false,
+                "feedback_mode": "exact",
+                "backtracking": false,
+                "stagnation_threshold": 2
+            },
+            "run_control": {
+                "control": {
+                    "recover_pending_tool": false,
+                    "progress_governor": false,
+                    "pre_edit_timeout_seconds": 300,
+                    "pre_edit_thinking_tokens": 12000,
+                    "post_edit_check_timeout_seconds": 180,
+                    "planning_mode": false,
+                    "diagnostic_wrapper": false,
+                    "rescue_mode": false
+                },
+                "governor_stop_reason": null,
+                "max_thinking_tokens_observed": 51000,
+                "seconds_to_first_progress": 728.348,
+                "seconds_to_first_check": 738.349,
+                "pending_tool_recovery": []
+            },
+            "compiler_passes": 1,
+            "total_sessions": 1,
+            "selected_session": 1,
+            "sessions": [
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "2a1d412c-52dd-41c4-ae15-d49ff10f5ee9",
+                    "subtype": "success",
+                    "provider_subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 3.62878275,
+                    "duration_ms": 926097,
+                    "duration_api_ms": 910223,
+                    "num_turns": 21,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/kmp/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "prompt_sha256": "d3941a182b922b98cf20c3d109831e4bdf99a44a190bc30d68d0a402d3a7b356",
+                    "budget_usd": null,
+                    "lastdance_profile": "api",
+                    "features": {
+                        "profile": "api",
+                        "algorithm_plan": false,
+                        "lemma_plan": false,
+                        "leansearch": false,
+                        "semantic_audit": false,
+                        "semantic_reminder": false,
+                        "early_check": false,
+                        "feedback_mode": "exact",
+                        "backtracking": false,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": false,
+                            "progress_governor": false,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": false,
+                            "rescue_mode": false
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 51000,
+                        "seconds_to_first_progress": 728.348,
+                        "seconds_to_first_check": 738.349,
+                        "pending_tool_recovery": []
+                    }
+                }
+            ],
+            "compiler_checks_observed": 3,
+            "max_compiler_checks": 15
+        },
+        "provenance": {
+            "schema_version": 1,
+            "ownership": {
+                "model_owned_sections": [
+                    "auxcode",
+                    "code",
+                    "lemma",
+                    "proof"
+                ],
+                "teacher_owned": "all source outside the four marker regions",
+                "teacher_owned_sorry_present": false,
+                "model_section_ranges": {
+                    "auxcode": {
+                        "start_line": 11,
+                        "end_line": 49
+                    },
+                    "code": {
+                        "start_line": 54,
+                        "end_line": 56
+                    },
+                    "lemma": {
+                        "start_line": 72,
+                        "end_line": 501
+                    },
+                    "proof": {
+                        "start_line": 507,
+                        "end_line": 518
+                    }
+                }
+            },
+            "hashes": {
+                "original_sha256": "3768dcc06dc4504df5548bdd4939637db9e79c897fa4312fbe0057ed56c907d9",
+                "candidate_sha256": "fc3d5c5cb6a2c013c367590761a76e0c021ca0f8c89d8980a41fe066d2e48cb5",
+                "merged_sha256": "1a2488e4516819ec291f548e615028f0197c6c1377b534f2ac48da66645d9ae5",
+                "model_sections_sha256": {
+                    "auxcode": "8e0f6edf8170a49d5d2e865e644bebc40fa0d22501b90944471d88f51c0b2965",
+                    "code": "eff3c50edef32da168e88628ebd48f2f4010decf7a917461813dac268a253d2a",
+                    "lemma": "91efe6ff9b450b0be104a8c5e2f5c1630c32713dab359bb38c7095400c87720f",
+                    "proof": "b040c27de27d5f4f7743b3a79af65f8e359aa7cb6837d364e0458b27752dc301"
+                }
+            }
+        },
+        "targeted_diagnostics": [],
+        "lastdance_artifacts": {
+            "ledger": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/kmp/.lastdance/run_ledger.jsonl",
+            "algorithm_plan": null,
+            "proof_state": null,
+            "leansearch_queries": null,
+            "checkpoints": null,
+            "prompts": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/kmp/.lastdance/prompts"
+        }
+    },
+    "parsed": true,
+    "verdict": true,
+    "analysis": "The student\u2019s submission does satisfy the semantic requirements.\n\nKey points:\n\n1. It really implements KMP-style preprocessing.\n   - The student defines `buildLps` to construct an LPS table incrementally.\n   - The value appended at each step is computed by `stepFuel`, which follows fallback links through previously computed LPS values until it finds a matching extension or reaches 0.\n   - This is not a naive recomputation of all borders from scratch for each position; it is structurally the KMP border-chain idea.\n\n2. It really implements KMP-style search using the LPS table.\n   - The search state is `(currentMatchedPrefixLength, occurrencesFound)`.\n   - For each new haystack character, it updates the matched prefix length using `stepFuel p lps ...`, i.e. by falling back through the LPS table on mismatch.\n   - When the matched length reaches `p.size`, it records an occurrence.\n   - This is the characteristic KMP skipping logic rather than naive substring checking at every position.\n\n3. It includes correctness development connecting the implementation to a mathematical specification.\n   - The student defines `Gm` as a specification of the current KMP state.\n   - They prove `buildLps_correct`, showing the preprocessing computes the intended LPS specification.\n   - They prove `searchState_spec`, relating the search loop to the specification and characterizing the reported matches.\n   - The final theorem derives the required soundness/completeness postcondition.\n\n4. No evidence of cheating in student-owned regions.\n   - There is no `sorry`, `admit`, empty body, or delegation to a built-in search routine.\n   - The implementation is explicit and from scratch.\n   - The proofs in student-owned regions are substantial and support the intended algorithm.\n\n5. About complexity/algorithmic intent.\n   - The natural language asks for KMP and linear-time skipping behavior.\n   - The code uses the LPS fallback mechanism exactly as KMP does.\n   - Although `stepFuel` is written recursively with a fuel parameter and the Lean definitions are not optimized imperative code, semantically it is still implementing the KMP transition logic based on LPS jumps, not a different algorithm.\n\nOverall, the student implemented the required KMP preprocessing and search strategy and proved the intended functional correctness properties, without using disallowed shortcuts.",
+    "semantic_judge": {
+        "model": "gpt-5.4",
+        "temperature": 0.0,
+        "reasoning_effort": "medium",
+        "provenance_aware": true
+    }
+}

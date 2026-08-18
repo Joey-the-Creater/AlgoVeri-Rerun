@@ -1,0 +1,248 @@
+{
+  "verified": true,
+  "details": {
+    "rounds": 19,
+    "llm_response": {
+      "code": "import Mathlib\n\nstructure TopoGraph where\n  adj : Array (Array Nat)\n\ndef TopoGraph.well_formed (g : TopoGraph) : Prop :=\n  \u2200 u, u < g.adj.size \u2192\n    \u2200 v, v \u2208 g.adj.getD u #[] \u2192 v < g.adj.size\n\ndef TopoGraph.size (g : TopoGraph) : Nat :=\n  g.adj.size\n\ndef TopoGraph.has_edge (g : TopoGraph) (u v : Nat) : Prop :=\n  u < g.adj.size \u2227\n  v \u2208 g.adj.getD u #[]\n\ndef TopoGraph.is_path (g : TopoGraph) (p : List Nat) : Prop :=\n  p.length > 0 \u2227\n  \u2200 i, i + 1 < p.length \u2192\n    g.has_edge (p.getD i 0) (p.getD (i + 1) 0)\n\ndef TopoGraph.is_cycle (g : TopoGraph) (p : List Nat) : Prop :=\n  g.is_path p \u2227 p.length > 1 \u2227 p.head? = p.getLast?\n\ndef TopoGraph.graph_has_cycle (g : TopoGraph) : Prop :=\n  \u2203 p, g.is_cycle p\n\ndef TopoGraph.is_topological_ordering (g : TopoGraph) (order : Array Nat) : Prop :=\n  -- Contains all nodes (size check + surjective)\n  order.size = g.size \u2227\n  (\u2200 n, n < g.size \u2192 \u2203 k, k < order.size \u2227 order.getD k 0 = n) \u2227\n  -- No duplicates is implied by size check + surjective on finite set, but for completeness:\n  (\u2200 i j, i < order.size \u2192 j < order.size \u2192 i \u2260 j \u2192 order.getD i 0 \u2260 order.getD j 0) \u2227\n  -- No back edges (if j < i, no edge order[i] -> order[j])\n  (\u2200 i j, j < i \u2192 i < order.size \u2192\n     \u00ac g.has_edge (order.getD i 0) (order.getD j 0))\n\n-- Precondition definitions\n@[reducible, simp]\ndef topological_sort_precond (graph : TopoGraph) : Prop :=\n  -- !benchmark @start precond\n  graph.well_formed\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n/-- Successors of `u` as a list, definitionally aligned with `has_edge`. -/\ndef TopoGraph.succL (g : TopoGraph) (u : Nat) : List Nat :=\n  (g.adj.getD u #[]).toList\n\n/-- `Good g l` : every successor of a node occurs *strictly later* in `l`.\nThis is exactly the \"no back edge\" content of a topological ordering. -/\ndef TopoGraph.Good (g : TopoGraph) : List Nat \u2192 Prop\n  | [] => True\n  | x :: t => (\u2200 v \u2208 g.succL x, v \u2208 t) \u2227 g.Good t\n\n/-- Sink-peeling step: find a not-yet-emitted node all of whose successors\nare already emitted. -/\ndef TopoGraph.pickNode (g : TopoGraph) (acc : List Nat) : Option Nat :=\n  (List.range g.adj.size).find?\n    (fun u => !acc.contains u && (g.succL u).all (fun v => acc.contains v))\n\n/-- Kahn's algorithm, sink-peeling form. `acc` holds emitted nodes newest-first. -/\ndef TopoGraph.peel (g : TopoGraph) : Nat \u2192 List Nat \u2192 List Nat\n  | 0, acc => acc\n  | f + 1, acc =>\n      match g.pickNode acc with\n      | some u => g.peel f (u :: acc)\n      | none => acc\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef topological_sort (graph : TopoGraph)\n    (h_precond : topological_sort_precond graph) : Option (Array Nat) :=\n  -- !benchmark @start code\n  if (graph.peel graph.adj.size []).length = graph.adj.size then\n    some (graph.peel graph.adj.size []).toArray\n  else\n    none\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef topological_sort_postcond (graph : TopoGraph) (result : Option (Array Nat))\n    (_ : topological_sort_precond graph) : Prop :=\n  -- !benchmark @start postcond\n  match result with\n  | some order =>\n      \u00ac graph.graph_has_cycle \u2227\n      graph.is_topological_ordering order\n  | none =>\n      graph.graph_has_cycle\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\nnamespace TopoAux\n\n/-- `getD` at an in-range index. -/\ntheorem gdEq (l : List Nat) (k : Nat) (h : k < l.length) : l.getD k 0 = l[k] :=\n  List.getD_eq_getElem l 0 h\n\ntheorem mem_iff_getD (l : List Nat) (x : Nat) :\n    x \u2208 l \u2194 \u2203 k, k < l.length \u2227 l.getD k 0 = x := by\n  constructor\n  \u00b7 intro h\n    obtain \u27e8k, hk, hkx\u27e9 := List.getElem_of_mem h\n    exact \u27e8k, hk, by rw [gdEq l k hk]; exact hkx\u27e9\n  \u00b7 rintro \u27e8k, hk, rfl\u27e9\n    rw [gdEq l k hk]\n    exact List.getElem_mem hk\n\ntheorem nodup_getD_inj {l : List Nat} (h : l.Nodup) {i j : Nat}\n    (hi : i < l.length) (hj : j < l.length) (he : l.getD i 0 = l.getD j 0) : i = j := by\n  rw [gdEq l i hi, gdEq l j hj] at he\n  exact (List.Nodup.getElem_inj_iff h).mp he\n\ntheorem length_le_of_nodup {l : List Nat} {n : Nat} (h : l.Nodup)\n    (hb : \u2200 x \u2208 l, x < n) : l.length \u2264 n := by\n  have h1 : l.toFinset.card = l.length := List.toFinset_card_of_nodup h\n  have h2 : l.toFinset \u2286 Finset.range n := by\n    intro x hx\n    simp only [List.mem_toFinset] at hx\n    simp [Finset.mem_range, hb x hx]\n  have := Finset.card_le_card h2\n  simpa [h1] using this\n\ntheorem head?_getD (l : List Nat) (h : 0 < l.length) : l.head? = some (l.getD 0 0) := by\n  cases l with\n  | nil => simp at h\n  | cons a t => simp [List.getD]\n\ntheorem getLast?_getD (l : List Nat) (h : 0 < l.length) :\n    l.getLast? = some (l.getD (l.length - 1) 0) := by\n  rw [List.getLast?_eq_getElem?, gdEq l _ (by omega)]\n  simp [List.getElem?_eq_getElem (show l.length - 1 < l.length by omega)]\n\ntheorem getD_map_range (f : Nat \u2192 Nat) (m k : Nat) (h : k < m) :\n    ((List.range m).map f).getD k 0 = f k := by\n  have hk : k < ((List.range m).map f).length := by simpa using h\n  rw [gdEq _ k hk]\n  simp\n\n/-- Membership in `succL` versus `has_edge`. -/\ntheorem hasEdge_iff (g : TopoGraph) (u v : Nat) :\n    g.has_edge u v \u2194 (u < g.adj.size \u2227 v \u2208 g.succL u) := by\n  simp [TopoGraph.has_edge, TopoGraph.succL]\n\n/-- Specification of a successful `pickNode`. -/\ntheorem pick_some {g : TopoGraph} {acc : List Nat} {u : Nat}\n    (h : g.pickNode acc = some u) :\n    u < g.adj.size \u2227 u \u2209 acc \u2227 \u2200 v \u2208 g.succL u, v \u2208 acc := by\n  have hmem := List.mem_of_find?_eq_some h\n  have hp := List.find?_some h\n  simp only [List.mem_range] at hmem\n  simp at hp\n  exact \u27e8hmem, hp.1, hp.2\u27e9\n\n/-- Specification of a failing `pickNode`. -/\ntheorem pick_none {g : TopoGraph} {acc : List Nat}\n    (h : g.pickNode acc = none) :\n    \u2200 u, u < g.adj.size \u2192 u \u2209 acc \u2192 \u2203 v \u2208 g.succL u, v \u2209 acc := by\n  intro u hu hnotin\n  simp only [TopoGraph.pickNode, List.find?_eq_none] at h\n  have h1 := h u (by simp [List.mem_range, hu])\n  simp at h1\n  exact h1 hnotin\n\n/-- The key \"later occurrence\" property carried by `Good`. -/\ntheorem good_lt (g : TopoGraph) : \u2200 (l : List Nat), g.Good l \u2192 \u2200 i, i < l.length \u2192\n    \u2200 v \u2208 g.succL (l.getD i 0), \u2203 j, i < j \u2227 j < l.length \u2227 l.getD j 0 = v := by\n  intro l\n  induction l with\n  | nil => intro _ i hi; simp at hi\n  | cons x t ih =>\n    intro hg i hi v hv\n    obtain \u27e8hhead, htail\u27e9 := hg\n    cases i with\n    | zero =>\n      simp only [List.getD_cons_zero] at hv\n      have hvt : v \u2208 t := hhead v hv\n      obtain \u27e8k, hk, hkv\u27e9 := (mem_iff_getD t v).mp hvt\n      exact \u27e8k + 1, by omega, by simpa using hk, by simpa using hkv\u27e9\n    | succ m =>\n      simp only [List.getD_cons_succ] at hv\n      have hm : m < t.length := by simpa using hi\n      obtain \u27e8j, hj1, hj2, hj3\u27e9 := ih htail m hm v hv\n      exact \u27e8j + 1, by omega, by simpa using hj2, by simpa using hj3\u27e9\n\n/-- Loop invariant plus the fuel-accounting disjunction. -/\ntheorem peel_inv (g : TopoGraph) : \u2200 (f : Nat) (acc : List Nat),\n    (\u2200 x \u2208 acc, x < g.adj.size) \u2192 acc.Nodup \u2192 g.Good acc \u2192\n    (\u2200 x \u2208 g.peel f acc, x < g.adj.size) \u2227 (g.peel f acc).Nodup \u2227 g.Good (g.peel f acc) \u2227\n      ((g.peel f acc).length = acc.length + f \u2228 g.pickNode (g.peel f acc) = none) := by\n  intro f\n  induction f with\n  | zero => intro acc h1 h2 h3; exact \u27e8h1, h2, h3, Or.inl (by simp [TopoGraph.peel])\u27e9\n  | succ f ih =>\n    intro acc h1 h2 h3\n    cases hp : g.pickNode acc with\n    | none =>\n      have : g.peel (f + 1) acc = acc := by simp [TopoGraph.peel, hp]\n      rw [this]\n      exact \u27e8h1, h2, h3, Or.inr hp\u27e9\n    | some u =>\n      have heq : g.peel (f + 1) acc = g.peel f (u :: acc) := by simp [TopoGraph.peel, hp]\n      obtain \u27e8hu1, hu2, hu3\u27e9 := pick_some hp\n      have k1 : \u2200 x \u2208 u :: acc, x < g.adj.size := by\n        intro x hx; rcases List.mem_cons.mp hx with h | h\n        \u00b7 exact h \u25b8 hu1\n        \u00b7 exact h1 x h\n      have k2 : (u :: acc).Nodup := List.nodup_cons.mpr \u27e8hu2, h2\u27e9\n      have k3 : g.Good (u :: acc) := \u27e8hu3, h3\u27e9\n      obtain \u27e8p1, p2, p3, p4\u27e9 := ih (u :: acc) k1 k2 k3\n      rw [heq]\n      refine \u27e8p1, p2, p3, ?_\u27e9\n      rcases p4 with hl | hn\n      \u00b7 exact Or.inl (by simp [hl]; omega)\n      \u00b7 exact Or.inr hn\n\n/-- A `Good`, duplicate-free, complete list rules out every cycle. -/\ntheorem no_cycle_of_good (g : TopoGraph) (hw : g.well_formed) (L : List Nat)\n    (hnd : L.Nodup) (hgood : g.Good L)\n    (hsurj : \u2200 m, m < g.adj.size \u2192 m \u2208 L) : \u00ac g.graph_has_cycle := by\n  have hex : \u2200 x, \u2203 k, x < g.adj.size \u2192 (k < L.length \u2227 L.getD k 0 = x) := by\n    intro x\n    by_cases hx : x < g.adj.size\n    \u00b7 obtain \u27e8k, hk1, hk2\u27e9 := (mem_iff_getD L x).mp (hsurj x hx)\n      exact \u27e8k, fun _ => \u27e8hk1, hk2\u27e9\u27e9\n    \u00b7 exact \u27e80, fun h => absurd h hx\u27e9\n  choose pos hpos using hex\n  -- an edge strictly increases `pos`\n  have hstep : \u2200 u v, g.has_edge u v \u2192 pos u < pos v := by\n    intro u v he\n    rw [hasEdge_iff] at he\n    obtain \u27e8hu, hv\u27e9 := he\n    have hvlt : v < g.adj.size := hw u hu v (by simpa [TopoGraph.succL] using hv)\n    obtain \u27e8hp1, hp2\u27e9 := hpos u hu\n    obtain \u27e8hq1, hq2\u27e9 := hpos v hvlt\n    have hv' : v \u2208 g.succL (L.getD (pos u) 0) := by rw [hp2]; exact hv\n    obtain \u27e8j, hj1, hj2, hj3\u27e9 := good_lt g L hgood (pos u) hp1 v hv'\n    have : pos v = j := nodup_getD_inj hnd hq1 hj2 (by rw [hq2, hj3])\n    omega\n  rintro \u27e8p, \u27e8hlen0, hedge\u27e9, hlen1, hhl\u27e9\n  -- pos increases by at least 1 per step along the path\n  have hmono : \u2200 k, k < p.length \u2192 pos (p.getD 0 0) + k \u2264 pos (p.getD k 0) := by\n    intro k\n    induction k with\n    | zero => intro _; omega\n    | succ m ihm =>\n      intro hm\n      have hm' : m < p.length := by omega\n      have h1 := ihm hm'\n      have h2 := hstep _ _ (hedge m hm)\n      omega\n  have hlast : p.getD 0 0 = p.getD (p.length - 1) 0 := by\n    have e1 := head?_getD p hlen0\n    have e2 := getLast?_getD p hlen0\n    rw [e1, e2] at hhl\n    exact Option.some.inj hhl\n  have := hmono (p.length - 1) (by omega)\n  rw [\u2190 hlast] at this\n  omega\n\nend TopoAux\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem topological_sort_postcond_satisfied (graph : TopoGraph)\n    (h_precond : topological_sort_precond graph) :\n    topological_sort_postcond graph (topological_sort graph h_precond) h_precond := by\n  -- !benchmark @start proof\n  open TopoAux in\n  have hw : graph.well_formed := h_precond\n  set n := graph.adj.size with hn\n  set L := graph.peel n ([] : List Nat) with hLdef\n  obtain \u27e8hb, hnd, hgood, hdisj\u27e9 :=\n    peel_inv graph n [] (by simp) (by simp) (by simp [TopoGraph.Good])\n  have hle : L.length \u2264 n := length_le_of_nodup hnd hb\n  have hdef : topological_sort graph h_precond =\n      if L.length = n then some L.toArray else none := rfl\n  rw [hdef]\n  by_cases hlen : L.length = n\n  \u00b7 rw [if_pos hlen]\n    -- surjectivity: L is nodup, bounded by n, and of length n\n    have hsurj : \u2200 m, m < n \u2192 m \u2208 L := by\n      have hcard : L.toFinset = Finset.range n := by\n        apply Finset.eq_of_subset_of_card_le\n        \u00b7 intro x hx\n          simp only [List.mem_toFinset] at hx\n          exact Finset.mem_range.mpr (hb x hx)\n        \u00b7 rw [List.toFinset_card_of_nodup hnd, hlen]\n          simp\n      intro m hm\n      have : m \u2208 L.toFinset := by rw [hcard]; simp [Finset.mem_range, hm]\n      simpa using this\n    have hsize : L.toArray.size = graph.size := by\n      have h1 : L.toArray.size = L.length := by simp\n      rw [h1, hlen]; exact hn\n    have hgetD : \u2200 k, L.toArray.getD k 0 = L.getD k 0 := by\n      intro k\n      simp [Array.getD, List.getD]\n      split <;> rename_i h\n      \u00b7 rw [List.getElem?_eq_getElem h]; simp\n      \u00b7 rw [List.getElem?_eq_none (by omega)]; simp\n    have hlenA : L.toArray.size = L.length := by simp\n    refine \u27e8no_cycle_of_good graph hw L hnd hgood hsurj, hsize, ?_, ?_, ?_\u27e9\n    \u00b7 intro m hm\n      have hm' : m < n := by simpa [TopoGraph.size] using hm\n      obtain \u27e8k, hk1, hk2\u27e9 := (mem_iff_getD L m).mp (hsurj m hm')\n      exact \u27e8k, by rw [hlenA]; exact hk1, by rw [hgetD]; exact hk2\u27e9\n    \u00b7 intro i j hi hj hij hcon\n      rw [hlenA] at hi hj\n      rw [hgetD, hgetD] at hcon\n      exact hij (nodup_getD_inj hnd hi hj hcon)\n    \u00b7 intro i j hji hi hcon\n      rw [hlenA] at hi\n      rw [hgetD, hgetD] at hcon\n      rw [hasEdge_iff] at hcon\n      obtain \u27e8_, hmem\u27e9 := hcon\n      obtain \u27e8k, hk1, hk2, hk3\u27e9 := good_lt graph L hgood i hi _ hmem\n      have hjl : j < L.length := by omega\n      have : k = j := nodup_getD_inj hnd hk2 hjl hk3\n      omega\n  \u00b7 rw [if_neg hlen]\n    have hstuck : graph.pickNode L = none := by\n      rcases hdisj with h | h\n      \u00b7 exact absurd (by simpa using h) hlen\n      \u00b7 exact h\n    have hlt : L.length < n := by omega\n    -- there is an unemitted node\n    have hu0 : \u2203 u, u < n \u2227 u \u2209 L := by\n      by_contra hcon\n      push_neg at hcon\n      have hsub : Finset.range n \u2286 L.toFinset := by\n        intro x hx\n        simp only [Finset.mem_range] at hx\n        simpa using hcon x hx\n      have := Finset.card_le_card hsub\n      have h2 : L.toFinset.card \u2264 L.length := List.toFinset_card_le L\n      simp only [Finset.card_range] at this\n      omega\n    obtain \u27e8u\u2080, hu\u20801, hu\u20802\u27e9 := hu0\n    -- every stuck node has a stuck successor\n    have hstep : \u2200 u, (u < n \u2227 u \u2209 L) \u2192 \u2203 v, (v < n \u2227 v \u2209 L) \u2227 v \u2208 graph.succL u := by\n      intro u hu\n      obtain \u27e8v, hv1, hv2\u27e9 := pick_none hstuck u hu.1 hu.2\n      have : v < n := hw u hu.1 v (by simpa [TopoGraph.succL] using hv1)\n      exact \u27e8v, \u27e8this, hv2\u27e9, hv1\u27e9\n    choose! nxt hnxt1 hnxt2 using hstep\n    have hiter : \u2200 k, (nxt^[k] u\u2080 < n \u2227 nxt^[k] u\u2080 \u2209 L) := by\n      intro k\n      induction k with\n      | zero => exact \u27e8hu\u20801, hu\u20802\u27e9\n      | succ m ihm =>\n        rw [Function.iterate_succ_apply']\n        exact hnxt1 _ ihm\n    -- pigeonhole: two of the first n+1 iterates coincide\n    have hpigeon : \u2203 a \u2208 Finset.range (n + 1), \u2203 b \u2208 Finset.range (n + 1),\n        a \u2260 b \u2227 nxt^[a] u\u2080 = nxt^[b] u\u2080 := by\n      apply Finset.exists_ne_map_eq_of_card_lt_of_maps_to (t := Finset.range n)\n      \u00b7 simp\n      \u00b7 intro a _\n        exact Finset.mem_range.mpr (hiter a).1\n    obtain \u27e8a, ha, b, hb', hab, heq\u27e9 := hpigeon\n    simp only [Finset.mem_range] at ha hb'\n    -- normalise so that i < j\n    obtain \u27e8i, j, hij, heq'\u27e9 : \u2203 i j, i < j \u2227 nxt^[i] u\u2080 = nxt^[j] u\u2080 := by\n      rcases lt_or_gt_of_ne hab with h | h\n      \u00b7 exact \u27e8a, b, h, heq\u27e9\n      \u00b7 exact \u27e8b, a, h, heq.symm\u27e9\n    refine \u27e8(List.range (j - i + 1)).map (fun k => nxt^[i + k] u\u2080), \u27e8?_, ?_\u27e9, ?_, ?_\u27e9\n    \u00b7 simp\n    \u00b7 intro m hm\n      simp only [List.length_map, List.length_range] at hm\n      rw [getD_map_range _ _ _ (by omega), getD_map_range _ _ _ (by omega)]\n      rw [hasEdge_iff]\n      refine \u27e8(hiter (i + m)).1, ?_\u27e9\n      have : i + (m + 1) = (i + m) + 1 := by omega\n      rw [this, Function.iterate_succ_apply']\n      exact hnxt2 _ (hiter (i + m))\n    \u00b7 simp only [List.length_map, List.length_range]; omega\n    \u00b7 rw [head?_getD _ (by simp), getLast?_getD _ (by simp)]\n      simp only [List.length_map, List.length_range]\n      rw [getD_map_range _ _ _ (by omega), getD_map_range _ _ _ (by omega)]\n      have h1 : i + 0 = i := by omega\n      have h2 : i + (j - i + 1 - 1) = j := by omega\n      rw [h1, h2, heq']\n  -- !benchmark @end proof\n",
+      "comment": ""
+    },
+    "verifier_response": {
+      "verified": true,
+      "feedback": "Verified successfully.",
+      "raw": {
+        "stdout": "claude_code_topological_sort_final_1786144947423.lean:73:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+        "stderr": "",
+        "returncode": 0
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": true,
+        "verifier_response": {
+          "verified": true,
+          "feedback": "Verified successfully.",
+          "raw": {
+            "stdout": "claude_code_topological_sort_final_1786144947423.lean:73:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+            "stderr": "",
+            "returncode": 0
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "6e7742ba-3dcf-4c72-a05a-0dd64f1f8f6e",
+          "subtype": "error_max_budget_usd",
+          "provider_subtype": "error_max_budget_usd",
+          "is_error": true,
+          "total_cost_usd": 0.776457,
+          "duration_ms": 177800,
+          "duration_api_ms": 149876,
+          "num_turns": 20,
+          "returncode": 1,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/topological_sort/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "ffc3773d42f4e0f941acd4b08ab1aa6a457900f1591e14466eb7f11351d55ff8",
+          "budget_usd": 0.75,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 600,
+              "pre_edit_thinking_tokens": 30000,
+              "post_edit_check_timeout_seconds": 300,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": true
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 4450,
+            "seconds_to_first_progress": 19.098,
+            "seconds_to_first_check": 26.321,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 437027,
+      "output": 11460,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "6e7742ba-3dcf-4c72-a05a-0dd64f1f8f6e",
+      "subtype": "error_max_budget_usd",
+      "provider_subtype": "error_max_budget_usd",
+      "is_error": true,
+      "total_cost_usd": 0.776457,
+      "duration_ms": 177800,
+      "duration_api_ms": 149876,
+      "num_turns": 20,
+      "returncode": 1,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/topological_sort/agent_events.jsonl",
+      "pass_number": 1,
+      "prompt_kind": "compiler_repair",
+      "prompt_sha256": "ffc3773d42f4e0f941acd4b08ab1aa6a457900f1591e14466eb7f11351d55ff8",
+      "budget_usd": 0.75,
+      "lastdance_profile": "robust",
+      "features": {
+        "profile": "robust",
+        "algorithm_plan": true,
+        "lemma_plan": true,
+        "leansearch": true,
+        "semantic_audit": true,
+        "semantic_reminder": true,
+        "early_check": true,
+        "feedback_mode": "structured",
+        "backtracking": true,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": true,
+          "progress_governor": true,
+          "pre_edit_timeout_seconds": 600,
+          "pre_edit_thinking_tokens": 30000,
+          "post_edit_check_timeout_seconds": 300,
+          "planning_mode": false,
+          "diagnostic_wrapper": false,
+          "rescue_mode": true
+        },
+        "governor_stop_reason": null,
+        "max_thinking_tokens_observed": 4450,
+        "seconds_to_first_progress": 19.098,
+        "seconds_to_first_check": 26.321,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 1,
+      "total_sessions": 1,
+      "selected_session": 1,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "6e7742ba-3dcf-4c72-a05a-0dd64f1f8f6e",
+          "subtype": "error_max_budget_usd",
+          "provider_subtype": "error_max_budget_usd",
+          "is_error": true,
+          "total_cost_usd": 0.776457,
+          "duration_ms": 177800,
+          "duration_api_ms": 149876,
+          "num_turns": 20,
+          "returncode": 1,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/topological_sort/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "ffc3773d42f4e0f941acd4b08ab1aa6a457900f1591e14466eb7f11351d55ff8",
+          "budget_usd": 0.75,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 600,
+              "pre_edit_thinking_tokens": 30000,
+              "post_edit_check_timeout_seconds": 300,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": true
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 4450,
+            "seconds_to_first_progress": 19.098,
+            "seconds_to_first_check": 26.321,
+            "pending_tool_recovery": []
+          }
+        }
+      ]
+    },
+    "provenance": {
+      "schema_version": 1,
+      "ownership": {
+        "model_owned_sections": [
+          "auxcode",
+          "code",
+          "lemma",
+          "proof"
+        ],
+        "teacher_owned": "all source outside the four marker regions",
+        "teacher_owned_sorry_present": false,
+        "model_section_ranges": {
+          "auxcode": {
+            "start_line": 45,
+            "end_line": 69
+          },
+          "code": {
+            "start_line": 74,
+            "end_line": 79
+          },
+          "lemma": {
+            "start_line": 94,
+            "end_line": 264
+          },
+          "proof": {
+            "start_line": 270,
+            "end_line": 387
+          }
+        }
+      },
+      "hashes": {
+        "original_sha256": "0e5f56922b7920e99bc35e6a2c4a88bcda5700e543e6cade070653638e8d4b0b",
+        "candidate_sha256": "e55cad6eca28c756fa62f10d560764f1a9ad1370388e9aa4a2306517bc819e85",
+        "merged_sha256": "e55cad6eca28c756fa62f10d560764f1a9ad1370388e9aa4a2306517bc819e85",
+        "model_sections_sha256": {
+          "auxcode": "4357e511a85289465047122dbe32b27c0322151fde33690c53e37db1c4a342b3",
+          "code": "2702b80ca820a68ee95e335449a9c3b0d5f8151c9e416f13f67c14bd9fd7b9a2",
+          "lemma": "856cbc7a4fd7cf99e1d42d0a708c0c77d79ce5ff0fb74fe5ff4d64a1d0509c0e",
+          "proof": "1e6db0b3c116ac2f979239ab5d911728f70492a03a9da3815d2da8c7346ca23e"
+        }
+      }
+    },
+    "targeted_diagnostics": [],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/topological_sort/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/topological_sort/AlgorithmPlan.md",
+      "proof_state": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/topological_sort/ProofState.md",
+      "leansearch_queries": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/topological_sort/.lastdance/leansearch_queries.jsonl",
+      "checkpoints": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/topological_sort/.lastdance/checkpoints/manifest.jsonl",
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/topological_sort/.lastdance/prompts"
+    }
+  }
+}

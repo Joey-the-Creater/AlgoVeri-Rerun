@@ -20,6 +20,7 @@ SAVE_ROOT=${SAVE_ROOT:-test_results_filter}
 TASK=${TASK:-}
 ONLY_EXISTING_RESULTS=${ONLY_EXISTING_RESULTS:-0}
 SKIP_EXISTING_SEMANTIC=${SKIP_EXISTING_SEMANTIC:-0}
+PROVENANCE_AWARE_JUDGE=${PROVENANCE_AWARE_JUDGE:-0}
 
 if [[ -z "${OPENAI_API_KEY:-}" && -z "${OPENAI_BASE_URL:-}" ]]; then
     echo "Set OPENAI_API_KEY before running the semantic filter." >&2
@@ -43,6 +44,8 @@ run_problem() {
         return 0
     fi
     echo "[semantic judge] $task_name"
+    local judge_args=()
+    [[ "$PROVENANCE_AWARE_JUDGE" == "1" ]] && judge_args+=(--provenance-aware)
     "$PYTHON_BIN" -m src.run_semantic_check \
         --model "$JUDGE_MODEL" \
         --testmodel "$TEST_MODEL" \
@@ -51,7 +54,8 @@ run_problem() {
         --temperature "$TEMPERATURE" \
         --results_root "$RESULTS_ROOT" \
         --save_root "$SAVE_ROOT" \
-        --problem_dir "$problem_dir"
+        --problem_dir "$problem_dir" \
+        "${judge_args[@]}"
 }
 
 failures=0

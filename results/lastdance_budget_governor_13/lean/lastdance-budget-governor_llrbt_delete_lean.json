@@ -1,0 +1,380 @@
+{
+  "verified": false,
+  "details": {
+    "rounds": 32,
+    "llm_response": {
+      "code": "import Mathlib\n\ninductive Color\n| Red\n| Black\nderiving Inhabited, BEq\n\ninductive Node\n| Empty : Node\n| Tree  (color : Color) (val : Int) (left : Node) (right : Node) : Node\nderiving Inhabited\n\ndef view (t : Node) : Set Int :=\n  match t with\n  | Node.Empty => \u2205\n  | Node.Tree _ v l r => view l \u222a view r \u222a {v}\n\ndef is_red (t : Node) : Bool :=\n  match t with\n  | Node.Tree Color.Red _ _ _ => true\n  | _ => false\n\ndef is_bst (t : Node) : Prop :=\n  match t with\n  | Node.Empty => True\n  | Node.Tree _ v l r =>\n    (\u2200 x \u2208 view l, x < v) \u2227\n    is_bst l \u2227\n    (\u2200 x \u2208 view r, x > v) \u2227\n    is_bst r\n\n-- Black Height: Returns -1 if invalid\ndef black_height (t : Node) : Int :=\n  match t with\n  | Node.Empty => 1\n  | Node.Tree c _ l r =>\n    let lh := black_height l\n    let rh := black_height r\n    if lh \u2260 -1 \u2227 rh \u2260 -1 \u2227 lh = rh then\n      if c == Color.Black then lh + 1 else lh\n    else\n      -1\n\ndef satisfies_red_props (t : Node) : Prop :=\n  match t with\n  | Node.Empty => True\n  | Node.Tree _ _ l r =>\n    satisfies_red_props l \u2227\n    satisfies_red_props r \u2227\n    -- Rule: No Right-Leaning Red\n    (\u00ac is_red r) \u2227\n    -- Rule: No Double Red on Left (left child red AND left.left child red)\n    (match l with\n     | Node.Tree Color.Red _ ll _ => \u00ac is_red ll\n     | _ => True)\n\n-- Main Invariant\ndef is_llrbt (t : Node) : Prop :=\n  is_bst t \u2227\n  black_height t \u2260 -1 \u2227\n  satisfies_red_props t\n\n-- Precondition definitions\n@[reducible, simp]\ndef delete_precond (t : Node) : Prop :=\n  -- !benchmark @start precond\n  is_llrbt t\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\ndef node_size : Node \u2192 Nat\n  | Node.Empty => 0\n  | Node.Tree _ _ l r => node_size l + node_size r + 1\n\ndef left_child : Node \u2192 Node\n  | Node.Empty => Node.Empty\n  | Node.Tree _ _ l _ => l\n\ndef right_child : Node \u2192 Node\n  | Node.Empty => Node.Empty\n  | Node.Tree _ _ _ r => r\n\ndef neg_color : Color \u2192 Color\n  | Color.Red => Color.Black\n  | Color.Black => Color.Red\n\ndef set_black : Node \u2192 Node\n  | Node.Empty => Node.Empty\n  | Node.Tree _ v l r => Node.Tree Color.Black v l r\n\ndef contains : Node \u2192 Int \u2192 Bool\n  | Node.Empty, _ => false\n  | Node.Tree _ w l r, v =>\n    if v = w then true else if v < w then contains l v else contains r v\n\ndef min_val : Node \u2192 Int\n  | Node.Empty => 0\n  | Node.Tree _ v Node.Empty _ => v\n  | Node.Tree _ _ l _ => min_val l\n\ndef rotate_left : Node \u2192 Node\n  | Node.Tree c v l (Node.Tree _ rv rl rr) =>\n      Node.Tree c rv (Node.Tree Color.Red v l rl) rr\n  | t => t\n\ndef rotate_right : Node \u2192 Node\n  | Node.Tree c v (Node.Tree _ lv ll lr) r =>\n      Node.Tree c lv ll (Node.Tree Color.Red v lr r)\n  | t => t\n\ndef flip_colors : Node \u2192 Node\n  | Node.Tree c v (Node.Tree lc lv ll lr) (Node.Tree rc rv rl rr) =>\n      Node.Tree (neg_color c) v\n        (Node.Tree (neg_color lc) lv ll lr)\n        (Node.Tree (neg_color rc) rv rl rr)\n  | t => t\n\n/-- Rotate the right child of `t` to the right (`h.right := rotateRight h.right`). -/\ndef rotate_right_right : Node \u2192 Node\n  | Node.Tree c v l r => Node.Tree c v l (rotate_right r)\n  | Node.Empty => Node.Empty\n\n/-- `h` is red, `h.left` and `h.left.left` are black: make `h.left` or one of\nits children red. -/\ndef move_red_left (t : Node) : Node :=\n  if is_red (left_child (right_child (flip_colors t))) then\n    flip_colors (rotate_left (rotate_right_right (flip_colors t)))\n  else flip_colors t\n\n/-- `h` is red, `h.right` and `h.right.left` are black: make `h.right` or one of\nits children red. -/\ndef move_red_right (t : Node) : Node :=\n  if is_red (left_child (left_child (flip_colors t))) then\n    flip_colors (rotate_right (flip_colors t))\n  else flip_colors t\n\n/-- Restore the LLRBT colour invariants at `t` on the way back up, in the three\nstandard steps: kill a right-leaning red, split a double left red, and push up a\nred pair.  Each step is the identity on `Node.Empty`. -/\ndef fixup1 (t : Node) : Node :=\n  if is_red (right_child t) && !is_red (left_child t) then rotate_left t else t\n\ndef fixup2 (t : Node) : Node :=\n  if is_red (left_child t) && is_red (left_child (left_child t)) then rotate_right t else t\n\ndef fixup3 (t : Node) : Node :=\n  if is_red (left_child t) && is_red (right_child t) then flip_colors t else t\n\ndef fixup (t : Node) : Node := fixup3 (fixup2 (fixup1 t))\n\n/-- Delete the minimum key; `n` is a fuel bound (`node_size t` suffices). -/\ndef delete_min : Nat \u2192 Node \u2192 Node\n  | 0, t => t\n  | _ + 1, Node.Empty => Node.Empty\n  | n + 1, Node.Tree c w l r =>\n    match l with\n    | Node.Empty => Node.Empty\n    | _ =>\n      let t := if !is_red l && !is_red (left_child l) then\n                 move_red_left (Node.Tree c w l r)\n               else Node.Tree c w l r\n      match t with\n      | Node.Empty => Node.Empty\n      | Node.Tree c' w' l' r' => fixup (Node.Tree c' w' (delete_min n l') r')\n\n/-- Recursive descent deletion of `v`; `n` is a fuel bound. -/\ndef delete_core : Nat \u2192 Node \u2192 Int \u2192 Node\n  | 0, t, _ => t\n  | _ + 1, Node.Empty, _ => Node.Empty\n  | n + 1, Node.Tree c w l r, v =>\n    if v < w then\n      let t := if !is_red l && !is_red (left_child l) then\n                 move_red_left (Node.Tree c w l r)\n               else Node.Tree c w l r\n      match t with\n      | Node.Empty => Node.Empty\n      | Node.Tree c' w' l' r' => fixup (Node.Tree c' w' (delete_core n l' v) r')\n    else\n      let t1 := if is_red l then rotate_right (Node.Tree c w l r)\n                else Node.Tree c w l r\n      match t1 with\n      | Node.Empty => Node.Empty\n      | Node.Tree c1 w1 l1 r1 =>\n        match r1 with\n        | Node.Empty => if v = w1 then Node.Empty else t1\n        | _ =>\n          let t2 := if !is_red r1 && !is_red (left_child r1) then\n                      move_red_right (Node.Tree c1 w1 l1 r1)\n                    else Node.Tree c1 w1 l1 r1\n          match t2 with\n          | Node.Empty => Node.Empty\n          | Node.Tree c2 w2 l2 r2 =>\n            if v = w2 then\n              fixup (Node.Tree c2 (min_val r2) l2 (delete_min n r2))\n            else\n              fixup (Node.Tree c2 w2 l2 (delete_core n r2 v))\n\n/-- Top-level deletion: colour the root red for the descent (when both of its\nchildren are black), run the descent, then recolour the root black. -/\ndef delete_top (t : Node) (v : Int) : Node :=\n  if !contains t v then t\n  else\n    let t0 := match t with\n      | Node.Empty => Node.Empty\n      | Node.Tree _ w l r =>\n          if !is_red l && !is_red r then Node.Tree Color.Red w l r\n          else Node.Tree Color.Black w l r\n    set_black (delete_core (node_size t + 1) t0 v)\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef delete (t : Node) (v : Int)\n    (h_precond : delete_precond t) : Node :=\n  -- !benchmark @start code\n  delete_top t v\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef delete_postcond (t : Node) (v : Int) (result : Node)\n    (_ : delete_precond t) : Prop :=\n  -- !benchmark @start postcond\n  is_llrbt result \u2227\n  view result = view t \\ {v}\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\ntheorem view_node (c : Color) (v : Int) (l r : Node) :\n    view (Node.Tree c v l r) = view l \u222a view r \u222a {v} := rfl\n\ntheorem view_rotate_left (t : Node) : view (rotate_left t) = view t := by\n  cases t with\n  | Empty => rfl\n  | Tree c w l r =>\n    cases r with\n    | Empty => rfl\n    | Tree rc rv rl rr =>\n      simp only [rotate_left, view_node]\n      ext x\n      simp only [Set.mem_union, Set.mem_singleton_iff]\n      tauto\n\ntheorem view_rotate_right (t : Node) : view (rotate_right t) = view t := by\n  cases t with\n  | Empty => rfl\n  | Tree c w l r =>\n    cases l with\n    | Empty => rfl\n    | Tree lc lv ll lr =>\n      simp only [rotate_right, view_node]\n      ext x\n      simp only [Set.mem_union, Set.mem_singleton_iff]\n      tauto\n\ntheorem view_flip_colors (t : Node) : view (flip_colors t) = view t := by\n  cases t with\n  | Empty => rfl\n  | Tree c w l r =>\n    cases l with\n    | Empty => rfl\n    | Tree lc lv ll lr =>\n      cases r with\n      | Empty => rfl\n      | Tree rc rv rl rr => rfl\n\ntheorem view_rotate_right_right (t : Node) : view (rotate_right_right t) = view t := by\n  cases t with\n  | Empty => rfl\n  | Tree c w l r => simp only [rotate_right_right, view_node, view_rotate_right]\n\ntheorem view_move_red_left (t : Node) : view (move_red_left t) = view t := by\n  unfold move_red_left\n  split_ifs\n  \u00b7 rw [view_flip_colors, view_rotate_left, view_rotate_right_right, view_flip_colors]\n  \u00b7 exact view_flip_colors t\n\ntheorem view_move_red_right (t : Node) : view (move_red_right t) = view t := by\n  unfold move_red_right\n  split_ifs\n  \u00b7 rw [view_flip_colors, view_rotate_right, view_flip_colors]\n  \u00b7 exact view_flip_colors t\n\ntheorem view_fixup (t : Node) : view (fixup t) = view t := by\n  unfold fixup fixup1 fixup2 fixup3\n  split_ifs <;>\n    simp only [view_rotate_left, view_rotate_right, view_flip_colors]\n\ntheorem size_rotate_left (t : Node) : node_size (rotate_left t) = node_size t := by\n  cases t with\n  | Empty => rfl\n  | Tree c w l r =>\n    cases r with\n    | Empty => rfl\n    | Tree rc rv rl rr => simp only [rotate_left, node_size]; omega\n\ntheorem size_rotate_right (t : Node) : node_size (rotate_right t) = node_size t := by\n  cases t with\n  | Empty => rfl\n  | Tree c w l r =>\n    cases l with\n    | Empty => rfl\n    | Tree lc lv ll lr => simp only [rotate_right, node_size]; omega\n\ntheorem size_flip_colors (t : Node) : node_size (flip_colors t) = node_size t := by\n  cases t with\n  | Empty => rfl\n  | Tree c w l r =>\n    cases l with\n    | Empty => rfl\n    | Tree lc lv ll lr =>\n      cases r with\n      | Empty => rfl\n      | Tree rc rv rl rr => rfl\n\ntheorem size_rotate_right_right (t : Node) :\n    node_size (rotate_right_right t) = node_size t := by\n  cases t with\n  | Empty => rfl\n  | Tree c w l r => simp only [rotate_right_right, node_size, size_rotate_right]\n\ntheorem size_move_red_left (t : Node) : node_size (move_red_left t) = node_size t := by\n  unfold move_red_left\n  split_ifs\n  \u00b7 rw [size_flip_colors, size_rotate_left, size_rotate_right_right, size_flip_colors]\n  \u00b7 exact size_flip_colors t\n\ntheorem size_move_red_right (t : Node) : node_size (move_red_right t) = node_size t := by\n  unfold move_red_right\n  split_ifs\n  \u00b7 rw [size_flip_colors, size_rotate_right, size_flip_colors]\n  \u00b7 exact size_flip_colors t\n\ntheorem size_fixup (t : Node) : node_size (fixup t) = node_size t := by\n  unfold fixup fixup1 fixup2 fixup3\n  split_ifs <;>\n    simp only [size_rotate_left, size_rotate_right, size_flip_colors]\n\ntheorem view_set_black (t : Node) : view (set_black t) = view t := by\n  cases t with\n  | Empty => rfl\n  | Tree c w l r => rfl\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem delete_postcond_satisfied (t : Node) (v : Int)\n    (h_precond : delete_precond t) :\n    delete_postcond t v (delete t v h_precond) h_precond := by\n  -- !benchmark @start proof\n  refine \u27e8?_, ?_\u27e9\n  -- !benchmark @end proof\n",
+      "comment": ""
+    },
+    "verifier_response": {
+      "verified": false,
+      "feedback": "Stdout:\nclaude_code_llrbt_delete_final_1786135378754.lean:213:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_delete_final_1786135378754.lean:347:60: error: unsolved goals\ncase refine_1\nt : Node\nv : \u2124\nh_precond : delete_precond t\n\u22a2 is_llrbt (delete t v h_precond)\n\ncase refine_2\nt : Node\nv : \u2124\nh_precond : delete_precond t\n\u22a2 view (delete t v h_precond) = view t \\ {v}\n\n\nStderr:\n",
+      "raw": {
+        "stdout": "claude_code_llrbt_delete_final_1786135378754.lean:213:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_delete_final_1786135378754.lean:347:60: error: unsolved goals\ncase refine_1\nt : Node\nv : \u2124\nh_precond : delete_precond t\n\u22a2 is_llrbt (delete t v h_precond)\n\ncase refine_2\nt : Node\nv : \u2124\nh_precond : delete_precond t\n\u22a2 view (delete t v h_precond) = view t \\ {v}\n",
+        "stderr": "",
+        "returncode": 1
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": false,
+        "verifier_response": {
+          "verified": false,
+          "feedback": "Stdout:\nclaude_code_llrbt_delete_final_1786134977540.lean:213:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_delete_final_1786134977540.lean:347:60: error: unsolved goals\ncase refine_1\nt : Node\nv : \u2124\nh_precond : delete_precond t\n\u22a2 is_llrbt (delete t v h_precond)\n\ncase refine_2\nt : Node\nv : \u2124\nh_precond : delete_precond t\n\u22a2 view (delete t v h_precond) = view t \\ {v}\n\n\nStderr:\n",
+          "raw": {
+            "stdout": "claude_code_llrbt_delete_final_1786134977540.lean:213:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_delete_final_1786134977540.lean:347:60: error: unsolved goals\ncase refine_1\nt : Node\nv : \u2124\nh_precond : delete_precond t\n\u22a2 is_llrbt (delete t v h_precond)\n\ncase refine_2\nt : Node\nv : \u2124\nh_precond : delete_precond t\n\u22a2 view (delete t v h_precond) = view t \\ {v}\n",
+            "stderr": "",
+            "returncode": 1
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "9c20394b-ad90-4493-a2c5-27aaae6b3928",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 1.5270282500000003,
+          "duration_ms": 505069,
+          "duration_api_ms": 486034,
+          "num_turns": 27,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/llrbt_delete/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "4b775307945ef7ea45e49b7162124136eee07943f2110acff867beebfbbf0093",
+          "budget_usd": 2.0,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 600,
+              "pre_edit_thinking_tokens": 30000,
+              "post_edit_check_timeout_seconds": 300,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": true
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 11300,
+            "seconds_to_first_progress": 205.254,
+            "seconds_to_first_check": 211.371,
+            "pending_tool_recovery": []
+          }
+        }
+      },
+      {
+        "compiler_pass": 2,
+        "verified": false,
+        "verifier_response": {
+          "verified": false,
+          "feedback": "Stdout:\nclaude_code_llrbt_delete_final_1786135378754.lean:213:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_delete_final_1786135378754.lean:347:60: error: unsolved goals\ncase refine_1\nt : Node\nv : \u2124\nh_precond : delete_precond t\n\u22a2 is_llrbt (delete t v h_precond)\n\ncase refine_2\nt : Node\nv : \u2124\nh_precond : delete_precond t\n\u22a2 view (delete t v h_precond) = view t \\ {v}\n\n\nStderr:\n",
+          "raw": {
+            "stdout": "claude_code_llrbt_delete_final_1786135378754.lean:213:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_delete_final_1786135378754.lean:347:60: error: unsolved goals\ncase refine_1\nt : Node\nv : \u2124\nh_precond : delete_precond t\n\u22a2 is_llrbt (delete t v h_precond)\n\ncase refine_2\nt : Node\nv : \u2124\nh_precond : delete_precond t\n\u22a2 view (delete t v h_precond) = view t \\ {v}\n",
+            "stderr": "",
+            "returncode": 1
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "a92b5114-9161-4b44-8840-63de7b121487",
+          "subtype": "error_progress_governor",
+          "provider_subtype": "error_during_execution",
+          "is_error": true,
+          "total_cost_usd": 0.03687025,
+          "duration_ms": 395979,
+          "duration_api_ms": 9200,
+          "num_turns": 6,
+          "returncode": 143,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/llrbt_delete/agent_events.jsonl",
+          "pass_number": 2,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "6bf5f370571629705eef32ee1cbfc4a959a9d173193ed199ca994d163672e9e8",
+          "budget_usd": 2.0,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 600,
+              "pre_edit_thinking_tokens": 30000,
+              "post_edit_check_timeout_seconds": 300,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": true
+            },
+            "governor_stop_reason": "no durable edit before 30000 thinking tokens",
+            "max_thinking_tokens_observed": 30050,
+            "seconds_to_first_progress": null,
+            "seconds_to_first_check": null,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 771418,
+      "output": 35947,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "a92b5114-9161-4b44-8840-63de7b121487",
+      "subtype": "error_progress_governor",
+      "provider_subtype": "error_during_execution",
+      "is_error": true,
+      "total_cost_usd": 1.5638985000000003,
+      "duration_ms": 901048,
+      "duration_api_ms": 495234,
+      "num_turns": 33,
+      "returncode": 143,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/llrbt_delete/agent_events.jsonl",
+      "pass_number": 2,
+      "prompt_kind": "compiler_repair",
+      "prompt_sha256": "6bf5f370571629705eef32ee1cbfc4a959a9d173193ed199ca994d163672e9e8",
+      "budget_usd": 2.0,
+      "lastdance_profile": "robust",
+      "features": {
+        "profile": "robust",
+        "algorithm_plan": true,
+        "lemma_plan": true,
+        "leansearch": true,
+        "semantic_audit": true,
+        "semantic_reminder": true,
+        "early_check": true,
+        "feedback_mode": "structured",
+        "backtracking": true,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": true,
+          "progress_governor": true,
+          "pre_edit_timeout_seconds": 600,
+          "pre_edit_thinking_tokens": 30000,
+          "post_edit_check_timeout_seconds": 300,
+          "planning_mode": false,
+          "diagnostic_wrapper": false,
+          "rescue_mode": true
+        },
+        "governor_stop_reason": "no durable edit before 30000 thinking tokens",
+        "max_thinking_tokens_observed": 30050,
+        "seconds_to_first_progress": null,
+        "seconds_to_first_check": null,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 2,
+      "total_sessions": 2,
+      "selected_session": 2,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "9c20394b-ad90-4493-a2c5-27aaae6b3928",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 1.5270282500000003,
+          "duration_ms": 505069,
+          "duration_api_ms": 486034,
+          "num_turns": 27,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/llrbt_delete/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "4b775307945ef7ea45e49b7162124136eee07943f2110acff867beebfbbf0093",
+          "budget_usd": 2.0,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 600,
+              "pre_edit_thinking_tokens": 30000,
+              "post_edit_check_timeout_seconds": 300,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": true
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 11300,
+            "seconds_to_first_progress": 205.254,
+            "seconds_to_first_check": 211.371,
+            "pending_tool_recovery": []
+          }
+        },
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "a92b5114-9161-4b44-8840-63de7b121487",
+          "subtype": "error_progress_governor",
+          "provider_subtype": "error_during_execution",
+          "is_error": true,
+          "total_cost_usd": 0.03687025,
+          "duration_ms": 395979,
+          "duration_api_ms": 9200,
+          "num_turns": 6,
+          "returncode": 143,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/llrbt_delete/agent_events.jsonl",
+          "pass_number": 2,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "6bf5f370571629705eef32ee1cbfc4a959a9d173193ed199ca994d163672e9e8",
+          "budget_usd": 2.0,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 600,
+              "pre_edit_thinking_tokens": 30000,
+              "post_edit_check_timeout_seconds": 300,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": true
+            },
+            "governor_stop_reason": "no durable edit before 30000 thinking tokens",
+            "max_thinking_tokens_observed": 30050,
+            "seconds_to_first_progress": null,
+            "seconds_to_first_check": null,
+            "pending_tool_recovery": []
+          }
+        }
+      ]
+    },
+    "provenance": {
+      "schema_version": 1,
+      "ownership": {
+        "model_owned_sections": [
+          "auxcode",
+          "code",
+          "lemma",
+          "proof"
+        ],
+        "teacher_owned": "all source outside the four marker regions",
+        "teacher_owned_sorry_present": false,
+        "model_section_ranges": {
+          "auxcode": {
+            "start_line": 70,
+            "end_line": 209
+          },
+          "code": {
+            "start_line": 214,
+            "end_line": 216
+          },
+          "lemma": {
+            "start_line": 227,
+            "end_line": 342
+          },
+          "proof": {
+            "start_line": 348,
+            "end_line": 350
+          }
+        }
+      },
+      "hashes": {
+        "original_sha256": "ec39c981285f1dbe96d5cdb48d076907a627ca73f5ac96cb68a7a4f28eb92a8b",
+        "candidate_sha256": "59f2a88ddda3bdd2220268a131984535b6c4b42c66c576751b10d14b3fff2d79",
+        "merged_sha256": "59f2a88ddda3bdd2220268a131984535b6c4b42c66c576751b10d14b3fff2d79",
+        "model_sections_sha256": {
+          "auxcode": "2df14abb69cfc8d21cef23e788cac3216adc504ff7dd002b2df307b107077f53",
+          "code": "0c6c22ab6ee2fb0e0fb2708d8ecc38b459ffdc2fdaaadf3516c39799cff0c356",
+          "lemma": "a7b252051fd511f1509f19c57bf3f25adb06c15a8746964fecaf8694795f18a6",
+          "proof": "7b28ccaf2617733d24fd7f785352f21d7b8a7589d7fdfe5a51f4e5a68c167314"
+        }
+      }
+    },
+    "targeted_diagnostics": [
+      {
+        "line": 213,
+        "column": 5,
+        "kind": "warning",
+        "message": "unused variable `h_precond`",
+        "section": "teacher-owned-or-generated",
+        "nearest_declaration": "delete"
+      },
+      {
+        "line": 347,
+        "column": 60,
+        "kind": "error",
+        "message": "unsolved goals",
+        "section": "teacher-owned-or-generated",
+        "nearest_declaration": "delete_postcond_satisfied"
+      }
+    ],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/llrbt_delete/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/llrbt_delete/AlgorithmPlan.md",
+      "proof_state": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/llrbt_delete/ProofState.md",
+      "leansearch_queries": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/llrbt_delete/.lastdance/leansearch_queries.jsonl",
+      "checkpoints": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/llrbt_delete/.lastdance/checkpoints/manifest.jsonl",
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_governor_13/llrbt_delete/.lastdance/prompts"
+    }
+  }
+}

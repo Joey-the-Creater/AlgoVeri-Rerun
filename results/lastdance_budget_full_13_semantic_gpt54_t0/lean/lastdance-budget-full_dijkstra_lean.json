@@ -1,0 +1,723 @@
+{
+    "verified": false,
+    "details": {
+        "rounds": 41,
+        "llm_response": {
+            "code": "import Mathlib\n\nstructure WeightedGraph where\n  adj : Array (Array (Nat \u00d7 Int))\n\ndef WeightedGraph.size (g : WeightedGraph) : Nat :=\n  g.adj.size\n\ndef WeightedGraph.has_edge (g : WeightedGraph) (u v : Nat) (w : Int) : Prop :=\n  u < g.size \u2227\n  \u2203 pair, pair \u2208 g.adj.getD u #[] \u2227 pair.1 = v \u2227 pair.2 = w\n\ndef WeightedGraph.well_formed (g : WeightedGraph) : Prop :=\n  \u2200 u, u < g.size \u2192\n    -- All targets in range\n    (\u2200 pair, pair \u2208 g.adj.getD u #[] \u2192 pair.1 < g.size) \u2227\n    -- Unique targets (simple graph)\n    (\u2200 p1 p2, p1 \u2208 g.adj.getD u #[] \u2192 p2 \u2208 g.adj.getD u #[] \u2192 p1.1 = p2.1 \u2192 p1 = p2)\n\ndef WeightedGraph.get_edge_weight (g : WeightedGraph) (_ _ : Nat) : Int :=\n  -- Since edges are unique, we can abstractly pick the weight\n  -- In specification logic, we can use `Classical.choose` or similar if needed.\n  -- But since we pass adjacency list, we can just say \"w s.t. has_edge\"\n  -- For simple functional definition:\n  0 -- placeholder for helper, spec logic mainly uses has_edge\n\ndef WeightedGraph.is_path (g : WeightedGraph) (p : List Nat) : Prop :=\n  p.length > 0 \u2227\n  \u2200 i, i + 1 < p.length \u2192\n    \u2203 w, g.has_edge (p.getD i 0) (p.getD (i + 1) 0) w\n\ndef WeightedGraph.path_weight (_ : WeightedGraph) (p : List Nat) : Int :=\n  match p with\n  | [] => 0\n  | [_] => 0\n  | _ :: _ :: _ =>\n      -- This assumes unique edges logic or we need an explicit path including weights\n      -- For simplicity, we assume `has_edge` defines the unique weight\n      -- and we sum it up. However, extracting it in logic is annoying.\n      -- Let's define path_weight relationally instead.\n      0 \n\ndef WeightedGraph.path_has_weight (g : WeightedGraph) (p : List Nat) (w_total : Int) : Prop :=\n  match p with\n  | [] => w_total = 0\n  | [_] => w_total = 0\n  | u :: v :: rest =>\n      \u2203 w_edge w_rest,\n        g.has_edge u v w_edge \u2227\n        g.path_has_weight (v :: rest) w_rest \u2227\n        w_total = w_edge + w_rest\n\ndef WeightedGraph.is_shortest_dist (g : WeightedGraph) (start target : Nat) (d : Int) : Prop :=\n  (\u2203 p, g.is_path p \u2227 p.head? = some start \u2227 p.getLast? = some target \u2227 g.path_has_weight p d) \u2227\n  (\u2200 p w, g.is_path p \u2192 p.head? = some start \u2192 p.getLast? = some target \u2192 g.path_has_weight p w \u2192 w >= d)\n\ndef WeightedGraph.weights_non_negative (g : WeightedGraph) : Prop :=\n  \u2200 u v w, g.has_edge u v w \u2192 w >= 0\n\ndef WeightedGraph.weights_and_size_bounded (g : WeightedGraph) : Prop :=\n  g.size \u2264 100000 \u2227\n  \u2200 u v w, g.has_edge u v w \u2192 w \u2265 -100000 \u2227 w \u2264 100000\n\n-- Precondition definitions\n@[reducible, simp]\ndef dijkstra_shortest_paths_precond (graph : WeightedGraph) (start : Nat) : Prop :=\n  -- !benchmark @start precond\n  graph.well_formed \u2227\n  start < graph.size \u2227\n  graph.weights_non_negative \u2227\n  graph.weights_and_size_bounded\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\nnamespace Dij\n\n/-- Dijkstra search state: tentative distances (`none` = not yet reached) and settled flags. -/\nstructure St where\n  dist : Array (Option Int)\n  visited : Array Bool\n\ndef mkInit (n start : Nat) : St :=\n  \u27e8(Array.replicate n (none : Option Int)).setIfInBounds start (some 0),\n   Array.replicate n false\u27e9\n\n/-- Linear-scan extract-min over the frontier: unvisited nodes with a finite tentative\ndistance, among indices `< i`.  This is the priority queue of the dense Dijkstra variant. -/\ndef pickMinAux (s : St) : Nat \u2192 Option (Nat \u00d7 Int) \u2192 Option (Nat \u00d7 Int)\n  | 0, acc => acc\n  | i + 1, acc =>\n      let acc' :=\n        match s.dist.getD i none, s.visited.getD i false with\n        | some d, false =>\n            match acc with\n            | none => some (i, d)\n            | some (j, dj) => if d < dj then some (i, d) else some (j, dj)\n        | _, _ => acc\n      pickMinAux s i acc'\n\ndef pickMin (s : St) : Option (Nat \u00d7 Int) := pickMinAux s s.dist.size none\n\ndef setVisited (s : St) (u : Nat) : St :=\n  { s with visited := s.visited.setIfInBounds u true }\n\n/-- Relax a single outgoing edge `(v, w)` from a node whose settled distance is `du`. -/\ndef relaxEdge (du : Int) (s : St) (e : Nat \u00d7 Int) : St :=\n  match s.dist.getD e.1 none with\n  | none => { s with dist := s.dist.setIfInBounds e.1 (some (du + e.2)) }\n  | some d =>\n      if du + e.2 < d then { s with dist := s.dist.setIfInBounds e.1 (some (du + e.2)) } else s\n\ndef relax (g : WeightedGraph) (s : St) (u : Nat) (du : Int) : St :=\n  ((g.adj.getD u #[]).toList).foldl (relaxEdge du) s\n\n/-- Main settle loop, driven by explicit fuel (`graph.size` rounds suffice). -/\ndef loop (g : WeightedGraph) : Nat \u2192 St \u2192 St\n  | 0, s => s\n  | k + 1, s =>\n      match pickMin s with\n      | none => s\n      | some (u, du) => loop g k (relax g (setVisited s u) u du)\n\nend Dij\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef dijkstra_shortest_paths (graph : WeightedGraph) (start : Nat)\n    (h_precond : dijkstra_shortest_paths_precond graph start) : List (Option Int) :=\n  -- !benchmark @start code\n  (Dij.loop graph graph.size (Dij.mkInit graph.size start)).dist.toList\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef dijkstra_shortest_paths_postcond (graph : WeightedGraph) (start : Nat)\n    (result : List (Option Int))\n    (_ : dijkstra_shortest_paths_precond graph start) : Prop :=\n  -- !benchmark @start postcond\n  result.length = graph.size \u2227\n  \u2200 v, v < graph.size \u2192\n    match result.getD v none with\n    | some d => graph.is_shortest_dist start v d\n    | none => \u00ac \u2203 p, graph.is_path p \u2227 p.head? = some start \u2227 p.getLast? = some v\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\nnamespace Dij\n\n@[simp] theorem size_setVisited (s : St) (u : Nat) :\n    (setVisited s u).dist.size = s.dist.size := rfl\n\n@[simp] theorem size_relaxEdge (du : Int) (s : St) (e : Nat \u00d7 Int) :\n    (relaxEdge du s e).dist.size = s.dist.size := by\n  unfold relaxEdge\n  cases h : s.dist.getD e.1 none with\n  | none => simp\n  | some d => by_cases hlt : du + e.2 < d <;> simp [hlt]\n\ntheorem size_foldl (du : Int) (l : List (Nat \u00d7 Int)) (s : St) :\n    (l.foldl (relaxEdge du) s).dist.size = s.dist.size := by\n  induction l generalizing s with\n  | nil => rfl\n  | cons e es ih => simp [List.foldl_cons, ih]\n\n@[simp] theorem size_relax (g : WeightedGraph) (s : St) (u : Nat) (du : Int) :\n    (relax g s u du).dist.size = s.dist.size := size_foldl du _ s\n\n@[simp] theorem size_loop (g : WeightedGraph) (k : Nat) (s : St) :\n    (loop g k s).dist.size = s.dist.size := by\n  induction k generalizing s with\n  | zero => rfl\n  | succ k ih =>\n      unfold loop\n      cases h : pickMin s with\n      | none => simp [h]\n      | some p => simp [h, ih]\n\nend Dij\n\n/-! ### Path plumbing (L2\u2013L5): facts about `is_path` / `path_has_weight`. -/\n\n/-- L2: in a simple graph an edge has a unique weight. -/\ntheorem edge_weight_unique {g : WeightedGraph} (hwf : g.well_formed)\n    {u v : Nat} {w\u2081 w\u2082 : Int} (h\u2081 : g.has_edge u v w\u2081) (h\u2082 : g.has_edge u v w\u2082) : w\u2081 = w\u2082 := by\n  obtain \u27e8hu, p\u2081, hp\u2081, hp\u2081v, hp\u2081w\u27e9 := h\u2081\n  obtain \u27e8-, p\u2082, hp\u2082, hp\u2082v, hp\u2082w\u27e9 := h\u2082\n  have := (hwf u hu).2 p\u2081 p\u2082 hp\u2081 hp\u2082 (by rw [hp\u2081v, hp\u2082v])\n  rw [\u2190 hp\u2081w, \u2190 hp\u2082w, this]\n\n/-- L3: with non-negative weights every path weight is non-negative. -/\ntheorem path_weight_nonneg {g : WeightedGraph} (hnn : g.weights_non_negative) :\n    \u2200 (p : List Nat) (w : Int), g.path_has_weight p w \u2192 0 \u2264 w := by\n  intro p\n  induction p with\n  | nil => intro w h; simp only [WeightedGraph.path_has_weight] at h; omega\n  | cons u rest ih =>\n    cases rest with\n    | nil => intro w h; simp only [WeightedGraph.path_has_weight] at h; omega\n    | cons v rest' =>\n      intro w h\n      simp only [WeightedGraph.path_has_weight] at h\n      obtain \u27e8we, wr, he, hr, rfl\u27e9 := h\n      have h1 := hnn _ _ _ he\n      have h2 := ih wr hr\n      omega\n\ntheorem getD_append_left {p : List Nat} {i : Nat} (h : i < p.length) (v : Nat) :\n    (p ++ [v]).getD i 0 = p.getD i 0 := by\n  simp [List.getD_eq_getElem?_getD, List.getElem?_append_left h]\n\ntheorem getD_append_right (p : List Nat) (v : Nat) :\n    (p ++ [v]).getD p.length 0 = v := by\n  simp [List.getD_eq_getElem?_getD]\n\ntheorem getD_last_of_getLast? {p : List Nat} {u : Nat} (h : p.getLast? = some u) :\n    p.getD (p.length - 1) 0 = u := by\n  rw [List.getLast?_eq_getElem?] at h\n  simp [List.getD_eq_getElem?_getD, h]\n\n/-- L4: appending an edge to the end of a path yields a path. -/\ntheorem is_path_snoc {g : WeightedGraph} {p : List Nat} {u v : Nat} {w : Int}\n    (hp : g.is_path p) (hlast : p.getLast? = some u) (he : g.has_edge u v w) :\n    g.is_path (p ++ [v]) := by\n  obtain \u27e8hlen, hstep\u27e9 := hp\n  refine \u27e8by simp, ?_\u27e9\n  intro i hi\n  simp only [List.length_append, List.length_cons, List.length_nil] at hi\n  rcases Nat.lt_or_ge (i + 1) p.length with hlt | hge\n  \u00b7 obtain \u27e8w', hw'\u27e9 := hstep i hlt\n    exact \u27e8w', by rwa [getD_append_left (Nat.lt_of_succ_lt hlt),\n      getD_append_left hlt]\u27e9\n  \u00b7 have hi' : i + 1 = p.length := by omega\n    have hip : i < p.length := by omega\n    refine \u27e8w, ?_\u27e9\n    rw [getD_append_left hip, hi', getD_append_right]\n    have : i = p.length - 1 := by omega\n    rw [this, getD_last_of_getLast? hlast]\n    exact he\n\n/-- L5: the weight of a path extended by one edge. -/\ntheorem path_has_weight_snoc {g : WeightedGraph} :\n    \u2200 (p : List Nat) {wp : Int} {u v : Nat} {w : Int},\n      g.path_has_weight p wp \u2192 p.getLast? = some u \u2192 g.has_edge u v w \u2192\n      g.path_has_weight (p ++ [v]) (wp + w) := by\n  intro p\n  induction p with\n  | nil => intro wp u v w _ hl _; simp at hl\n  | cons a rest ih =>\n    cases rest with\n    | nil =>\n      intro wp u v w hw hl he\n      simp only [List.getLast?_singleton, Option.some.injEq] at hl\n      subst hl\n      simp only [WeightedGraph.path_has_weight] at hw\n      subst hw\n      exact \u27e8w, 0, he, rfl, by omega\u27e9\n    | cons b rest' =>\n      intro wp u v w hw hl he\n      simp only [WeightedGraph.path_has_weight] at hw\n      obtain \u27e8we, wr, hab, hrest, rfl\u27e9 := hw\n      have hl' : (b :: rest').getLast? = some u := by\n        rwa [List.getLast?_cons_cons] at hl\n      have := ih hrest hl' he\n      exact \u27e8we, wr + w, hab, by simpa using this, by omega\u27e9\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem dijkstra_shortest_paths_postcond_satisfied (graph : WeightedGraph) (start : Nat)\n    (h_precond : dijkstra_shortest_paths_precond graph start) :\n    dijkstra_shortest_paths_postcond graph start\n      (dijkstra_shortest_paths graph start h_precond) h_precond := by\n  -- !benchmark @start proof\n  refine \u27e8?_, ?_\u27e9\n  \u00b7 simp [dijkstra_shortest_paths, Dij.size_loop, Dij.mkInit, WeightedGraph.size]\n  \u00b7 skip\n  -- !benchmark @end proof\n",
+            "comment": ""
+        },
+        "verifier_response": {
+            "verified": false,
+            "feedback": "Stdout:\nclaude_code_dijkstra_final_1786118040641.lean:20:35: warning: unused variable `g`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_dijkstra_final_1786118040641.lean:128:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_dijkstra_final_1786118040641.lean:175:22: warning: This simp argument is unused:\n  h\n\nHint: Omit it from the simp argument list.\n  simp \u0335[\u0335h\u0335]\u0335\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_dijkstra_final_1786118040641.lean:176:24: warning: This simp argument is unused:\n  h\n\nHint: Omit it from the simp argument list.\n  simp [h\u0335,\u0335 \u0335ih]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_dijkstra_final_1786118040641.lean:275:2: error: unsolved goals\ncase refine_2\ngraph : WeightedGraph\nstart : \u2115\nh_precond : dijkstra_shortest_paths_precond graph start\n\u22a2 \u2200 v < graph.size,\n    match (dijkstra_shortest_paths graph start h_precond).getD v none with\n    | some d => graph.is_shortest_dist start v d\n    | none => \u00ac\u2203 p, graph.is_path p \u2227 p.head? = some start \u2227 p.getLast? = some v\n\n\nStderr:\n",
+            "raw": {
+                "stdout": "claude_code_dijkstra_final_1786118040641.lean:20:35: warning: unused variable `g`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_dijkstra_final_1786118040641.lean:128:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_dijkstra_final_1786118040641.lean:175:22: warning: This simp argument is unused:\n  h\n\nHint: Omit it from the simp argument list.\n  simp \u0335[\u0335h\u0335]\u0335\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_dijkstra_final_1786118040641.lean:176:24: warning: This simp argument is unused:\n  h\n\nHint: Omit it from the simp argument list.\n  simp [h\u0335,\u0335 \u0335ih]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_dijkstra_final_1786118040641.lean:275:2: error: unsolved goals\ncase refine_2\ngraph : WeightedGraph\nstart : \u2115\nh_precond : dijkstra_shortest_paths_precond graph start\n\u22a2 \u2200 v < graph.size,\n    match (dijkstra_shortest_paths graph start h_precond).getD v none with\n    | some d => graph.is_shortest_dist start v d\n    | none => \u00ac\u2203 p, graph.is_path p \u2227 p.head? = some start \u2227 p.getLast? = some v\n",
+                "stderr": "",
+                "returncode": 1
+            }
+        },
+        "history": [
+            {
+                "compiler_pass": 1,
+                "verified": false,
+                "verifier_response": {
+                    "verified": false,
+                    "feedback": "Candidate validation failed: candidate 'code' section contains prohibited term 'sorry'",
+                    "raw": null
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "5058ad19-98f1-4045-b2cd-961ef232847c",
+                    "subtype": "error_during_execution",
+                    "is_error": true,
+                    "total_cost_usd": 0.09597425000000001,
+                    "duration_ms": 155343,
+                    "duration_api_ms": 10073,
+                    "num_turns": 7,
+                    "returncode": 143,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/dijkstra/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "prompt_sha256": "4a30a21f58e9af18ff656b88304da58f88d87901b948646886252d7eee1f4a21",
+                    "budget_usd": 1.35,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": true
+                        },
+                        "governor_stop_reason": "no durable edit before 12000 thinking tokens",
+                        "max_thinking_tokens_observed": 12050,
+                        "seconds_to_first_progress": null,
+                        "seconds_to_first_check": null,
+                        "pending_tool_recovery": []
+                    }
+                }
+            },
+            {
+                "compiler_pass": 2,
+                "verified": false,
+                "verifier_response": {
+                    "verified": false,
+                    "feedback": "Stdout:\nclaude_code_dijkstra_final_1786117681111.lean:20:35: warning: unused variable `g`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_dijkstra_final_1786117681111.lean:128:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_dijkstra_final_1786117681111.lean:175:22: warning: This simp argument is unused:\n  h\n\nHint: Omit it from the simp argument list.\n  simp \u0335[\u0335h\u0335]\u0335\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_dijkstra_final_1786117681111.lean:176:24: warning: This simp argument is unused:\n  h\n\nHint: Omit it from the simp argument list.\n  simp [h\u0335,\u0335 \u0335ih]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_dijkstra_final_1786117681111.lean:189:2: error: unsolved goals\ncase refine_2\ngraph : WeightedGraph\nstart : \u2115\nh_precond : dijkstra_shortest_paths_precond graph start\n\u22a2 \u2200 v < graph.size,\n    match (dijkstra_shortest_paths graph start h_precond).getD v none with\n    | some d => graph.is_shortest_dist start v d\n    | none => \u00ac\u2203 p, graph.is_path p \u2227 p.head? = some start \u2227 p.getLast? = some v\n\n\nStderr:\n",
+                    "raw": {
+                        "stdout": "claude_code_dijkstra_final_1786117681111.lean:20:35: warning: unused variable `g`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_dijkstra_final_1786117681111.lean:128:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_dijkstra_final_1786117681111.lean:175:22: warning: This simp argument is unused:\n  h\n\nHint: Omit it from the simp argument list.\n  simp \u0335[\u0335h\u0335]\u0335\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_dijkstra_final_1786117681111.lean:176:24: warning: This simp argument is unused:\n  h\n\nHint: Omit it from the simp argument list.\n  simp [h\u0335,\u0335 \u0335ih]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_dijkstra_final_1786117681111.lean:189:2: error: unsolved goals\ncase refine_2\ngraph : WeightedGraph\nstart : \u2115\nh_precond : dijkstra_shortest_paths_precond graph start\n\u22a2 \u2200 v < graph.size,\n    match (dijkstra_shortest_paths graph start h_precond).getD v none with\n    | some d => graph.is_shortest_dist start v d\n    | none => \u00ac\u2203 p, graph.is_path p \u2227 p.head? = some start \u2227 p.getLast? = some v\n",
+                        "stderr": "",
+                        "returncode": 1
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "ab61a2ea-cb85-4326-8aea-e042c722f15f",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.62851475,
+                    "duration_ms": 184478,
+                    "duration_api_ms": 180009,
+                    "num_turns": 19,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/dijkstra/agent_events.jsonl",
+                    "pass_number": 2,
+                    "prompt_kind": "compiler_repair",
+                    "prompt_sha256": "b1837ec2c38adaf6f959ee237e7515cc5588f2fe9fb7da53b13058c20c6ff770",
+                    "budget_usd": 0.75,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": true
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 3550,
+                        "seconds_to_first_progress": 85.282,
+                        "seconds_to_first_check": 90.899,
+                        "pending_tool_recovery": []
+                    }
+                }
+            },
+            {
+                "compiler_pass": 3,
+                "verified": false,
+                "verifier_response": {
+                    "verified": false,
+                    "feedback": "Stdout:\nclaude_code_dijkstra_final_1786117868589.lean:20:35: warning: unused variable `g`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_dijkstra_final_1786117868589.lean:128:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_dijkstra_final_1786117868589.lean:175:22: warning: This simp argument is unused:\n  h\n\nHint: Omit it from the simp argument list.\n  simp \u0335[\u0335h\u0335]\u0335\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_dijkstra_final_1786117868589.lean:176:24: warning: This simp argument is unused:\n  h\n\nHint: Omit it from the simp argument list.\n  simp [h\u0335,\u0335 \u0335ih]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_dijkstra_final_1786117868589.lean:275:2: error: unsolved goals\ncase refine_2\ngraph : WeightedGraph\nstart : \u2115\nh_precond : dijkstra_shortest_paths_precond graph start\n\u22a2 \u2200 v < graph.size,\n    match (dijkstra_shortest_paths graph start h_precond).getD v none with\n    | some d => graph.is_shortest_dist start v d\n    | none => \u00ac\u2203 p, graph.is_path p \u2227 p.head? = some start \u2227 p.getLast? = some v\n\n\nStderr:\n",
+                    "raw": {
+                        "stdout": "claude_code_dijkstra_final_1786117868589.lean:20:35: warning: unused variable `g`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_dijkstra_final_1786117868589.lean:128:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_dijkstra_final_1786117868589.lean:175:22: warning: This simp argument is unused:\n  h\n\nHint: Omit it from the simp argument list.\n  simp \u0335[\u0335h\u0335]\u0335\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_dijkstra_final_1786117868589.lean:176:24: warning: This simp argument is unused:\n  h\n\nHint: Omit it from the simp argument list.\n  simp [h\u0335,\u0335 \u0335ih]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_dijkstra_final_1786117868589.lean:275:2: error: unsolved goals\ncase refine_2\ngraph : WeightedGraph\nstart : \u2115\nh_precond : dijkstra_shortest_paths_precond graph start\n\u22a2 \u2200 v < graph.size,\n    match (dijkstra_shortest_paths graph start h_precond).getD v none with\n    | some d => graph.is_shortest_dist start v d\n    | none => \u00ac\u2203 p, graph.is_path p \u2227 p.head? = some start \u2227 p.getLast? = some v\n",
+                        "stderr": "",
+                        "returncode": 1
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "4640fe55-563c-4e52-8b48-00f5dca05d69",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.583723,
+                    "duration_ms": 181979,
+                    "duration_api_ms": 178090,
+                    "num_turns": 10,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/dijkstra/agent_events.jsonl",
+                    "pass_number": 3,
+                    "prompt_kind": "compiler_repair",
+                    "prompt_sha256": "b2a10a4fc7efc66adbf9c8bed5be3bb857d53f82011f8e5050aeef9d5f4ceb4b",
+                    "budget_usd": 0.75,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": true
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 6650,
+                        "seconds_to_first_progress": 139.786,
+                        "seconds_to_first_check": 151.073,
+                        "pending_tool_recovery": []
+                    }
+                }
+            },
+            {
+                "compiler_pass": 4,
+                "verified": false,
+                "verifier_response": {
+                    "verified": false,
+                    "feedback": "Stdout:\nclaude_code_dijkstra_final_1786118040641.lean:20:35: warning: unused variable `g`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_dijkstra_final_1786118040641.lean:128:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_dijkstra_final_1786118040641.lean:175:22: warning: This simp argument is unused:\n  h\n\nHint: Omit it from the simp argument list.\n  simp \u0335[\u0335h\u0335]\u0335\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_dijkstra_final_1786118040641.lean:176:24: warning: This simp argument is unused:\n  h\n\nHint: Omit it from the simp argument list.\n  simp [h\u0335,\u0335 \u0335ih]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_dijkstra_final_1786118040641.lean:275:2: error: unsolved goals\ncase refine_2\ngraph : WeightedGraph\nstart : \u2115\nh_precond : dijkstra_shortest_paths_precond graph start\n\u22a2 \u2200 v < graph.size,\n    match (dijkstra_shortest_paths graph start h_precond).getD v none with\n    | some d => graph.is_shortest_dist start v d\n    | none => \u00ac\u2203 p, graph.is_path p \u2227 p.head? = some start \u2227 p.getLast? = some v\n\n\nStderr:\n",
+                    "raw": {
+                        "stdout": "claude_code_dijkstra_final_1786118040641.lean:20:35: warning: unused variable `g`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_dijkstra_final_1786118040641.lean:128:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_dijkstra_final_1786118040641.lean:175:22: warning: This simp argument is unused:\n  h\n\nHint: Omit it from the simp argument list.\n  simp \u0335[\u0335h\u0335]\u0335\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_dijkstra_final_1786118040641.lean:176:24: warning: This simp argument is unused:\n  h\n\nHint: Omit it from the simp argument list.\n  simp [h\u0335,\u0335 \u0335ih]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_dijkstra_final_1786118040641.lean:275:2: error: unsolved goals\ncase refine_2\ngraph : WeightedGraph\nstart : \u2115\nh_precond : dijkstra_shortest_paths_precond graph start\n\u22a2 \u2200 v < graph.size,\n    match (dijkstra_shortest_paths graph start h_precond).getD v none with\n    | some d => graph.is_shortest_dist start v d\n    | none => \u00ac\u2203 p, graph.is_path p \u2227 p.head? = some start \u2227 p.getLast? = some v\n",
+                        "stderr": "",
+                        "returncode": 1
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "8b1cef63-eb2f-4ba4-9aa8-7b6d4b21d96b",
+                    "subtype": "error_during_execution",
+                    "is_error": true,
+                    "total_cost_usd": 0.03711974999999999,
+                    "duration_ms": 166451,
+                    "duration_api_ms": 8588,
+                    "num_turns": 6,
+                    "returncode": 143,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/dijkstra/agent_events.jsonl",
+                    "pass_number": 4,
+                    "prompt_kind": "compiler_repair",
+                    "prompt_sha256": "fa6a4651a5d9b5a5de257477a53cedbe48b3246fd5a8c6cad8d40c9b7ebf0981",
+                    "budget_usd": 0.75,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": true
+                        },
+                        "governor_stop_reason": "no durable edit before 12000 thinking tokens",
+                        "max_thinking_tokens_observed": 12150,
+                        "seconds_to_first_progress": null,
+                        "seconds_to_first_check": null,
+                        "pending_tool_recovery": []
+                    }
+                }
+            }
+        ],
+        "tokens": {
+            "input": 586994,
+            "output": 34122,
+            "reasoning": 0
+        },
+        "agent": {
+            "kind": "claude-code",
+            "cli_version": "2.1.220 (Claude Code)",
+            "model": "claude-opus-5",
+            "effort": "medium",
+            "session_id": "8b1cef63-eb2f-4ba4-9aa8-7b6d4b21d96b",
+            "subtype": "error_during_execution",
+            "is_error": true,
+            "total_cost_usd": 1.7513212500000002,
+            "duration_ms": 827412,
+            "duration_api_ms": 474589,
+            "num_turns": 42,
+            "returncode": 143,
+            "timed_out": false,
+            "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/dijkstra/agent_events.jsonl",
+            "pass_number": 4,
+            "prompt_kind": "compiler_repair",
+            "prompt_sha256": "fa6a4651a5d9b5a5de257477a53cedbe48b3246fd5a8c6cad8d40c9b7ebf0981",
+            "budget_usd": 0.75,
+            "lastdance_profile": "robust",
+            "features": {
+                "profile": "robust",
+                "algorithm_plan": true,
+                "lemma_plan": true,
+                "leansearch": true,
+                "semantic_audit": true,
+                "semantic_reminder": true,
+                "early_check": true,
+                "feedback_mode": "structured",
+                "backtracking": true,
+                "stagnation_threshold": 2
+            },
+            "run_control": {
+                "control": {
+                    "recover_pending_tool": true,
+                    "progress_governor": true,
+                    "pre_edit_timeout_seconds": 300,
+                    "pre_edit_thinking_tokens": 12000,
+                    "post_edit_check_timeout_seconds": 180,
+                    "planning_mode": false,
+                    "diagnostic_wrapper": true
+                },
+                "governor_stop_reason": "no durable edit before 12000 thinking tokens",
+                "max_thinking_tokens_observed": 12150,
+                "seconds_to_first_progress": null,
+                "seconds_to_first_check": null,
+                "pending_tool_recovery": []
+            },
+            "compiler_passes": 4,
+            "total_sessions": 5,
+            "selected_session": 4,
+            "sessions": [
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "low",
+                    "session_id": "29db1dbd-ffe5-42e5-88a9-476af17e5e1f",
+                    "subtype": "error_max_budget_usd",
+                    "is_error": true,
+                    "total_cost_usd": 0.4059895,
+                    "duration_ms": 139161,
+                    "duration_api_ms": 97829,
+                    "num_turns": 8,
+                    "returncode": 1,
+                    "timed_out": false,
+                    "stderr": "",
+                    "pass_number": 0,
+                    "prompt_kind": "proof_feasibility_planning",
+                    "prompt_sha256": "e69db520ebe6e8a912498547384b6b5dda5a1af5234b71cc28d8a0d9c66c12e0",
+                    "budget_usd": 0.4,
+                    "tokens": {
+                        "input": 51052,
+                        "output": 7056,
+                        "reasoning": 0
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": true,
+                            "diagnostic_wrapper": true
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 1150,
+                        "seconds_to_first_progress": 96.796,
+                        "seconds_to_first_check": null,
+                        "pending_tool_recovery": [
+                            {
+                                "tool_use_id": "toolu_01KHjZaFrBF5oygaDoRuJWhP",
+                                "tool_name": "Write",
+                                "recovered": true,
+                                "denial": null,
+                                "file": "ProofState.md",
+                                "characters": 6818,
+                                "sha256": "4c5a95c269d83e7e4329602c7e2f1f66f31473d526e4221848279e5afbfe6e0c"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "5058ad19-98f1-4045-b2cd-961ef232847c",
+                    "subtype": "error_during_execution",
+                    "is_error": true,
+                    "total_cost_usd": 0.09597425000000001,
+                    "duration_ms": 155343,
+                    "duration_api_ms": 10073,
+                    "num_turns": 7,
+                    "returncode": 143,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/dijkstra/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "prompt_sha256": "4a30a21f58e9af18ff656b88304da58f88d87901b948646886252d7eee1f4a21",
+                    "budget_usd": 1.35,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": true
+                        },
+                        "governor_stop_reason": "no durable edit before 12000 thinking tokens",
+                        "max_thinking_tokens_observed": 12050,
+                        "seconds_to_first_progress": null,
+                        "seconds_to_first_check": null,
+                        "pending_tool_recovery": []
+                    }
+                },
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "ab61a2ea-cb85-4326-8aea-e042c722f15f",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.62851475,
+                    "duration_ms": 184478,
+                    "duration_api_ms": 180009,
+                    "num_turns": 19,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/dijkstra/agent_events.jsonl",
+                    "pass_number": 2,
+                    "prompt_kind": "compiler_repair",
+                    "prompt_sha256": "b1837ec2c38adaf6f959ee237e7515cc5588f2fe9fb7da53b13058c20c6ff770",
+                    "budget_usd": 0.75,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": true
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 3550,
+                        "seconds_to_first_progress": 85.282,
+                        "seconds_to_first_check": 90.899,
+                        "pending_tool_recovery": []
+                    }
+                },
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "4640fe55-563c-4e52-8b48-00f5dca05d69",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.583723,
+                    "duration_ms": 181979,
+                    "duration_api_ms": 178090,
+                    "num_turns": 10,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/dijkstra/agent_events.jsonl",
+                    "pass_number": 3,
+                    "prompt_kind": "compiler_repair",
+                    "prompt_sha256": "b2a10a4fc7efc66adbf9c8bed5be3bb857d53f82011f8e5050aeef9d5f4ceb4b",
+                    "budget_usd": 0.75,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": true
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 6650,
+                        "seconds_to_first_progress": 139.786,
+                        "seconds_to_first_check": 151.073,
+                        "pending_tool_recovery": []
+                    }
+                },
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "8b1cef63-eb2f-4ba4-9aa8-7b6d4b21d96b",
+                    "subtype": "error_during_execution",
+                    "is_error": true,
+                    "total_cost_usd": 0.03711974999999999,
+                    "duration_ms": 166451,
+                    "duration_api_ms": 8588,
+                    "num_turns": 6,
+                    "returncode": 143,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/dijkstra/agent_events.jsonl",
+                    "pass_number": 4,
+                    "prompt_kind": "compiler_repair",
+                    "prompt_sha256": "fa6a4651a5d9b5a5de257477a53cedbe48b3246fd5a8c6cad8d40c9b7ebf0981",
+                    "budget_usd": 0.75,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": true
+                        },
+                        "governor_stop_reason": "no durable edit before 12000 thinking tokens",
+                        "max_thinking_tokens_observed": 12150,
+                        "seconds_to_first_progress": null,
+                        "seconds_to_first_check": null,
+                        "pending_tool_recovery": []
+                    }
+                }
+            ],
+            "planning_session": {
+                "kind": "claude-code",
+                "cli_version": "2.1.220 (Claude Code)",
+                "model": "claude-opus-5",
+                "effort": "low",
+                "session_id": "29db1dbd-ffe5-42e5-88a9-476af17e5e1f",
+                "subtype": "error_max_budget_usd",
+                "is_error": true,
+                "total_cost_usd": 0.4059895,
+                "duration_ms": 139161,
+                "duration_api_ms": 97829,
+                "num_turns": 8,
+                "returncode": 1,
+                "timed_out": false,
+                "stderr": "",
+                "pass_number": 0,
+                "prompt_kind": "proof_feasibility_planning",
+                "prompt_sha256": "e69db520ebe6e8a912498547384b6b5dda5a1af5234b71cc28d8a0d9c66c12e0",
+                "budget_usd": 0.4,
+                "tokens": {
+                    "input": 51052,
+                    "output": 7056,
+                    "reasoning": 0
+                },
+                "run_control": {
+                    "control": {
+                        "recover_pending_tool": true,
+                        "progress_governor": true,
+                        "pre_edit_timeout_seconds": 300,
+                        "pre_edit_thinking_tokens": 12000,
+                        "post_edit_check_timeout_seconds": 180,
+                        "planning_mode": true,
+                        "diagnostic_wrapper": true
+                    },
+                    "governor_stop_reason": null,
+                    "max_thinking_tokens_observed": 1150,
+                    "seconds_to_first_progress": 96.796,
+                    "seconds_to_first_check": null,
+                    "pending_tool_recovery": [
+                        {
+                            "tool_use_id": "toolu_01KHjZaFrBF5oygaDoRuJWhP",
+                            "tool_name": "Write",
+                            "recovered": true,
+                            "denial": null,
+                            "file": "ProofState.md",
+                            "characters": 6818,
+                            "sha256": "4c5a95c269d83e7e4329602c7e2f1f66f31473d526e4221848279e5afbfe6e0c"
+                        }
+                    ]
+                }
+            }
+        },
+        "provenance": {
+            "schema_version": 1,
+            "ownership": {
+                "model_owned_sections": [
+                    "auxcode",
+                    "code",
+                    "lemma",
+                    "proof"
+                ],
+                "teacher_owned": "all source outside the four marker regions",
+                "teacher_owned_sorry_present": false,
+                "model_section_ranges": {
+                    "auxcode": {
+                        "start_line": 74,
+                        "end_line": 124
+                    },
+                    "code": {
+                        "start_line": 129,
+                        "end_line": 131
+                    },
+                    "lemma": {
+                        "start_line": 146,
+                        "end_line": 265
+                    },
+                    "proof": {
+                        "start_line": 272,
+                        "end_line": 276
+                    }
+                }
+            },
+            "hashes": {
+                "original_sha256": "2c5f812288b7f38488c20b468c317749882b87e3c99c209fbd6500abe7fa256b",
+                "candidate_sha256": "81120adc4aea9af20687eb85b62e9c43d4f04349b07528b9d752cbcd8749706b",
+                "merged_sha256": "81120adc4aea9af20687eb85b62e9c43d4f04349b07528b9d752cbcd8749706b",
+                "model_sections_sha256": {
+                    "auxcode": "78538091cfc510a56129164a8486c6c7e42bef8439185b0f25484f5cdbbc0a06",
+                    "code": "20777e62fadcb362f5ba70af2dfe93cb8954b59276a002067713b0e39bcc7c98",
+                    "lemma": "30362418529d52595940052edf6b5d3afc5cafcff498d39ab50d5191901f9369",
+                    "proof": "e91b4250ed4499882b79f3ac88c4dfe256e47511e606141c2b684fb2278c98b2"
+                }
+            }
+        },
+        "targeted_diagnostics": [
+            {
+                "line": 20,
+                "column": 35,
+                "kind": "warning",
+                "message": "unused variable `g`",
+                "section": "teacher-owned-or-generated",
+                "nearest_declaration": "WeightedGraph.get_edge_weight"
+            },
+            {
+                "line": 128,
+                "column": 5,
+                "kind": "warning",
+                "message": "unused variable `h_precond`",
+                "section": "teacher-owned-or-generated",
+                "nearest_declaration": "dijkstra_shortest_paths"
+            },
+            {
+                "line": 175,
+                "column": 22,
+                "kind": "warning",
+                "message": "This simp argument is unused:",
+                "section": "lemma",
+                "nearest_declaration": "size_foldl"
+            },
+            {
+                "line": 176,
+                "column": 24,
+                "kind": "warning",
+                "message": "This simp argument is unused:",
+                "section": "lemma",
+                "nearest_declaration": "size_foldl"
+            },
+            {
+                "line": 275,
+                "column": 2,
+                "kind": "error",
+                "message": "unsolved goals",
+                "section": "proof",
+                "nearest_declaration": "dijkstra_shortest_paths_postcond_satisfied"
+            }
+        ],
+        "lastdance_artifacts": {
+            "ledger": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/dijkstra/.lastdance/run_ledger.jsonl",
+            "algorithm_plan": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/dijkstra/AlgorithmPlan.md",
+            "proof_state": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/dijkstra/ProofState.md",
+            "leansearch_queries": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/dijkstra/.lastdance/leansearch_queries.jsonl",
+            "checkpoints": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/dijkstra/.lastdance/checkpoints/manifest.jsonl",
+            "prompts": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/dijkstra/.lastdance/prompts"
+        }
+    },
+    "parsed": false,
+    "verdict": false,
+    "analysis": "",
+    "semantic_judge": {
+        "model": "gpt-5.4",
+        "temperature": 0.0,
+        "reasoning_effort": "medium",
+        "provenance_aware": true
+    }
+}

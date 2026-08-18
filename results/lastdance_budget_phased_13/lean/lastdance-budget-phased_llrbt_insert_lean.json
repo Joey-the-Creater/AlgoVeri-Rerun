@@ -1,0 +1,610 @@
+{
+  "verified": false,
+  "details": {
+    "rounds": 36,
+    "llm_response": {
+      "code": "import Mathlib\n\ninductive Color\n| Red\n| Black\nderiving Inhabited, BEq\n\ninductive Node\n| Empty : Node\n| Tree  (color : Color) (val : Int) (left : Node) (right : Node) : Node\nderiving Inhabited\n\ndef view (t : Node) : Set Int :=\n  match t with\n  | Node.Empty => \u2205\n  | Node.Tree _ v l r => view l \u222a view r \u222a {v}\n\ndef is_red (t : Node) : Bool :=\n  match t with\n  | Node.Tree Color.Red _ _ _ => true\n  | _ => false\n\ndef is_bst (t : Node) : Prop :=\n  match t with\n  | Node.Empty => True\n  | Node.Tree _ v l r =>\n    (\u2200 x \u2208 view l, x < v) \u2227\n    is_bst l \u2227\n    (\u2200 x \u2208 view r, x > v) \u2227\n    is_bst r\n\n-- Black Height: Returns -1 if invalid\ndef black_height (t : Node) : Int :=\n  match t with\n  | Node.Empty => 1\n  | Node.Tree c _ l r =>\n    let lh := black_height l\n    let rh := black_height r\n    if lh \u2260 -1 \u2227 rh \u2260 -1 \u2227 lh = rh then\n      if c == Color.Black then lh + 1 else lh\n    else\n      -1\n\ndef satisfies_red_props (t : Node) : Prop :=\n  match t with\n  | Node.Empty => True\n  | Node.Tree c _ l r =>\n    satisfies_red_props l \u2227\n    satisfies_red_props r \u2227\n    -- Rule 1: No Right-Leaning Red (Matches Dafny)\n    (if is_red r then False else True) \u2227\n    -- Rule 2: No Double Red on Left (Matches Dafny)\n    -- Check: If Left is Red, then Left.Left must NOT be Red.\n    -- This applies regardless of 'c' (current color).\n    (match l with\n     | Node.Tree Color.Red _ ll _ => \n       (match ll with | Node.Tree Color.Red _ _ _ => False | _ => True)\n     | _ => True)\n\n-- This definition is tricky because LLRBT insert allows the root to be red temporarily or permanently if it's the root of the whole tree (though usually root is black).\n-- However, the recursive step needs a weaker invariant.\n-- Dafny spec says: \"This allows the root to be Red or Black\"\ndef is_llrbt (t : Node) : Prop :=\n  is_bst t \u2227\n  black_height t \u2260 -1 \u2227\n  -- We need to check red properties. Dafny's satisfies_red_props handles recursive checks.\n  -- But wait, Dafny's `satisfies_red_props` seems to strictly forbid right-leaning reds everywhere?\n  -- Let's re-read Dafny carefully.\n  -- satisfy_red_props:\n  --   left_ok && right_ok && right_is_black && no_double_red\n  --   Right is black: if right is red -> false.\n  --   No double red on left: if left is red, left.left cannot be red? No, `l.is_red` then `l.left` check?\n  --   Dafny: `match this.left { case Some(l) => if l.is_red then match l.left { case Some(ll) => !ll.is_red ...`\n  --   This means: If I am any node, my right child cannot be red. And if my left child is red, IT'S left child cannot be red (no consecutive reds on left edge).\n  --   What about Me being Red and Left being Red? Dafny spec doesn't explicitly ban `this.is_red && this.left.is_red` in `satisfies_red_props` itself?\n  --   Ah, `no_double_red` checks `this.left` (l) and `l.left` (ll).\n  --   So it prevents `Red -> Red` on the left edge.\n  satisfies_red_props t\n\n\n\n-- Precondition definitions\n@[reducible, simp]\ndef insert_precond (t : Node) : Prop :=\n  -- !benchmark @start precond\n  is_llrbt t\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n/-- Recolour the root of a tree black (identity on `Empty`). -/\ndef blacken : Node \u2192 Node\n  | Node.Empty => Node.Empty\n  | Node.Tree _ x l r => Node.Tree Color.Black x l r\n\n/-- One bottom-up LLRB repair step, matched on constructors (not on `is_red`\n    guards) so that `simp` can unfold it during the proof.\n    (B) left-edge double red -> rotate right + colour flip\n    (A') both children red   -> colour flip\n    (A)  right-leaning red   -> rotate left\n    (C)  otherwise           -> rebuild unchanged -/\ndef fixUp (c : Color) (x : Int) (l r : Node) : Node :=\n  match l, r with\n  | Node.Tree Color.Red y (Node.Tree Color.Red z a b) lr, _ =>\n      Node.Tree Color.Red y (Node.Tree Color.Black z a b)\n        (Node.Tree Color.Black x lr r)\n  | Node.Tree Color.Red _ _ _, Node.Tree Color.Red y rl rr =>\n      Node.Tree Color.Red x (blacken l) (Node.Tree Color.Black y rl rr)\n  | _, Node.Tree Color.Red y rl rr =>\n      Node.Tree c y (Node.Tree Color.Red x l rl) rr\n  | _, _ => Node.Tree c x l r\n\n/-- Sedgewick's left-leaning red-black insertion: BST descent creating a red\n    leaf, then `fixUp` on the way back up. Structurally recursive. -/\ndef ins (t : Node) (v : Int) : Node :=\n  match t with\n  | Node.Empty => Node.Tree Color.Red v Node.Empty Node.Empty\n  | Node.Tree c x l r =>\n      if v < x then fixUp c x (ins l v) r\n      else if x < v then fixUp c x l (ins r v)\n      else t\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef insert (t : Node) (v : Int)\n    (h_precond : insert_precond t) : Node :=\n  -- !benchmark @start code\n  ins t v\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef insert_postcond (t : Node) (v : Int) (result : Node)\n    (_ : insert_precond t) : Prop :=\n  -- !benchmark @start postcond\n  is_llrbt result \u2227\n  view result = view t \u222a {v}\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\ntheorem view_blacken (t : Node) : view (blacken t) = view t := by\n  cases t <;> rfl\n\ntheorem srp_blacken (t : Node) (h : satisfies_red_props t) :\n    satisfies_red_props (blacken t) := by\n  cases t with\n  | Empty => trivial\n  | Tree c x l r => simpa [blacken, satisfies_red_props] using h\n\ntheorem bst_blacken (t : Node) (h : is_bst t) : is_bst (blacken t) := by\n  cases t with\n  | Empty => trivial\n  | Tree c x l r => simpa [blacken, is_bst, view_blacken] using h\n\ntheorem view_fixUp (c : Color) (x : Int) (l r : Node) :\n    view (fixUp c x l r) = view l \u222a view r \u222a {x} := by\n  unfold fixUp\n  split <;> simp only [view, view_blacken] <;>\n    (ext y; simp only [Set.mem_union, Set.mem_singleton_iff]; tauto)\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem insert_postcond_satisfied (t : Node) (v : Int)\n    (h_precond : insert_precond t) :\n    insert_postcond t v (insert t v h_precond) h_precond := by\n  -- !benchmark @start proof\n  simp only [insert, insert_postcond, is_llrbt]\n  refine \u27e8\u27e8?_, ?_, ?_\u27e9, ?_\u27e9\n  \u00b7 exact ins_bst t v h_precond\n  \u00b7 exact ins_bh t v h_precond\n  \u00b7 exact ins_srp t v h_precond\n  \u00b7 exact ins_view t v\n  -- !benchmark @end proof\n",
+      "comment": ""
+    },
+    "verifier_response": {
+      "verified": false,
+      "feedback": "Stdout:\nclaude_code_llrbt_insert_final_1786143551984.lean:47:14: warning: unused variable `c`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_insert_final_1786143551984.lean:125:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_insert_final_1786143551984.lean:166:13: error: Invalid simp theorem: Expected a proposition, but found\n  (t : Node) \u2192 \u2124 \u2192 insert_precond t \u2192 Node\nclaude_code_llrbt_insert_final_1786143551984.lean:168:10: error(lean.unknownIdentifier): Unknown identifier `ins_bst`\nclaude_code_llrbt_insert_final_1786143551984.lean:169:10: error(lean.unknownIdentifier): Unknown identifier `ins_bh`\nclaude_code_llrbt_insert_final_1786143551984.lean:170:10: error(lean.unknownIdentifier): Unknown identifier `ins_srp`\nclaude_code_llrbt_insert_final_1786143551984.lean:171:10: error(lean.unknownIdentifier): Unknown identifier `ins_view`\n\n\nStderr:\n",
+      "raw": {
+        "stdout": "claude_code_llrbt_insert_final_1786143551984.lean:47:14: warning: unused variable `c`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_insert_final_1786143551984.lean:125:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_insert_final_1786143551984.lean:166:13: error: Invalid simp theorem: Expected a proposition, but found\n  (t : Node) \u2192 \u2124 \u2192 insert_precond t \u2192 Node\nclaude_code_llrbt_insert_final_1786143551984.lean:168:10: error(lean.unknownIdentifier): Unknown identifier `ins_bst`\nclaude_code_llrbt_insert_final_1786143551984.lean:169:10: error(lean.unknownIdentifier): Unknown identifier `ins_bh`\nclaude_code_llrbt_insert_final_1786143551984.lean:170:10: error(lean.unknownIdentifier): Unknown identifier `ins_srp`\nclaude_code_llrbt_insert_final_1786143551984.lean:171:10: error(lean.unknownIdentifier): Unknown identifier `ins_view`\n",
+        "stderr": "",
+        "returncode": 1
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": false,
+        "verifier_response": {
+          "verified": false,
+          "feedback": "Candidate validation failed: candidate 'code' section contains prohibited term 'sorry'",
+          "raw": null
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "47dfb5bf-0a6d-4ce0-98d6-cafa518d9d25",
+          "subtype": "error_progress_governor",
+          "provider_subtype": "error_during_execution",
+          "is_error": true,
+          "total_cost_usd": 0.0793555,
+          "duration_ms": 369861,
+          "duration_api_ms": 11077,
+          "num_turns": 8,
+          "returncode": 143,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/llrbt_insert/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "1830d4aac1d6430f961ee3082f92a78f2b472fc99458c7604c684ff28a3a8495",
+          "budget_usd": 0.75,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 600,
+              "pre_edit_thinking_tokens": 30000,
+              "post_edit_check_timeout_seconds": 300,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": true
+            },
+            "governor_stop_reason": "no durable edit before 30000 thinking tokens",
+            "max_thinking_tokens_observed": 30000,
+            "seconds_to_first_progress": null,
+            "seconds_to_first_check": null,
+            "pending_tool_recovery": []
+          }
+        }
+      },
+      {
+        "compiler_pass": 2,
+        "verified": false,
+        "verifier_response": {
+          "verified": false,
+          "feedback": "Candidate validation failed: candidate 'code' section contains prohibited term 'sorry'",
+          "raw": null
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "88d7355f-8ba5-4189-b842-27cead816d2c",
+          "subtype": "error_progress_governor",
+          "provider_subtype": "error_during_execution",
+          "is_error": true,
+          "total_cost_usd": 0.05736775,
+          "duration_ms": 369216,
+          "duration_api_ms": 8288,
+          "num_turns": 7,
+          "returncode": 143,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/llrbt_insert/agent_events.jsonl",
+          "pass_number": 2,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "ed230764f263d995f040b14b6623075133ab4edefa4b6efe83cd8b683c760748",
+          "budget_usd": 0.75,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 600,
+              "pre_edit_thinking_tokens": 30000,
+              "post_edit_check_timeout_seconds": 300,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": true
+            },
+            "governor_stop_reason": "no durable edit before 30000 thinking tokens",
+            "max_thinking_tokens_observed": 30000,
+            "seconds_to_first_progress": null,
+            "seconds_to_first_check": null,
+            "pending_tool_recovery": []
+          }
+        }
+      },
+      {
+        "compiler_pass": 3,
+        "verified": false,
+        "verifier_response": {
+          "verified": false,
+          "feedback": "Stdout:\nclaude_code_llrbt_insert_final_1786143190025.lean:47:14: warning: unused variable `c`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_insert_final_1786143190025.lean:125:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_insert_final_1786143190025.lean:166:13: error: Invalid simp theorem: Expected a proposition, but found\n  (t : Node) \u2192 \u2124 \u2192 insert_precond t \u2192 Node\nclaude_code_llrbt_insert_final_1786143190025.lean:168:10: error(lean.unknownIdentifier): Unknown identifier `ins_bst`\nclaude_code_llrbt_insert_final_1786143190025.lean:169:10: error(lean.unknownIdentifier): Unknown identifier `ins_bh`\nclaude_code_llrbt_insert_final_1786143190025.lean:170:10: error(lean.unknownIdentifier): Unknown identifier `ins_srp`\nclaude_code_llrbt_insert_final_1786143190025.lean:171:10: error(lean.unknownIdentifier): Unknown identifier `ins_view`\n\n\nStderr:\n",
+          "raw": {
+            "stdout": "claude_code_llrbt_insert_final_1786143190025.lean:47:14: warning: unused variable `c`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_insert_final_1786143190025.lean:125:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_insert_final_1786143190025.lean:166:13: error: Invalid simp theorem: Expected a proposition, but found\n  (t : Node) \u2192 \u2124 \u2192 insert_precond t \u2192 Node\nclaude_code_llrbt_insert_final_1786143190025.lean:168:10: error(lean.unknownIdentifier): Unknown identifier `ins_bst`\nclaude_code_llrbt_insert_final_1786143190025.lean:169:10: error(lean.unknownIdentifier): Unknown identifier `ins_bh`\nclaude_code_llrbt_insert_final_1786143190025.lean:170:10: error(lean.unknownIdentifier): Unknown identifier `ins_srp`\nclaude_code_llrbt_insert_final_1786143190025.lean:171:10: error(lean.unknownIdentifier): Unknown identifier `ins_view`\n",
+            "stderr": "",
+            "returncode": 1
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "acd772d3-f8e8-49db-9636-317cf12e04bb",
+          "subtype": "error_max_budget_usd",
+          "provider_subtype": "error_max_budget_usd",
+          "is_error": true,
+          "total_cost_usd": 0.7596155000000001,
+          "duration_ms": 254581,
+          "duration_api_ms": 239740,
+          "num_turns": 14,
+          "returncode": 1,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/llrbt_insert/agent_events.jsonl",
+          "pass_number": 3,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "8e78d38c1d2b28aece38f0c1e4d4eacb577bb7932c7d564ef3a972b1cc01c689",
+          "budget_usd": 0.75,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 600,
+              "pre_edit_thinking_tokens": 30000,
+              "post_edit_check_timeout_seconds": 300,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": true
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 8750,
+            "seconds_to_first_progress": 194.198,
+            "seconds_to_first_check": 199.796,
+            "pending_tool_recovery": []
+          }
+        }
+      },
+      {
+        "compiler_pass": 4,
+        "verified": false,
+        "verifier_response": {
+          "verified": false,
+          "feedback": "Stdout:\nclaude_code_llrbt_insert_final_1786143551984.lean:47:14: warning: unused variable `c`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_insert_final_1786143551984.lean:125:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_insert_final_1786143551984.lean:166:13: error: Invalid simp theorem: Expected a proposition, but found\n  (t : Node) \u2192 \u2124 \u2192 insert_precond t \u2192 Node\nclaude_code_llrbt_insert_final_1786143551984.lean:168:10: error(lean.unknownIdentifier): Unknown identifier `ins_bst`\nclaude_code_llrbt_insert_final_1786143551984.lean:169:10: error(lean.unknownIdentifier): Unknown identifier `ins_bh`\nclaude_code_llrbt_insert_final_1786143551984.lean:170:10: error(lean.unknownIdentifier): Unknown identifier `ins_srp`\nclaude_code_llrbt_insert_final_1786143551984.lean:171:10: error(lean.unknownIdentifier): Unknown identifier `ins_view`\n\n\nStderr:\n",
+          "raw": {
+            "stdout": "claude_code_llrbt_insert_final_1786143551984.lean:47:14: warning: unused variable `c`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_insert_final_1786143551984.lean:125:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_insert_final_1786143551984.lean:166:13: error: Invalid simp theorem: Expected a proposition, but found\n  (t : Node) \u2192 \u2124 \u2192 insert_precond t \u2192 Node\nclaude_code_llrbt_insert_final_1786143551984.lean:168:10: error(lean.unknownIdentifier): Unknown identifier `ins_bst`\nclaude_code_llrbt_insert_final_1786143551984.lean:169:10: error(lean.unknownIdentifier): Unknown identifier `ins_bh`\nclaude_code_llrbt_insert_final_1786143551984.lean:170:10: error(lean.unknownIdentifier): Unknown identifier `ins_srp`\nclaude_code_llrbt_insert_final_1786143551984.lean:171:10: error(lean.unknownIdentifier): Unknown identifier `ins_view`\n",
+            "stderr": "",
+            "returncode": 1
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "0af4da58-7537-420a-a696-4d41d4873b51",
+          "subtype": "error_max_budget_usd",
+          "provider_subtype": "error_max_budget_usd",
+          "is_error": true,
+          "total_cost_usd": 0.8709935,
+          "duration_ms": 356416,
+          "duration_api_ms": 17986,
+          "num_turns": 8,
+          "returncode": 1,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/llrbt_insert/agent_events.jsonl",
+          "pass_number": 4,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "bf53cc8feae740141ab8da9e859b521309f18198bb04ecc06f3bb95663006347",
+          "budget_usd": 0.75,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 600,
+              "pre_edit_thinking_tokens": 30000,
+              "post_edit_check_timeout_seconds": 300,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": true
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 29000,
+            "seconds_to_first_progress": null,
+            "seconds_to_first_check": null,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 315079,
+      "output": 19366,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "0af4da58-7537-420a-a696-4d41d4873b51",
+      "subtype": "error_max_budget_usd",
+      "provider_subtype": "error_max_budget_usd",
+      "is_error": true,
+      "total_cost_usd": 1.76733225,
+      "duration_ms": 1350074,
+      "duration_api_ms": 277091,
+      "num_turns": 37,
+      "returncode": 1,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/llrbt_insert/agent_events.jsonl",
+      "pass_number": 4,
+      "prompt_kind": "compiler_repair",
+      "prompt_sha256": "bf53cc8feae740141ab8da9e859b521309f18198bb04ecc06f3bb95663006347",
+      "budget_usd": 0.75,
+      "lastdance_profile": "robust",
+      "features": {
+        "profile": "robust",
+        "algorithm_plan": true,
+        "lemma_plan": true,
+        "leansearch": true,
+        "semantic_audit": true,
+        "semantic_reminder": true,
+        "early_check": true,
+        "feedback_mode": "structured",
+        "backtracking": true,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": true,
+          "progress_governor": true,
+          "pre_edit_timeout_seconds": 600,
+          "pre_edit_thinking_tokens": 30000,
+          "post_edit_check_timeout_seconds": 300,
+          "planning_mode": false,
+          "diagnostic_wrapper": false,
+          "rescue_mode": true
+        },
+        "governor_stop_reason": null,
+        "max_thinking_tokens_observed": 29000,
+        "seconds_to_first_progress": null,
+        "seconds_to_first_check": null,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 4,
+      "total_sessions": 4,
+      "selected_session": 4,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "47dfb5bf-0a6d-4ce0-98d6-cafa518d9d25",
+          "subtype": "error_progress_governor",
+          "provider_subtype": "error_during_execution",
+          "is_error": true,
+          "total_cost_usd": 0.0793555,
+          "duration_ms": 369861,
+          "duration_api_ms": 11077,
+          "num_turns": 8,
+          "returncode": 143,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/llrbt_insert/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "1830d4aac1d6430f961ee3082f92a78f2b472fc99458c7604c684ff28a3a8495",
+          "budget_usd": 0.75,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 600,
+              "pre_edit_thinking_tokens": 30000,
+              "post_edit_check_timeout_seconds": 300,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": true
+            },
+            "governor_stop_reason": "no durable edit before 30000 thinking tokens",
+            "max_thinking_tokens_observed": 30000,
+            "seconds_to_first_progress": null,
+            "seconds_to_first_check": null,
+            "pending_tool_recovery": []
+          }
+        },
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "88d7355f-8ba5-4189-b842-27cead816d2c",
+          "subtype": "error_progress_governor",
+          "provider_subtype": "error_during_execution",
+          "is_error": true,
+          "total_cost_usd": 0.05736775,
+          "duration_ms": 369216,
+          "duration_api_ms": 8288,
+          "num_turns": 7,
+          "returncode": 143,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/llrbt_insert/agent_events.jsonl",
+          "pass_number": 2,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "ed230764f263d995f040b14b6623075133ab4edefa4b6efe83cd8b683c760748",
+          "budget_usd": 0.75,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 600,
+              "pre_edit_thinking_tokens": 30000,
+              "post_edit_check_timeout_seconds": 300,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": true
+            },
+            "governor_stop_reason": "no durable edit before 30000 thinking tokens",
+            "max_thinking_tokens_observed": 30000,
+            "seconds_to_first_progress": null,
+            "seconds_to_first_check": null,
+            "pending_tool_recovery": []
+          }
+        },
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "acd772d3-f8e8-49db-9636-317cf12e04bb",
+          "subtype": "error_max_budget_usd",
+          "provider_subtype": "error_max_budget_usd",
+          "is_error": true,
+          "total_cost_usd": 0.7596155000000001,
+          "duration_ms": 254581,
+          "duration_api_ms": 239740,
+          "num_turns": 14,
+          "returncode": 1,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/llrbt_insert/agent_events.jsonl",
+          "pass_number": 3,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "8e78d38c1d2b28aece38f0c1e4d4eacb577bb7932c7d564ef3a972b1cc01c689",
+          "budget_usd": 0.75,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 600,
+              "pre_edit_thinking_tokens": 30000,
+              "post_edit_check_timeout_seconds": 300,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": true
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 8750,
+            "seconds_to_first_progress": 194.198,
+            "seconds_to_first_check": 199.796,
+            "pending_tool_recovery": []
+          }
+        },
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "0af4da58-7537-420a-a696-4d41d4873b51",
+          "subtype": "error_max_budget_usd",
+          "provider_subtype": "error_max_budget_usd",
+          "is_error": true,
+          "total_cost_usd": 0.8709935,
+          "duration_ms": 356416,
+          "duration_api_ms": 17986,
+          "num_turns": 8,
+          "returncode": 1,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/llrbt_insert/agent_events.jsonl",
+          "pass_number": 4,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "bf53cc8feae740141ab8da9e859b521309f18198bb04ecc06f3bb95663006347",
+          "budget_usd": 0.75,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 600,
+              "pre_edit_thinking_tokens": 30000,
+              "post_edit_check_timeout_seconds": 300,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": true
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 29000,
+            "seconds_to_first_progress": null,
+            "seconds_to_first_check": null,
+            "pending_tool_recovery": []
+          }
+        }
+      ]
+    },
+    "provenance": {
+      "schema_version": 1,
+      "ownership": {
+        "model_owned_sections": [
+          "auxcode",
+          "code",
+          "lemma",
+          "proof"
+        ],
+        "teacher_owned": "all source outside the four marker regions",
+        "teacher_owned_sorry_present": false,
+        "model_section_ranges": {
+          "auxcode": {
+            "start_line": 89,
+            "end_line": 121
+          },
+          "code": {
+            "start_line": 126,
+            "end_line": 128
+          },
+          "lemma": {
+            "start_line": 139,
+            "end_line": 159
+          },
+          "proof": {
+            "start_line": 165,
+            "end_line": 172
+          }
+        }
+      },
+      "hashes": {
+        "original_sha256": "f10a8963ffa2188b25fde5dd97262970734fcec7cbd2f41ec4df705065efbd83",
+        "candidate_sha256": "088eb54676d1aa5d56f812031a29ac8ad5301d131adabf87441f122b314f8b5c",
+        "merged_sha256": "088eb54676d1aa5d56f812031a29ac8ad5301d131adabf87441f122b314f8b5c",
+        "model_sections_sha256": {
+          "auxcode": "bf9c279cd75fcf46d12d0ccf6816fb1eec62d218ab26fec3ac4c9d9d0c0f8884",
+          "code": "409a53f2048e7d792e5b4079de9b06063aa3d6372112553633e21f9d6e455beb",
+          "lemma": "39f9bc0f046c3511f6fb63a077fe6ef52362283a763e6f40f615dbe090204c21",
+          "proof": "61ed6761fbc3045e95710594a8efe8aaad67d5e061e0c8488b27e7363c87c5f9"
+        }
+      }
+    },
+    "targeted_diagnostics": [
+      {
+        "line": 47,
+        "column": 14,
+        "kind": "warning",
+        "message": "unused variable `c`",
+        "section": "teacher-owned-or-generated",
+        "nearest_declaration": "satisfies_red_props"
+      },
+      {
+        "line": 125,
+        "column": 5,
+        "kind": "warning",
+        "message": "unused variable `h_precond`",
+        "section": "teacher-owned-or-generated",
+        "nearest_declaration": "insert"
+      },
+      {
+        "line": 166,
+        "column": 13,
+        "kind": "error",
+        "message": "Invalid simp theorem: Expected a proposition, but found",
+        "section": "proof",
+        "nearest_declaration": "insert_postcond_satisfied"
+      }
+    ],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/llrbt_insert/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/llrbt_insert/AlgorithmPlan.md",
+      "proof_state": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/llrbt_insert/ProofState.md",
+      "leansearch_queries": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/llrbt_insert/.lastdance/leansearch_queries.jsonl",
+      "checkpoints": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/llrbt_insert/.lastdance/checkpoints/manifest.jsonl",
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/llrbt_insert/.lastdance/prompts"
+    }
+  }
+}

@@ -1,0 +1,242 @@
+{
+  "verified": true,
+  "details": {
+    "rounds": 23,
+    "llm_response": {
+      "code": "import Mathlib\n\nstructure TopoGraph where\n  adj : Array (Array Nat)\n\ndef TopoGraph.well_formed (g : TopoGraph) : Prop :=\n  \u2200 u, u < g.adj.size \u2192\n    \u2200 v, v \u2208 g.adj.getD u #[] \u2192 v < g.adj.size\n\ndef TopoGraph.size (g : TopoGraph) : Nat :=\n  g.adj.size\n\ndef TopoGraph.has_edge (g : TopoGraph) (u v : Nat) : Prop :=\n  u < g.adj.size \u2227\n  v \u2208 g.adj.getD u #[]\n\ndef TopoGraph.is_path (g : TopoGraph) (p : List Nat) : Prop :=\n  p.length > 0 \u2227\n  \u2200 i, i + 1 < p.length \u2192\n    g.has_edge (p.getD i 0) (p.getD (i + 1) 0)\n\ndef TopoGraph.is_cycle (g : TopoGraph) (p : List Nat) : Prop :=\n  g.is_path p \u2227 p.length > 1 \u2227 p.head? = p.getLast?\n\ndef TopoGraph.graph_has_cycle (g : TopoGraph) : Prop :=\n  \u2203 p, g.is_cycle p\n\ndef TopoGraph.is_topological_ordering (g : TopoGraph) (order : Array Nat) : Prop :=\n  -- Contains all nodes (size check + surjective)\n  order.size = g.size \u2227\n  (\u2200 n, n < g.size \u2192 \u2203 k, k < order.size \u2227 order.getD k 0 = n) \u2227\n  -- No duplicates is implied by size check + surjective on finite set, but for completeness:\n  (\u2200 i j, i < order.size \u2192 j < order.size \u2192 i \u2260 j \u2192 order.getD i 0 \u2260 order.getD j 0) \u2227\n  -- No back edges (if j < i, no edge order[i] -> order[j])\n  (\u2200 i j, j < i \u2192 i < order.size \u2192\n     \u00ac g.has_edge (order.getD i 0) (order.getD j 0))\n\n-- Precondition definitions\n@[reducible, simp]\ndef topological_sort_precond (graph : TopoGraph) : Prop :=\n  -- !benchmark @start precond\n  graph.well_formed\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\nnamespace TopoImpl\n\n/-- Out-neighbours of `u` as a list. -/\ndef outs (g : TopoGraph) (u : Nat) : List Nat := (g.adj.getD u #[]).toList\n\n/-- `u` is ready to be emitted: all of its out-neighbours have already left `rem`. -/\ndef okNode (g : TopoGraph) (rem : List Nat) (u : Nat) : Bool :=\n  (outs g u).all (fun v => decide (v \u2209 rem))\n\n/-- Selection step of the peeling loop. -/\ndef pick (g : TopoGraph) (rem : List Nat) : Option Nat :=\n  rem.find? (okNode g rem)\n\n/-- Peeling loop: `rem` are the remaining nodes, `acc` the order built so far\n    (nodes already emitted, in final order).  `fuel` bounds `rem.length`. -/\ndef loopF (g : TopoGraph) : Nat \u2192 List Nat \u2192 List Nat \u2192 Option (List Nat)\n  | 0, _, acc => some acc\n  | _ + 1, [], acc => some acc\n  | fuel + 1, hd :: tl, acc =>\n    match pick g (hd :: tl) with\n    | none => none\n    | some u => loopF g fuel ((hd :: tl).erase u) (u :: acc)\n\nend TopoImpl\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef topological_sort (graph : TopoGraph)\n    (h_precond : topological_sort_precond graph) : Option (Array Nat) :=\n  -- !benchmark @start code\n  (TopoImpl.loopF graph graph.size (List.range graph.size) []).map List.toArray\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef topological_sort_postcond (graph : TopoGraph) (result : Option (Array Nat))\n    (_ : topological_sort_precond graph) : Prop :=\n  -- !benchmark @start postcond\n  match result with\n  | some order =>\n      \u00ac graph.graph_has_cycle \u2227\n      graph.is_topological_ordering order\n  | none =>\n      graph.graph_has_cycle\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\nnamespace TopoImpl\n\nopen List\n\n/-! ### Small utility lemmas -/\n\nlemma mem_outs_iff (g : TopoGraph) (u v : Nat) :\n    v \u2208 outs g u \u2194 v \u2208 g.adj.getD u #[] := by\n  simp [outs]\n\nlemma okNode_true {g : TopoGraph} {rem : List Nat} {u : Nat}\n    (h : okNode g rem u = true) : \u2200 v \u2208 outs g u, v \u2209 rem := by\n  intro v hv\n  have := List.all_eq_true.mp h v hv\n  simpa using this\n\nlemma okNode_false {g : TopoGraph} {rem : List Nat} {u : Nat}\n    (h : \u00ac (okNode g rem u = true)) : \u2203 v \u2208 outs g u, v \u2208 rem := by\n  by_contra hc\n  push_neg at hc\n  exact h (List.all_eq_true.mpr (fun v hv => by simpa using hc v hv))\n\nlemma pick_mem {g : TopoGraph} {rem : List Nat} {u : Nat}\n    (h : pick g rem = some u) : u \u2208 rem := by\n  unfold pick at h\n  exact List.mem_of_find?_eq_some h\n\nlemma pick_ok {g : TopoGraph} {rem : List Nat} {u : Nat}\n    (h : pick g rem = some u) : okNode g rem u = true := by\n  unfold pick at h\n  exact List.find?_some h\n\nlemma pick_none {g : TopoGraph} {rem : List Nat}\n    (h : pick g rem = none) : \u2200 u \u2208 rem, \u00ac (okNode g rem u = true) := by\n  unfold pick at h\n  exact List.find?_eq_none.mp h\n\nlemma head?_getD {p : List Nat} (h : 0 < p.length) : p.head? = some (p.getD 0 0) := by\n  cases p with\n  | nil => simp at h\n  | cons a t => simp\n\nlemma getLast?_getD {p : List Nat} (h : 0 < p.length) :\n    p.getLast? = some (p.getD (p.length - 1) 0) := by\n  have h1 : p.length - 1 < p.length := by omega\n  rw [List.getLast?_eq_getElem?, List.getElem?_eq_getElem h1]\n  simp [List.getElem?_eq_getElem h1]\n\nlemma toArray_getD (l : List Nat) (k : Nat) : l.toArray.getD k 0 = l.getD k 0 := by\n  by_cases h : k < l.length\n  \u00b7 rw [Array.getD]\n    simp [h]\n  \u00b7 rw [Array.getD]\n    simp only [List.size_toArray]\n    rw [dif_neg h]\n    rw [List.getD_eq_default _ _ (by omega)]\n\nlemma idxOf_cons_self (a : Nat) (l : List Nat) : (a :: l).idxOf a = 0 := by\n  simp\n\nlemma idxOf_cons_of_ne {a b : Nat} (l : List Nat) (h : a \u2260 b) :\n    (a :: l).idxOf b = l.idxOf b + 1 := by\n  have hb : (a == b) = false := by simpa using h\n  simp [List.idxOf, List.findIdx_cons, hb]\n\nlemma idxOf_getElem_eq {l : List Nat} (hn : l.Nodup) {i : Nat} (hi : i < l.length) :\n    l.idxOf l[i] = i := by\n  have hmem : l[i] \u2208 l := List.getElem_mem hi\n  have h1 : l.idxOf l[i] < l.length := List.idxOf_lt_length_of_mem hmem\n  have h2 : l[l.idxOf l[i]] = l[i] := List.getElem_idxOf h1\n  exact (List.Nodup.getElem_inj_iff hn).mp h2\n\n/-! ### The accumulator invariant -/\n\n/-- `acc` is closed under successors, and every edge inside it points forward. -/\ndef Good (g : TopoGraph) (acc : List Nat) : Prop :=\n  \u2200 u \u2208 acc, \u2200 v, g.has_edge u v \u2192 v \u2208 acc \u2227 acc.idxOf u < acc.idxOf v\n\n/-! ### Cycle extraction when the loop gets stuck -/\n\n/-- From a repetition `F i = F j` (`i < j`) along an edge-chain, build a cycle. -/\nlemma cycle_from_repeat (g : TopoGraph) (F : Nat \u2192 Nat)\n    (hFedge : \u2200 k, g.has_edge (F k) (F (k + 1)))\n    (i j : Nat) (hlt : i < j) (hFij : F i = F j) : g.graph_has_cycle := by\n  set d := j - i with hd\n  have hdpos : 0 < d := by omega\n  set p : List Nat := (List.range (d + 1)).map (fun k => F (i + k)) with hp\n  have hplen : p.length = d + 1 := by simp [hp]\n  have hgetD : \u2200 t, t < d + 1 \u2192 p.getD t 0 = F (i + t) := by\n    intro t ht\n    have ht' : t < p.length := by omega\n    rw [List.getD_eq_getElem _ _ ht']\n    simp [hp]\n  refine \u27e8p, \u27e8\u27e8by omega, ?_\u27e9, by omega, ?_\u27e9\u27e9\n  \u00b7 intro t ht\n    rw [hplen] at ht\n    rw [hgetD t (by omega), hgetD (t + 1) (by omega)]\n    have : i + (t + 1) = (i + t) + 1 := by omega\n    rw [this]\n    exact hFedge (i + t)\n  \u00b7 rw [head?_getD (by omega), getLast?_getD (by omega), hplen]\n    simp only [Nat.add_sub_cancel]\n    rw [hgetD 0 (by omega), hgetD d (by omega), show i + d = j from by omega,\n      Nat.add_zero]\n    exact congrArg some hFij\n\nlemma cycle_of_stuck (g : TopoGraph) (rem : List Nat) (x : Nat) (hx : x \u2208 rem)\n    (hstep : \u2200 u \u2208 rem, \u2203 v \u2208 rem, g.has_edge u v) : g.graph_has_cycle := by\n  classical\n  -- a computable successor choice inside `rem`\n  set f : Nat \u2192 Nat :=\n    fun u => ((outs g u).find? (fun v => decide (v \u2208 rem))).getD u with hfdef\n  have hf : \u2200 u \u2208 rem, f u \u2208 rem \u2227 g.has_edge u (f u) := by\n    intro u hu\n    obtain \u27e8v, hv, he\u27e9 := hstep u hu\n    have hvout : v \u2208 outs g u := (mem_outs_iff g u v).mpr he.2\n    rcases hfind : (outs g u).find? (fun v => decide (v \u2208 rem)) with _ | w\n    \u00b7 exact absurd ((List.find?_eq_none.mp hfind) v hvout) (by simp [hv])\n    \u00b7 have hw1 : w \u2208 outs g u := List.mem_of_find?_eq_some hfind\n      have hw2 : w \u2208 rem := by simpa using List.find?_some hfind\n      have hfu : f u = w := by simp [hfdef, hfind]\n      refine \u27e8by rw [hfu]; exact hw2, ?_\u27e9\n      rw [hfu]\n      exact \u27e8he.1, (mem_outs_iff g u w).mp hw1\u27e9\n  -- the orbit of `x`\n  set F : Nat \u2192 Nat := fun k => f^[k] x with hFdef\n  have hFmem : \u2200 k, F k \u2208 rem := by\n    intro k\n    induction k with\n    | zero => simpa [hFdef] using hx\n    | succ k ih =>\n      have : F (k + 1) = f (F k) := by simp [hFdef, Function.iterate_succ_apply']\n      rw [this]\n      exact (hf _ ih).1\n  have hFedge : \u2200 k, g.has_edge (F k) (F (k + 1)) := by\n    intro k\n    have : F (k + 1) = f (F k) := by simp [hFdef, Function.iterate_succ_apply']\n    rw [this]\n    exact (hf _ (hFmem k)).2\n  -- pigeonhole\n  set m := rem.toFinset.card with hm\n  have hmaps : \u2200 a \u2208 Finset.range (m + 1), F a \u2208 rem.toFinset := by\n    intro a _\n    simpa using hFmem a\n  have hcard : rem.toFinset.card < (Finset.range (m + 1)).card := by\n    simp [hm]\n  obtain \u27e8i, hi, j, hj, hij, hFij\u27e9 :=\n    Finset.exists_ne_map_eq_of_card_lt_of_maps_to hcard hmaps\n  -- wlog i < j\n  rcases lt_or_gt_of_ne hij with hlt | hlt\n  \u00b7 exact cycle_from_repeat g F hFedge i j hlt hFij\n  \u00b7 exact cycle_from_repeat g F hFedge j i hlt hFij.symm\n\n/-! ### Loop specification -/\n\nlemma loopF_none (g : TopoGraph) :\n    \u2200 fuel rem acc, rem.length \u2264 fuel \u2192\n      (rem ++ acc).Perm (List.range g.adj.size) \u2192\n      loopF g fuel rem acc = none \u2192 g.graph_has_cycle := by\n  intro fuel\n  induction fuel with\n  | zero =>\n    intro rem acc hlen _ hres\n    have : rem = [] := List.eq_nil_of_length_eq_zero (by omega)\n    subst this\n    simp [loopF] at hres\n  | succ fuel ih =>\n    intro rem acc hlen hperm hres\n    cases rem with\n    | nil => simp [loopF] at hres\n    | cons hd tl =>\n      have hmemlt : \u2200 u \u2208 hd :: tl, u < g.adj.size := by\n        intro u hu\n        have : u \u2208 List.range g.adj.size :=\n          hperm.mem_iff.mp (List.mem_append_left _ hu)\n        simpa using this\n      rcases hpick : pick g (hd :: tl) with _ | u\n      \u00b7 -- stuck: build a cycle\n        refine cycle_of_stuck g (hd :: tl) hd (by simp) ?_\n        intro w hw\n        obtain \u27e8v, hv1, hv2\u27e9 := okNode_false (pick_none hpick w hw)\n        exact \u27e8v, hv2, \u27e8hmemlt w hw, (mem_outs_iff g w v).mp hv1\u27e9\u27e9\n      \u00b7 have hu : u \u2208 hd :: tl := pick_mem hpick\n        have hlen' : ((hd :: tl).erase u).length \u2264 fuel := by\n          rw [List.length_erase_of_mem hu]\n          simp at hlen \u22a2\n          omega\n        have hperm' : (((hd :: tl).erase u) ++ (u :: acc)).Perm (List.range g.adj.size) := by\n          refine List.Perm.trans ?_ hperm\n          calc ((hd :: tl).erase u) ++ (u :: acc)\n              ~ u :: (((hd :: tl).erase u) ++ acc) := List.perm_middle\n            _ = (u :: ((hd :: tl).erase u)) ++ acc := by simp\n            _ ~ (hd :: tl) ++ acc :=\n                List.Perm.append_right acc (List.perm_cons_erase hu).symm\n        have hrec : loopF g fuel ((hd :: tl).erase u) (u :: acc) = none := by\n          rw [loopF, hpick] at hres\n          exact hres\n        exact ih _ _ hlen' hperm' hrec\n\nlemma loopF_some (g : TopoGraph) (hwf : g.well_formed) :\n    \u2200 fuel rem acc out, rem.length \u2264 fuel \u2192\n      (rem ++ acc).Perm (List.range g.adj.size) \u2192 Good g acc \u2192\n      loopF g fuel rem acc = some out \u2192\n      out.Perm (List.range g.adj.size) \u2227 Good g out := by\n  intro fuel\n  induction fuel with\n  | zero =>\n    intro rem acc out hlen hperm hgood hres\n    have hnil : rem = [] := List.eq_nil_of_length_eq_zero (by omega)\n    subst hnil\n    simp [loopF] at hres\n    subst hres\n    exact \u27e8by simpa using hperm, hgood\u27e9\n  | succ fuel ih =>\n    intro rem acc out hlen hperm hgood hres\n    cases rem with\n    | nil =>\n      simp [loopF] at hres\n      subst hres\n      exact \u27e8by simpa using hperm, hgood\u27e9\n    | cons hd tl =>\n      have hnd : ((hd :: tl) ++ acc).Nodup :=\n        hperm.nodup_iff.mpr (List.nodup_range)\n      have hmemlt : \u2200 u \u2208 hd :: tl, u < g.adj.size := by\n        intro u hu\n        have : u \u2208 List.range g.adj.size :=\n          hperm.mem_iff.mp (List.mem_append_left _ hu)\n        simpa using this\n      rcases hpick : pick g (hd :: tl) with _ | u\n      \u00b7 rw [loopF, hpick] at hres; simp at hres\n      \u00b7 have hu : u \u2208 hd :: tl := pick_mem hpick\n        have hok : okNode g (hd :: tl) u = true := pick_ok hpick\n        have hunotacc : u \u2209 acc := by\n          have := List.disjoint_of_nodup_append hnd\n          exact this hu\n        have hlen' : ((hd :: tl).erase u).length \u2264 fuel := by\n          rw [List.length_erase_of_mem hu]\n          simp at hlen \u22a2\n          omega\n        have hperm' : (((hd :: tl).erase u) ++ (u :: acc)).Perm (List.range g.adj.size) := by\n          refine List.Perm.trans ?_ hperm\n          calc ((hd :: tl).erase u) ++ (u :: acc)\n              ~ u :: (((hd :: tl).erase u) ++ acc) := List.perm_middle\n            _ = (u :: ((hd :: tl).erase u)) ++ acc := by simp\n            _ ~ (hd :: tl) ++ acc :=\n                List.Perm.append_right acc (List.perm_cons_erase hu).symm\n        -- successors of `u` are already in `acc`\n        have hsucc : \u2200 v, g.has_edge u v \u2192 v \u2208 acc := by\n          intro v he\n          have hvout : v \u2208 outs g u := (mem_outs_iff g u v).mpr he.2\n          have hvnotrem : v \u2209 hd :: tl := okNode_true hok v hvout\n          have hvlt : v < g.adj.size := hwf u he.1 v he.2\n          have : v \u2208 List.range g.adj.size := by simpa using hvlt\n          have : v \u2208 (hd :: tl) ++ acc := hperm.mem_iff.mpr this\n          rcases List.mem_append.mp this with h | h\n          \u00b7 exact absurd h hvnotrem\n          \u00b7 exact h\n        have hgood' : Good g (u :: acc) := by\n          intro w hw v he\n          rcases List.mem_cons.mp hw with rfl | hwacc\n          \u00b7 -- w = u\n            have hvacc : v \u2208 acc := hsucc v he\n            have hvne : w \u2260 v := by rintro rfl; exact hunotacc hvacc\n            refine \u27e8List.mem_cons_of_mem _ hvacc, ?_\u27e9\n            rw [idxOf_cons_self, idxOf_cons_of_ne _ hvne]\n            omega\n          \u00b7 obtain \u27e8hvacc, hidx\u27e9 := hgood w hwacc v he\n            have hwne : u \u2260 w := by rintro rfl; exact hunotacc hwacc\n            have hvne : u \u2260 v := by rintro rfl; exact hunotacc hvacc\n            refine \u27e8List.mem_cons_of_mem _ hvacc, ?_\u27e9\n            rw [idxOf_cons_of_ne _ hwne, idxOf_cons_of_ne _ hvne]\n            omega\n        have hrec : loopF g fuel ((hd :: tl).erase u) (u :: acc) = some out := by\n          rw [loopF, hpick] at hres\n          exact hres\n        exact ih _ _ _ hlen' hperm' hgood' hrec\n\n/-! ### From `Good` to the postcondition -/\n\nlemma no_cycle_of_good {g : TopoGraph} {out : List Nat} (hg : Good g out)\n    (hcov : \u2200 u, u < g.adj.size \u2192 u \u2208 out) : \u00ac g.graph_has_cycle := by\n  rintro \u27e8p, \u27e8hpos, hpath\u27e9, hp1, hhg\u27e9\n  have h0mem : p.getD 0 0 \u2208 out := hcov _ (hpath 0 (by omega)).1\n  have key : \u2200 t, t + 1 < p.length \u2192\n      (p.getD (t + 1) 0 \u2208 out \u2227 out.idxOf (p.getD 0 0) < out.idxOf (p.getD (t + 1) 0)) := by\n    intro t\n    induction t with\n    | zero => intro h; exact hg _ h0mem _ (hpath 0 h)\n    | succ t iht =>\n      intro h\n      have hprev := iht (by omega)\n      have hnext := hg _ hprev.1 _ (hpath (t + 1) h)\n      exact \u27e8hnext.1, lt_trans hprev.2 hnext.2\u27e9\n  have hlast := key (p.length - 2) (by omega)\n  rw [show p.length - 2 + 1 = p.length - 1 from by omega] at hlast\n  have heq : p.getD 0 0 = p.getD (p.length - 1) 0 := by\n    rw [head?_getD (by omega), getLast?_getD (by omega)] at hhg\n    exact Option.some.inj hhg\n  rw [\u2190 heq] at hlast\n  exact absurd hlast.2 (lt_irrefl _)\n\nend TopoImpl\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem topological_sort_postcond_satisfied (graph : TopoGraph)\n    (h_precond : topological_sort_precond graph) :\n    topological_sort_postcond graph (topological_sort graph h_precond) h_precond := by\n  -- !benchmark @start proof\n  classical\n  have hwf : graph.well_formed := h_precond\n  have hsz : graph.size = graph.adj.size := rfl\n  have hlen0 : (List.range graph.size).length \u2264 graph.size := by simp\n  have hperm0 : ((List.range graph.size) ++ ([] : List Nat)).Perm\n      (List.range graph.adj.size) := by simp [hsz]\n  have hgood0 : TopoImpl.Good graph ([] : List Nat) := by\n    intro u hu; simp at hu\n  unfold topological_sort\n  rcases hL : TopoImpl.loopF graph graph.size (List.range graph.size) [] with _ | out\n  \u00b7 simp only [hL, Option.map_none]\n    exact TopoImpl.loopF_none graph _ _ _ hlen0 hperm0 hL\n  \u00b7 simp only [hL, Option.map_some]\n    obtain \u27e8hperm, hgood\u27e9 := TopoImpl.loopF_some graph hwf _ _ _ _ hlen0 hperm0 hgood0 hL\n    have hnd : out.Nodup := hperm.nodup_iff.mpr List.nodup_range\n    have hlen : out.length = graph.adj.size := by\n      have := hperm.length_eq\n      simpa using this\n    have hcov : \u2200 u, u < graph.adj.size \u2192 u \u2208 out := by\n      intro u hu\n      exact hperm.mem_iff.mpr (by simpa using hu)\n    refine \u27e8TopoImpl.no_cycle_of_good hgood hcov, ?_, ?_, ?_, ?_\u27e9\n    \u00b7 simp [hlen, hsz]\n    \u00b7 intro n hn\n      have hn' : n \u2208 out := hcov n (by simpa [hsz] using hn)\n      obtain \u27e8k, hk, hkv\u27e9 := List.mem_iff_getElem.mp hn'\n      refine \u27e8k, by simpa using hk, ?_\u27e9\n      rw [TopoImpl.toArray_getD, List.getD_eq_getElem _ _ hk]\n      exact hkv\n    \u00b7 intro i j hi hj hne\n      simp only [List.size_toArray] at hi hj\n      rw [TopoImpl.toArray_getD, TopoImpl.toArray_getD,\n        List.getD_eq_getElem _ _ hi, List.getD_eq_getElem _ _ hj]\n      intro hcon\n      exact hne ((List.Nodup.getElem_inj_iff hnd).mp hcon)\n    \u00b7 intro i j hji hi\n      simp only [List.size_toArray] at hi\n      have hj : j < out.length := by omega\n      rw [TopoImpl.toArray_getD, TopoImpl.toArray_getD,\n        List.getD_eq_getElem _ _ hi, List.getD_eq_getElem _ _ hj]\n      intro he\n      obtain \u27e8_, hidx\u27e9 := hgood _ (List.getElem_mem hi) _ he\n      rw [TopoImpl.idxOf_getElem_eq hnd hi, TopoImpl.idxOf_getElem_eq hnd hj] at hidx\n      omega\n  -- !benchmark @end proof\n",
+      "comment": "**LEAN VERIFIED** (re-confirmed after the final state of `Solution.lean`; only warnings remain).\n\n## What was implemented\n\nA **Kahn-style peeling topological sort** (out-degree variant), entirely inside the four markers:\n\n- `outs g u` \u2014 out-neighbour list; `okNode g rem u` \u2014 Boolean \"all successors of `u` already left `rem`\"; `pick g rem = rem.find? (okNode g rem)`.\n- `loopF` \u2014 peels one ready node per round, prepending it to `acc`; returns `none` when `rem \u2260 []` and nothing is ready. Fuel = `graph.size` (with the carried side condition `rem.length \u2264 fuel`) instead of well-founded recursion.\n- `topological_sort` = `loopF graph graph.size (List.range graph.size) [] |>.map List.toArray`.\n\n## Proof structure\n\nTwo loop invariants, both carried through induction on the fuel:\n1. `(rem ++ acc).Perm (List.range g.adj.size)` \u2014 gives the permutation clause, `Nodup`, and `rem`/`acc` disjointness.\n2. `Good g acc` : `\u2200 u \u2208 acc, \u2200 v, has_edge u v \u2192 v \u2208 acc \u2227 acc.idxOf u < acc.idxOf v`.\n\n- `some` branch: invariant 1 gives size/surjectivity/distinctness; invariant 2 plus `idxOf_getElem_eq` gives \"no back edge\", and `no_cycle_of_good` gives `\u00ac graph_has_cycle` (index strictly increases along any path, so head \u2260 last).\n- `none` branch: every remaining node has a successor in `rem`, so a computable successor function `f` is iterated from a remaining node; pigeonhole (`Finset.exists_ne_map_eq_of_card_lt_of_maps_to`) on `rem.toFinset` yields `f^[i] x = f^[j] x`, and `cycle_from_repeat` builds the explicit witness `(List.range (j-i+1)).map (fun k => f^[i+k] x)`.\n\n## Semantic audit vs TASK.md\n\n- Both postcondition branches proved for real; the `none` branch produces an explicit cycle list, not an assumption.\n- Precondition `well_formed` is genuinely used (to place successors inside `List.range size`).\n- Empty graph \u2192 `some #[]`, postcondition vacuous. Self-loops: `u \u2208 rem` permanently blocks `okNode`, so the algorithm returns `none` \u2014 this matters, because the spec's back-edge clause (`j < i` only) does *not* itself forbid `u \u2192 u`, so `\u00ac graph_has_cycle` had to be proved from the stronger `Good` invariant rather than from `is_topological_ordering`. Isolated nodes, multiple components, and duplicate adjacency entries are handled.\n- No `sorry`/`admit`/axioms/`partial`/`unsafe`, no `Nat.find`, no `Classical.choose`, no sorting, no brute-force enumeration, no specification oracle. The only `decide` is `decide (v \u2209 rem)`, a list-membership test inside the algorithm \u2014 not a decision over the target property. `classical` appears only as a proof tactic.\n\n`AlgorithmPlan.md` and `ProofState.md` are filled in; the delivered implementation matches the committed plan, including the stated `O(V\u00b7(V+E))` complexity (asymptotically weaker than the in-degree-counter form of the same algorithm \u2014 chosen deliberately for proof tractability, and noted in the plan)."
+    },
+    "verifier_response": {
+      "verified": true,
+      "feedback": "Verified successfully.",
+      "raw": {
+        "stdout": "claude_code_topological_sort_final_1786097424250.lean:74:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_topological_sort_final_1786097424250.lean:412:15: warning: This simp argument is unused:\n  hL\n\nHint: Omit it from the simp argument list.\n  simp only [h\u0335L\u0335,\u0335 \u0335Option.map_none]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_topological_sort_final_1786097424250.lean:414:15: warning: This simp argument is unused:\n  hL\n\nHint: Omit it from the simp argument list.\n  simp only [h\u0335L\u0335,\u0335 \u0335Option.map_some]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\n",
+        "stderr": "",
+        "returncode": 0
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": true,
+        "verifier_response": {
+          "verified": true,
+          "feedback": "Verified successfully.",
+          "raw": {
+            "stdout": "claude_code_topological_sort_final_1786097424250.lean:74:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_topological_sort_final_1786097424250.lean:412:15: warning: This simp argument is unused:\n  hL\n\nHint: Omit it from the simp argument list.\n  simp only [h\u0335L\u0335,\u0335 \u0335Option.map_none]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_topological_sort_final_1786097424250.lean:414:15: warning: This simp argument is unused:\n  hL\n\nHint: Omit it from the simp argument list.\n  simp only [h\u0335L\u0335,\u0335 \u0335Option.map_some]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\n",
+            "stderr": "",
+            "returncode": 0
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "56936b2c-5072-4c64-bb7d-6d6d899c4d69",
+          "subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 1.7016305,
+          "duration_ms": 485122,
+          "duration_api_ms": 470661,
+          "num_turns": 24,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/topological_sort/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "244567660f207da0538b3ec532d39481a356fc726120aff1eaa406c85f7c26fa",
+          "budget_usd": 2.0,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 19650,
+            "seconds_to_first_progress": 321.891,
+            "seconds_to_first_check": 350.483,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 608540,
+      "output": 43479,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "56936b2c-5072-4c64-bb7d-6d6d899c4d69",
+      "subtype": "success",
+      "is_error": false,
+      "total_cost_usd": 1.7016305,
+      "duration_ms": 485122,
+      "duration_api_ms": 470661,
+      "num_turns": 24,
+      "returncode": 0,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/topological_sort/agent_events.jsonl",
+      "pass_number": 1,
+      "prompt_kind": "initial",
+      "prompt_sha256": "244567660f207da0538b3ec532d39481a356fc726120aff1eaa406c85f7c26fa",
+      "budget_usd": 2.0,
+      "lastdance_profile": "robust",
+      "features": {
+        "profile": "robust",
+        "algorithm_plan": true,
+        "lemma_plan": true,
+        "leansearch": true,
+        "semantic_audit": true,
+        "semantic_reminder": true,
+        "early_check": true,
+        "feedback_mode": "structured",
+        "backtracking": true,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": true,
+          "progress_governor": false,
+          "pre_edit_timeout_seconds": 300,
+          "pre_edit_thinking_tokens": 12000,
+          "post_edit_check_timeout_seconds": 180,
+          "planning_mode": false,
+          "diagnostic_wrapper": false
+        },
+        "governor_stop_reason": null,
+        "max_thinking_tokens_observed": 19650,
+        "seconds_to_first_progress": 321.891,
+        "seconds_to_first_check": 350.483,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 1,
+      "total_sessions": 1,
+      "selected_session": 1,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "56936b2c-5072-4c64-bb7d-6d6d899c4d69",
+          "subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 1.7016305,
+          "duration_ms": 485122,
+          "duration_api_ms": 470661,
+          "num_turns": 24,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/topological_sort/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "244567660f207da0538b3ec532d39481a356fc726120aff1eaa406c85f7c26fa",
+          "budget_usd": 2.0,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 19650,
+            "seconds_to_first_progress": 321.891,
+            "seconds_to_first_check": 350.483,
+            "pending_tool_recovery": []
+          }
+        }
+      ]
+    },
+    "provenance": {
+      "schema_version": 1,
+      "ownership": {
+        "model_owned_sections": [
+          "auxcode",
+          "code",
+          "lemma",
+          "proof"
+        ],
+        "teacher_owned": "all source outside the four marker regions",
+        "teacher_owned_sorry_present": false,
+        "model_section_ranges": {
+          "auxcode": {
+            "start_line": 45,
+            "end_line": 70
+          },
+          "code": {
+            "start_line": 75,
+            "end_line": 77
+          },
+          "lemma": {
+            "start_line": 92,
+            "end_line": 395
+          },
+          "proof": {
+            "start_line": 401,
+            "end_line": 446
+          }
+        }
+      },
+      "hashes": {
+        "original_sha256": "0e5f56922b7920e99bc35e6a2c4a88bcda5700e543e6cade070653638e8d4b0b",
+        "candidate_sha256": "ff34bdc515115c5c78d1d3f0e3a4949950c23615d2d7714d620ee5cd9d211a2f",
+        "merged_sha256": "ff34bdc515115c5c78d1d3f0e3a4949950c23615d2d7714d620ee5cd9d211a2f",
+        "model_sections_sha256": {
+          "auxcode": "2f2bb455cf768751baaae2503b25ac1746269ce9b81152a466b5a8bb31c17a09",
+          "code": "fd2ae9139e7c73eaa1a81941c8b6cb9c3c7dcfe333ade49c91abd8288ac024c0",
+          "lemma": "2f5a58d96dd10fe62fc0a08994285f29119b28a717265df52bc7048adc68152d",
+          "proof": "1590dbede93ece953d9546f302a39e1a9146b6d4d5c4b4a0a69aa7ba868d9c1c"
+        }
+      }
+    },
+    "targeted_diagnostics": [],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/topological_sort/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/topological_sort/AlgorithmPlan.md",
+      "proof_state": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/topological_sort/ProofState.md",
+      "leansearch_queries": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/topological_sort/.lastdance/leansearch_queries.jsonl",
+      "checkpoints": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/topological_sort/.lastdance/checkpoints/manifest.jsonl",
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/topological_sort/.lastdance/prompts"
+    }
+  }
+}

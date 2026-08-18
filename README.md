@@ -6,6 +6,12 @@ Code + Opus 5 coding-agent toolchain. The local modifications remove the Lean ru
 Apptainer, add OpenAI and Anthropic model runners, preserve three independent
 semantic-judge views, and provide a result-audit dashboard.
 
+The opt-in [LastDance v2 robust profile](LASTDANCE_V2.md) adds explicit
+algorithm/lemma planning, guarded Frenzymath LeanSearch v2 API retrieval, checkpointed
+stagnation recovery, prompt-level semantic auditing, source-targeted repair, and
+provenance-aware evaluation. It uses separate artifact directories and leaves the reported
+legacy condition unchanged.
+
 The complete academic report frames the rerun as an extension of AlgoVeri's original
 ICML 2026 findings, compares the published open/open-weight systems under their distinct
 end-to-end and proof-only protocols, and uses the official conference preprint format.
@@ -59,6 +65,15 @@ an adaptive per-task budget.
   without teacher-owned `sorry`.
 - The matching `*_semantic_temp0` and `*_semantic_gpt56_temp0` directories hold
   the non-overwriting temperature-0 judgments.
+- `results/claude_code_api_equivalent_fail9` and the
+  `results/claude_code_original_*` directories contain the legacy/API-equivalent
+  comparison and repair runs.
+- `results/lastdance_budget_{current,boundary,governor,phased,full}_13` contain
+  the 13-task budget-policy ablation, with matching GPT-5.4 temperature-0
+  semantic judgments.
+- `results/lastdance_current_{enhanced_fail5,unlimited_fail9}` contain the
+  failure-focused evaluations of the current planner, progress-tracker, and
+  LeanSearch architecture.
 - `reports/data`: the complete case-level CSV and recomputed JSON summary.
 
 Each JSON file preserves the generated Lean code, verifier response, model

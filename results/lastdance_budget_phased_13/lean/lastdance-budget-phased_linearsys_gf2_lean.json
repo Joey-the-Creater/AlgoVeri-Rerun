@@ -1,0 +1,451 @@
+{
+  "verified": true,
+  "details": {
+    "rounds": 17,
+    "llm_response": {
+      "code": "import Mathlib\n\n-- Precondition definitions\n@[reducible, simp]\ndef solve_linear_system_gf2_precond (matrix : List (List Nat)) (b : List Nat) : Prop :=\n  -- !benchmark @start precond\n  matrix.length > 0 \u2227\n  (matrix.getD 0 []).length > 0 \u2227\n  matrix.length = b.length \u2227\n  matrix.length \u2264 100 \u2227\n  (matrix.getD 0 []).length \u2264 100 \u2227\n  (\u2200 row, row \u2208 matrix \u2192 (\u2200 x, x \u2208 row \u2192 x = 0 \u2228 x = 1)) \u2227\n  (\u2200 x, x \u2208 b \u2192 x = 0 \u2228 x = 1)\n  -- !benchmark @end precond\n\ndef is_solution (matrix : List (List Nat)) (b : List Nat) (x : List Nat) : Prop :=\n  x.length = (matrix.getD 0 []).length \u2227\n  (\u2200 i, i < matrix.length \u2192\n    ( (List.range x.length).foldl (fun acc j => acc + (matrix.getD i []).getD j 0 * x.getD j 0) 0 ) % 2 = b.getD i 0)\n\n-- !benchmark @start auxcode\n\n/-- `is_solution` is decidable: a length test plus a bounded check over rows. -/\ninstance is_solution_decidable (matrix : List (List Nat)) (b x : List Nat) :\n    Decidable (is_solution matrix b x) := by\n  unfold is_solution\n  infer_instance\n\n/-- Truncate/pad a row to `n` entries, reduced mod 2. -/\ndef normRow (n : Nat) (r : List Nat) : List Nat :=\n  (List.range n).map (fun j => r.getD j 0 % 2)\n\n/-- Entrywise GF(2) addition of two rows. -/\ndef xorRow (u v : List Nat) : List Nat :=\n  List.zipWith (fun a c => (a + c) % 2) u v\n\n/-- Select a row with a `1` in column `j`, returning it together with the\n    remaining rows (in order). -/\ndef pick (j : Nat) : List (List Nat) \u2192 Option (List Nat \u00d7 List (List Nat))\n  | [] => none\n  | r :: rs =>\n    if r.getD j 0 = 1 then some (r, rs)\n    else\n      match pick j rs with\n      | none => none\n      | some (p, rest) => some (p, r :: rest)\n\n/-- Clear column `j` of `r` using pivot row `p`. -/\ndef clr (j : Nat) (p r : List Nat) : List Nat :=\n  if r.getD j 0 = 1 then xorRow r p else r\n\n/-- Gaussian elimination: process the given columns left to right, moving pivot\n    rows out of the working set and clearing their column everywhere else\n    (reduced row echelon form).  Returns the leftover rows and the pivots. -/\ndef elim : List Nat \u2192 List (List Nat) \u2192 List (Nat \u00d7 List Nat) \u2192\n    List (List Nat) \u00d7 List (Nat \u00d7 List Nat)\n  | [], rows, piv => (rows, piv)\n  | j :: js, rows, piv =>\n    match pick j rows with\n    | none => elim js rows piv\n    | some (p, rest) =>\n        elim js (rest.map (clr j p)) ((j, p) :: piv.map (fun kq => (kq.1, clr j p kq.2)))\n\n/-- Augmented system `[A | b | I]`: the trailing identity block records, for each\n    working row, which original equations were added together to form it. -/\ndef augment (matrix : List (List Nat)) (b : List Nat) (n : Nat) : List (List Nat) :=\n  (List.range matrix.length).map (fun i =>\n    normRow n (matrix.getD i []) ++ [b.getD i 0 % 2] ++\n      (List.range matrix.length).map (fun k => if k = i then 1 else 0))\n\ndef geRun (matrix : List (List Nat)) (b : List Nat) (n : Nat) :\n    List (List Nat) \u00d7 List (Nat \u00d7 List Nat) :=\n  elim (List.range n) (augment matrix b n) []\n\n/-- Back-read a particular solution: pivot variables take their row's RHS, free\n    variables are set to `0`. -/\ndef buildX (n : Nat) (piv : List (Nat \u00d7 List Nat)) : List Nat :=\n  (List.range n).map (fun j =>\n    match piv.find? (fun kq => kq.1 == j) with\n    | some kq => kq.2.getD n 0\n    | none => 0)\n\ndef geSolve (matrix : List (List Nat)) (b : List Nat) (n : Nat) : List Nat :=\n  buildX n (geRun matrix b n).2\n\n/-- An inconsistent leftover row (all coefficients `0`, RHS `1`) exposes its\n    identity block as a certificate `c` with `c\u1d40A = 0`, `c\u1d40b = 1`. -/\ndef geCert (matrix : List (List Nat)) (b : List Nat) (n : Nat) : List Nat :=\n  match (geRun matrix b n).1.find?\n      (fun r => ((List.range n).all (fun j => r.getD j 0 == 0)) && (r.getD n 0 == 1)) with\n  | some r => r.drop (n + 1)\n  | none => []\n\n/-- `(c\u1d40A)_j`, as a plain sum of naturals. -/\ndef certCol (c : List Nat) (matrix : List (List Nat)) (j : Nat) : Nat :=\n  (List.range matrix.length).foldl\n    (fun acc i => acc + c.getD i 0 * (matrix.getD i []).getD j 0) 0\n\n/-- `c\u1d40b`, as a plain sum of naturals. -/\ndef certRhs (c : List Nat) (b : List Nat) (m : Nat) : Nat :=\n  (List.range m).foldl (fun acc i => acc + c.getD i 0 * b.getD i 0) 0\n\n/-- Checks the unsolvability certificate: `c\u1d40A \u2261 0` in every column and\n    `c\u1d40b \u2261 1` (mod 2). -/\ndef certOK (matrix : List (List Nat)) (b : List Nat) (n : Nat) (c : List Nat) : Bool :=\n  ((List.range n).all (fun j => certCol c matrix j % 2 == 0)) &&\n    (certRhs c b matrix.length % 2 == 1)\n\n/-- All 0/1 vectors of length `n`. -/\ndef allBV : Nat \u2192 List (List Nat)\n  | 0 => [[]]\n  | k + 1 => (allBV k).flatMap (fun v => [0 :: v, 1 :: v])\n\n/-- Total fallback: exhaustive search.  Unreachable for well-formed inputs (the\n    elimination always returns either a solution or a certificate); it exists\n    only so that the definition is total with a checkable postcondition. -/\ndef bruteFind (matrix : List (List Nat)) (b : List Nat) (n : Nat) : Option (List Nat) :=\n  (allBV n).find? (fun x => decide (is_solution matrix b x))\n\n-- !benchmark @end auxcode\n\n-- Main function definitions\ndef solve_linear_system_gf2 (matrix : List (List Nat)) (b : List Nat) (h_precond : solve_linear_system_gf2_precond matrix b) : Option (List Nat) :=\n  -- !benchmark @start code\n  if is_solution matrix b (geSolve matrix b (matrix.getD 0 []).length) then\n    some (geSolve matrix b (matrix.getD 0 []).length)\n  else if certOK matrix b (matrix.getD 0 []).length\n      (geCert matrix b (matrix.getD 0 []).length) then\n    none\n  else\n    bruteFind matrix b (matrix.getD 0 []).length\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef solve_linear_system_gf2_postcond (matrix : List (List Nat)) (b : List Nat) (result : Option (List Nat)) (h_precond : solve_linear_system_gf2_precond matrix b) : Prop :=\n  -- !benchmark @start postcond\n  match result with\n  | some x => is_solution matrix b x\n  | none => \u2200 x, x.length = (matrix.getD 0 []).length \u2192 (\u2200 v, v \u2208 x \u2192 v = 0 \u2228 v = 1) \u2192 \u00ac is_solution matrix b x\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\n\n/-- The accumulator form of `List.range` folds is a `Finset.range` sum. -/\ntheorem foldl_range_eq_sum (f : Nat \u2192 Nat) : \u2200 (k a : Nat),\n    (List.range k).foldl (fun acc j => acc + f j) a = a + \u2211 j \u2208 Finset.range k, f j := by\n  intro k\n  induction k with\n  | zero => intro a; simp\n  | succ k ih =>\n      intro a\n      rw [List.range_succ, List.foldl_append, ih, Finset.sum_range_succ]\n      simp [Nat.add_assoc]\n\n/-- Every 0/1 vector of length `n` is enumerated by `allBV n`. -/\ntheorem mem_allBV : \u2200 (n : Nat) (x : List Nat), x.length = n \u2192\n    (\u2200 v, v \u2208 x \u2192 v = 0 \u2228 v = 1) \u2192 x \u2208 allBV n := by\n  intro n\n  induction n with\n  | zero =>\n      intro x hx _\n      simp [allBV, List.length_eq_zero_iff.mp hx]\n  | succ k ih =>\n      intro x hx hb\n      match x with\n      | [] => simp at hx\n      | a :: t =>\n          have hlt : t.length = k := by simpa using hx\n          have hbt : \u2200 v, v \u2208 t \u2192 v = 0 \u2228 v = 1 := fun v hv => hb v (List.mem_cons_of_mem _ hv)\n          have ht : t \u2208 allBV k := ih t hlt hbt\n          have ha : a = 0 \u2228 a = 1 := hb a (List.mem_cons_self ..)\n          simp only [allBV, List.mem_flatMap]\n          exact \u27e8t, ht, by rcases ha with h | h <;> simp [h]\u27e9\n\n/-- Soundness of the exhaustive fallback. -/\ntheorem bruteFind_sound (matrix : List (List Nat)) (b : List Nat) (n : Nat) :\n    match bruteFind matrix b n with\n    | some x => is_solution matrix b x\n    | none => \u2200 x, x.length = n \u2192 (\u2200 v, v \u2208 x \u2192 v = 0 \u2228 v = 1) \u2192 \u00ac is_solution matrix b x := by\n  unfold bruteFind\n  cases hf : (allBV n).find? (fun x => decide (is_solution matrix b x)) with\n  | some y =>\n      have := List.find?_some hf\n      simpa using of_decide_eq_true (by simpa using this)\n  | none =>\n      intro x hxlen hxb hxsol\n      have hmem : x \u2208 allBV n := mem_allBV n x hxlen hxb\n      have := List.find?_eq_none.mp hf x hmem\n      simp [hxsol] at this\n\n/-- A verified certificate rules out every solution: if `c\u1d40A \u2261 0` columnwise and\n    `c\u1d40b \u2261 1` (mod 2), then `Ax = b` is unsolvable, since\n    `1 \u2261 c\u1d40b \u2261 c\u1d40(Ax) \u2261 (c\u1d40A)x \u2261 0` in `ZMod 2`. -/\ntheorem cert_sound (matrix : List (List Nat)) (b : List Nat) (n : Nat) (c : List Nat)\n    (hc : certOK matrix b n c = true) (x : List Nat) (hxlen : x.length = n) :\n    \u00ac is_solution matrix b x := by\n  rintro \u27e8-, heq\u27e9\n  set m := matrix.length with hm\n  simp only [certOK, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq,\n    beq_iff_eq, List.mem_range] at hc\n  obtain \u27e8hcol, hrhs\u27e9 := hc\n  -- rewrite every fold as a `Finset.range` sum\n  have hcolS : \u2200 j < n, (\u2211 i \u2208 Finset.range m, c.getD i 0 * (matrix.getD i []).getD j 0) % 2 = 0 := by\n    intro j hj\n    have := hcol j hj\n    rwa [certCol, foldl_range_eq_sum, Nat.zero_add] at this\n  have hrhsS : (\u2211 i \u2208 Finset.range m, c.getD i 0 * b.getD i 0) % 2 = 1 := by\n    rwa [certRhs, foldl_range_eq_sum, Nat.zero_add] at hrhs\n  have heqS : \u2200 i < m, (\u2211 j \u2208 Finset.range n, (matrix.getD i []).getD j 0 * x.getD j 0) % 2\n      = b.getD i 0 := by\n    intro i hi\n    have := heq i hi\n    rwa [hxlen, foldl_range_eq_sum, Nat.zero_add] at this\n  -- move to `ZMod 2`\n  have key : \u2200 i < m, ((\u2211 j \u2208 Finset.range n, (matrix.getD i []).getD j 0 * x.getD j 0 : Nat) : ZMod 2)\n      = ((b.getD i 0 : Nat) : ZMod 2) := by\n    intro i hi\n    rw [\u2190 heqS i hi, ZMod.natCast_mod]\n  have left : ((\u2211 i \u2208 Finset.range m, c.getD i 0 * b.getD i 0 : Nat) : ZMod 2) = 1 := by\n    rw [\u2190 ZMod.natCast_mod, hrhsS]; norm_num\n  have right : ((\u2211 i \u2208 Finset.range m, c.getD i 0 * b.getD i 0 : Nat) : ZMod 2) = 0 := by\n    have step1 : ((\u2211 i \u2208 Finset.range m, c.getD i 0 * b.getD i 0 : Nat) : ZMod 2)\n        = \u2211 i \u2208 Finset.range m, ((c.getD i 0 : ZMod 2) *\n            \u2211 j \u2208 Finset.range n, ((matrix.getD i []).getD j 0 : ZMod 2) * (x.getD j 0 : ZMod 2)) := by\n      push_cast\n      refine Finset.sum_congr rfl ?_\n      intro i hi\n      have hi' : i < m := Finset.mem_range.mp hi\n      have := key i hi'\n      push_cast at this\n      rw [this]\n    rw [step1]\n    have step2 : \u2200 i \u2208 Finset.range m, ((c.getD i 0 : ZMod 2) *\n        \u2211 j \u2208 Finset.range n, ((matrix.getD i []).getD j 0 : ZMod 2) * (x.getD j 0 : ZMod 2))\n        = \u2211 j \u2208 Finset.range n, ((c.getD i 0 : ZMod 2) * ((matrix.getD i []).getD j 0 : ZMod 2))\n            * (x.getD j 0 : ZMod 2) := by\n      intro i _\n      rw [Finset.mul_sum]\n      exact Finset.sum_congr rfl (fun j _ => by ring)\n    rw [Finset.sum_congr rfl step2, Finset.sum_comm]\n    refine Finset.sum_eq_zero ?_\n    intro j hj\n    have hj' : j < n := Finset.mem_range.mp hj\n    rw [\u2190 Finset.sum_mul]\n    have : (\u2211 i \u2208 Finset.range m, ((c.getD i 0 : ZMod 2) * ((matrix.getD i []).getD j 0 : ZMod 2)))\n        = ((\u2211 i \u2208 Finset.range m, c.getD i 0 * (matrix.getD i []).getD j 0 : Nat) : ZMod 2) := by\n      push_cast; ring\n    rw [this, \u2190 ZMod.natCast_mod, hcolS j hj']\n    simp\n  rw [left] at right\n  exact one_ne_zero right\n\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem solve_linear_system_gf2_postcond_satisfied (matrix : List (List Nat)) (b : List Nat) (h_precond : solve_linear_system_gf2_precond matrix b) :\n    solve_linear_system_gf2_postcond matrix b (solve_linear_system_gf2 matrix b h_precond) h_precond := by\n  -- !benchmark @start proof\n  unfold solve_linear_system_gf2\n  split_ifs with h1 h2\n  \u00b7 exact h1\n  \u00b7 intro x hxlen _\n    exact cert_sound matrix b _ _ h2 x hxlen\n  \u00b7 have := bruteFind_sound matrix b (matrix.getD 0 []).length\n    cases hf : bruteFind matrix b (matrix.getD 0 []).length with\n    | some y => rw [hf] at this; exact this\n    | none => rw [hf] at this; exact this\n  -- !benchmark @end proof\n",
+      "comment": ""
+    },
+    "verifier_response": {
+      "verified": true,
+      "feedback": "Verified successfully.",
+      "raw": {
+        "stdout": "claude_code_linearsys_gf2_final_1786109513285.lean:123:71: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_linearsys_gf2_final_1786109513285.lean:136:109: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_linearsys_gf2_final_1786109513285.lean:200:57: warning: This simp argument is unused:\n  decide_eq_true_eq\n\nHint: Omit it from the simp argument list.\n  simp only [certOK, Bool.and_eq_true, List.all_eq_true, d\u0335e\u0335c\u0335i\u0335d\u0335e\u0335_\u0335e\u0335q\u0335_\u0335t\u0335r\u0335u\u0335e\u0335_\u0335e\u0335q\u0335,\u0335\n  \u0335 \u0335 \u0335 \u0335 \u0335beq_iff_eq, List.mem_range] at hc\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\n",
+        "stderr": "",
+        "returncode": 0
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": false,
+        "verifier_response": {
+          "verified": false,
+          "feedback": "Candidate validation failed: candidate 'code' section contains prohibited term 'sorry'",
+          "raw": null
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "532e98fe-bff3-4874-9bcf-ce55905fd879",
+          "subtype": "error_during_execution",
+          "is_error": true,
+          "total_cost_usd": 0.05667074999999999,
+          "duration_ms": 159231,
+          "duration_api_ms": 9894,
+          "num_turns": 7,
+          "returncode": 143,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/linearsys_gf2/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "e722d3eb38c1c17f100588d09982cf25c371dd8f16df9ae7bc7ebccfb47fe94e",
+          "budget_usd": 1.35,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false
+            },
+            "governor_stop_reason": "no durable edit before 12000 thinking tokens",
+            "max_thinking_tokens_observed": 12000,
+            "seconds_to_first_progress": null,
+            "seconds_to_first_check": null,
+            "pending_tool_recovery": []
+          }
+        }
+      },
+      {
+        "compiler_pass": 2,
+        "verified": true,
+        "verifier_response": {
+          "verified": true,
+          "feedback": "Verified successfully.",
+          "raw": {
+            "stdout": "claude_code_linearsys_gf2_final_1786109513285.lean:123:71: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_linearsys_gf2_final_1786109513285.lean:136:109: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_linearsys_gf2_final_1786109513285.lean:200:57: warning: This simp argument is unused:\n  decide_eq_true_eq\n\nHint: Omit it from the simp argument list.\n  simp only [certOK, Bool.and_eq_true, List.all_eq_true, d\u0335e\u0335c\u0335i\u0335d\u0335e\u0335_\u0335e\u0335q\u0335_\u0335t\u0335r\u0335u\u0335e\u0335_\u0335e\u0335q\u0335,\u0335\n  \u0335 \u0335 \u0335 \u0335 \u0335beq_iff_eq, List.mem_range] at hc\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\n",
+            "stderr": "",
+            "returncode": 0
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "cce53b49-2033-45db-b726-74b563816149",
+          "subtype": "error_max_budget_usd",
+          "is_error": true,
+          "total_cost_usd": 0.7570522499999999,
+          "duration_ms": 243885,
+          "duration_api_ms": 231041,
+          "num_turns": 11,
+          "returncode": 1,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/linearsys_gf2/agent_events.jsonl",
+          "pass_number": 2,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "0c354aa9ec8ebd86610e48b486c7c3e52901c165c81580c624f41fa64add737f",
+          "budget_usd": 0.75,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 6650,
+            "seconds_to_first_progress": 221.126,
+            "seconds_to_first_check": 236.013,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 206882,
+      "output": 28043,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "cce53b49-2033-45db-b726-74b563816149",
+      "subtype": "error_max_budget_usd",
+      "is_error": true,
+      "total_cost_usd": 1.24041575,
+      "duration_ms": 555966,
+      "duration_api_ms": 352156,
+      "num_turns": 18,
+      "returncode": 1,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/linearsys_gf2/agent_events.jsonl",
+      "pass_number": 2,
+      "prompt_kind": "compiler_repair",
+      "prompt_sha256": "0c354aa9ec8ebd86610e48b486c7c3e52901c165c81580c624f41fa64add737f",
+      "budget_usd": 0.75,
+      "lastdance_profile": "robust",
+      "features": {
+        "profile": "robust",
+        "algorithm_plan": true,
+        "lemma_plan": true,
+        "leansearch": true,
+        "semantic_audit": true,
+        "semantic_reminder": true,
+        "early_check": true,
+        "feedback_mode": "structured",
+        "backtracking": true,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": true,
+          "progress_governor": true,
+          "pre_edit_timeout_seconds": 300,
+          "pre_edit_thinking_tokens": 12000,
+          "post_edit_check_timeout_seconds": 180,
+          "planning_mode": false,
+          "diagnostic_wrapper": false
+        },
+        "governor_stop_reason": null,
+        "max_thinking_tokens_observed": 6650,
+        "seconds_to_first_progress": 221.126,
+        "seconds_to_first_check": 236.013,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 2,
+      "total_sessions": 3,
+      "selected_session": 2,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "low",
+          "session_id": "dd2a1bbf-b03e-4601-bf27-6ae8defb1156",
+          "subtype": "error_max_budget_usd",
+          "is_error": true,
+          "total_cost_usd": 0.42669275,
+          "duration_ms": 152850,
+          "duration_api_ms": 111221,
+          "num_turns": 8,
+          "returncode": 1,
+          "timed_out": false,
+          "stderr": "",
+          "pass_number": 0,
+          "prompt_kind": "proof_feasibility_planning",
+          "prompt_sha256": "f1a7982a170be32739910a41754b41735426b843f5562cd9afde9baab6893a00",
+          "budget_usd": 0.4,
+          "tokens": {
+            "input": 46100,
+            "output": 8265,
+            "reasoning": 0
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": true,
+              "diagnostic_wrapper": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 2750,
+            "seconds_to_first_progress": 110.229,
+            "seconds_to_first_check": null,
+            "pending_tool_recovery": [
+              {
+                "tool_use_id": "toolu_01WJT6Ruy91a4iW1WJSK7eQq",
+                "tool_name": "Write",
+                "recovered": true,
+                "denial": null,
+                "file": "ProofState.md",
+                "characters": 6874,
+                "sha256": "1b088f69ffaca609e2df099b5b203c90f881bf733d78eb517079ea0bb00f9a0f"
+              }
+            ]
+          }
+        },
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "532e98fe-bff3-4874-9bcf-ce55905fd879",
+          "subtype": "error_during_execution",
+          "is_error": true,
+          "total_cost_usd": 0.05667074999999999,
+          "duration_ms": 159231,
+          "duration_api_ms": 9894,
+          "num_turns": 7,
+          "returncode": 143,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/linearsys_gf2/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "e722d3eb38c1c17f100588d09982cf25c371dd8f16df9ae7bc7ebccfb47fe94e",
+          "budget_usd": 1.35,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false
+            },
+            "governor_stop_reason": "no durable edit before 12000 thinking tokens",
+            "max_thinking_tokens_observed": 12000,
+            "seconds_to_first_progress": null,
+            "seconds_to_first_check": null,
+            "pending_tool_recovery": []
+          }
+        },
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "cce53b49-2033-45db-b726-74b563816149",
+          "subtype": "error_max_budget_usd",
+          "is_error": true,
+          "total_cost_usd": 0.7570522499999999,
+          "duration_ms": 243885,
+          "duration_api_ms": 231041,
+          "num_turns": 11,
+          "returncode": 1,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/linearsys_gf2/agent_events.jsonl",
+          "pass_number": 2,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "0c354aa9ec8ebd86610e48b486c7c3e52901c165c81580c624f41fa64add737f",
+          "budget_usd": 0.75,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": true,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 6650,
+            "seconds_to_first_progress": 221.126,
+            "seconds_to_first_check": 236.013,
+            "pending_tool_recovery": []
+          }
+        }
+      ],
+      "planning_session": {
+        "kind": "claude-code",
+        "cli_version": "2.1.220 (Claude Code)",
+        "model": "claude-opus-5",
+        "effort": "low",
+        "session_id": "dd2a1bbf-b03e-4601-bf27-6ae8defb1156",
+        "subtype": "error_max_budget_usd",
+        "is_error": true,
+        "total_cost_usd": 0.42669275,
+        "duration_ms": 152850,
+        "duration_api_ms": 111221,
+        "num_turns": 8,
+        "returncode": 1,
+        "timed_out": false,
+        "stderr": "",
+        "pass_number": 0,
+        "prompt_kind": "proof_feasibility_planning",
+        "prompt_sha256": "f1a7982a170be32739910a41754b41735426b843f5562cd9afde9baab6893a00",
+        "budget_usd": 0.4,
+        "tokens": {
+          "input": 46100,
+          "output": 8265,
+          "reasoning": 0
+        },
+        "run_control": {
+          "control": {
+            "recover_pending_tool": true,
+            "progress_governor": true,
+            "pre_edit_timeout_seconds": 300,
+            "pre_edit_thinking_tokens": 12000,
+            "post_edit_check_timeout_seconds": 180,
+            "planning_mode": true,
+            "diagnostic_wrapper": false
+          },
+          "governor_stop_reason": null,
+          "max_thinking_tokens_observed": 2750,
+          "seconds_to_first_progress": 110.229,
+          "seconds_to_first_check": null,
+          "pending_tool_recovery": [
+            {
+              "tool_use_id": "toolu_01WJT6Ruy91a4iW1WJSK7eQq",
+              "tool_name": "Write",
+              "recovered": true,
+              "denial": null,
+              "file": "ProofState.md",
+              "characters": 6874,
+              "sha256": "1b088f69ffaca609e2df099b5b203c90f881bf733d78eb517079ea0bb00f9a0f"
+            }
+          ]
+        }
+      }
+    },
+    "provenance": {
+      "schema_version": 1,
+      "ownership": {
+        "model_owned_sections": [
+          "auxcode",
+          "code",
+          "lemma",
+          "proof"
+        ],
+        "teacher_owned": "all source outside the four marker regions",
+        "teacher_owned_sorry_present": false,
+        "model_section_ranges": {
+          "auxcode": {
+            "start_line": 21,
+            "end_line": 120
+          },
+          "code": {
+            "start_line": 124,
+            "end_line": 132
+          },
+          "lemma": {
+            "start_line": 143,
+            "end_line": 254
+          },
+          "proof": {
+            "start_line": 259,
+            "end_line": 269
+          }
+        }
+      },
+      "hashes": {
+        "original_sha256": "7d0b993a18b7905bea069bf41d4669a75fb4f84979bbc528748dd4264e002e0b",
+        "candidate_sha256": "f03dbbed8cf15e9998e9068b1fd809739ed7197d3b13aa7d88f318b7f2c1bf02",
+        "merged_sha256": "f03dbbed8cf15e9998e9068b1fd809739ed7197d3b13aa7d88f318b7f2c1bf02",
+        "model_sections_sha256": {
+          "auxcode": "0fa5130211ff77a6480c70e41a08dee89cab11c95a9973b8b2689d6069580cad",
+          "code": "f927e9f7ae0c5f96d4405e5310b89159e4e0b92a2666d356bb66fb6fc7da5b69",
+          "lemma": "543f5e73e04ec21260dd2a4e135d5580fbd25d7bf5e607bb91ca81d56043d6fd",
+          "proof": "c28255ebb9e17abee378ed65bcabad00cf3fa79a6e58ef24277c158ec3f1c926"
+        }
+      }
+    },
+    "targeted_diagnostics": [],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/linearsys_gf2/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/linearsys_gf2/AlgorithmPlan.md",
+      "proof_state": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/linearsys_gf2/ProofState.md",
+      "leansearch_queries": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/linearsys_gf2/.lastdance/leansearch_queries.jsonl",
+      "checkpoints": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/linearsys_gf2/.lastdance/checkpoints/manifest.jsonl",
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_phased_13/linearsys_gf2/.lastdance/prompts"
+    }
+  }
+}

@@ -1,0 +1,250 @@
+{
+  "verified": true,
+  "details": {
+    "rounds": 10,
+    "llm_response": {
+      "code": "import Mathlib\n\n-- Precondition definitions\n@[reducible, simp]\ndef insertionSort_precond (v : List Int) : Prop :=\n  -- !benchmark @start precond\n  True\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n/-- Insert `x` into the (already sorted) list `l`, keeping it sorted. -/\ndef ins (x : Int) : List Int \u2192 List Int\n  | [] => [x]\n  | y :: ys => if x \u2264 y then x :: y :: ys else y :: ins x ys\n\n/-- Insertion sort: sort the tail, then insert the head. -/\ndef isort : List Int \u2192 List Int\n  | [] => []\n  | x :: xs => ins x (isort xs)\n-- !benchmark @end auxcode\n\n-- Main function definitions\ndef insertionSort (v : List Int) (h_precond : insertionSort_precond v) : List Int :=\n  -- !benchmark @start code\n  isort v\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef insertionSort_postcond (v : List Int) (result : List Int) (h_precond : insertionSort_precond v) : Prop :=\n  -- !benchmark @start postcond\n   List.Sorted (\u00b7 \u2264 \u00b7) result \u2227 result.Perm v\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\ntheorem ins_perm (x : Int) (l : List Int) : (ins x l).Perm (x :: l) := by\n  induction l with\n  | nil => simp [ins]\n  | cons y ys ih =>\n    by_cases h : x \u2264 y\n    \u00b7 simp [ins, h]\n    \u00b7 have h1 : (ins x (y :: ys)).Perm (y :: x :: ys) := by\n        simpa [ins, h] using ih.cons y\n      exact h1.trans (List.Perm.swap x y ys)\n\ntheorem mem_ins {a x : Int} {l : List Int} (ha : a \u2208 ins x l) : a = x \u2228 a \u2208 l := by\n  have := (ins_perm x l).mem_iff (a := a)\n  have : a \u2208 x :: l := this.mp ha\n  simpa using this\n\ntheorem sorted_ins (x : Int) (l : List Int) (hs : List.Sorted (\u00b7 \u2264 \u00b7) l) :\n    List.Sorted (\u00b7 \u2264 \u00b7) (ins x l) := by\n  induction l with\n  | nil => simp [ins]\n  | cons y ys ih =>\n    rw [List.sorted_cons] at hs\n    by_cases h : x \u2264 y\n    \u00b7 rw [show ins x (y :: ys) = x :: y :: ys by simp [ins, h]]\n      rw [List.sorted_cons]\n      refine \u27e8?_, List.sorted_cons.mpr hs\u27e9\n      intro b hb\n      rcases List.mem_cons.mp hb with rfl | hb\n      \u00b7 exact h\n      \u00b7 exact le_trans h (hs.1 b hb)\n    \u00b7 rw [show ins x (y :: ys) = y :: ins x ys by simp [ins, h]]\n      rw [List.sorted_cons]\n      refine \u27e8?_, ih hs.2\u27e9\n      intro b hb\n      rcases mem_ins hb with rfl | hb\n      \u00b7 exact le_of_lt (lt_of_not_ge h)\n      \u00b7 exact hs.1 b hb\n\ntheorem sorted_isort (l : List Int) : List.Sorted (\u00b7 \u2264 \u00b7) (isort l) := by\n  induction l with\n  | nil => simp [isort]\n  | cons x xs ih => exact sorted_ins x (isort xs) ih\n\ntheorem perm_isort (l : List Int) : (isort l).Perm l := by\n  induction l with\n  | nil => simp [isort]\n  | cons x xs ih =>\n    exact (ins_perm x (isort xs)).trans (ih.cons x)\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem insertionSort_postcond_satisfied (v : List Int) (h_precond : insertionSort_precond v) :\n    insertionSort_postcond v (insertionSort v h_precond) h_precond := by\n  -- !benchmark @start proof\n  exact \u27e8sorted_isort v, perm_isort v\u27e9\n  -- !benchmark @end proof\n",
+      "comment": "`Solution.lean` is complete and verified (`LEAN VERIFIED`, only pre-existing unused-variable warnings from the given skeleton).\n\n**Approach**\n\n- **auxcode**: `ins x l` inserts `x` before the first element `\u2265` it; `isort` sorts the tail recursively then inserts the head \u2014 a standard recursive insertion sort.\n- **code**: `insertionSort v _ := isort v`.\n- **lemma**:\n  - `ins_perm`: `ins x l ~ x :: l`, by induction; the `\u00ac x \u2264 y` case chains `ih.cons y` with `Perm.swap`.\n  - `mem_ins`: membership transfer, derived from `ins_perm`.\n  - `sorted_ins`: inserting into a sorted list keeps it sorted. The `x \u2264 y` branch uses transitivity against the head bound; the other branch uses `mem_ins` plus `lt_of_not_ge` to bound `y \u2264 x`.\n  - `sorted_isort` / `perm_isort`: inductions over the list using the two lemmas above.\n- **proof**: `\u27e8sorted_isort v, perm_isort v\u27e9`.\n\nNo `sorry`/`axiom`/`partial` or other bypasses are used, and only the four marker regions were edited."
+    },
+    "verifier_response": {
+      "verified": true,
+      "feedback": "Verified successfully.",
+      "raw": {
+        "stdout": "claude_code_insertion_sort_final_1786244369781.lean:5:27: warning: unused variable `v`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_insertion_sort_final_1786244369781.lean:23:34: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_insertion_sort_final_1786244369781.lean:30:63: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+        "stderr": "",
+        "returncode": 0
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": true,
+        "verifier_response": {
+          "verified": true,
+          "feedback": "Verified successfully.",
+          "raw": {
+            "stdout": "claude_code_insertion_sort_final_1786244369781.lean:5:27: warning: unused variable `v`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_insertion_sort_final_1786244369781.lean:23:34: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_insertion_sort_final_1786244369781.lean:30:63: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+            "stderr": "",
+            "returncode": 0
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "066b8b53-0854-489b-870e-8839a7df22c2",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.25528,
+          "duration_ms": 66505,
+          "duration_api_ms": 57732,
+          "num_turns": 11,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/insertion_sort/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "49f33372ddb22a4ed64e16dbf5654a9d5f7f92c7494962393c18b7d08c426b14",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 1350,
+            "seconds_to_first_progress": 27.525,
+            "seconds_to_first_check": 49.883,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 132602,
+      "output": 4713,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "066b8b53-0854-489b-870e-8839a7df22c2",
+      "subtype": "success",
+      "provider_subtype": "success",
+      "is_error": false,
+      "total_cost_usd": 0.25528,
+      "duration_ms": 66505,
+      "duration_api_ms": 57732,
+      "num_turns": 11,
+      "returncode": 0,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/insertion_sort/agent_events.jsonl",
+      "pass_number": 1,
+      "prompt_kind": "initial",
+      "prompt_sha256": "49f33372ddb22a4ed64e16dbf5654a9d5f7f92c7494962393c18b7d08c426b14",
+      "budget_usd": null,
+      "lastdance_profile": "api",
+      "features": {
+        "profile": "api",
+        "algorithm_plan": false,
+        "lemma_plan": false,
+        "leansearch": false,
+        "semantic_audit": false,
+        "semantic_reminder": false,
+        "early_check": false,
+        "feedback_mode": "exact",
+        "backtracking": false,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": false,
+          "progress_governor": false,
+          "pre_edit_timeout_seconds": 300,
+          "pre_edit_thinking_tokens": 12000,
+          "post_edit_check_timeout_seconds": 180,
+          "planning_mode": false,
+          "diagnostic_wrapper": false,
+          "rescue_mode": false
+        },
+        "governor_stop_reason": null,
+        "max_thinking_tokens_observed": 1350,
+        "seconds_to_first_progress": 27.525,
+        "seconds_to_first_check": 49.883,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 1,
+      "total_sessions": 1,
+      "selected_session": 1,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "066b8b53-0854-489b-870e-8839a7df22c2",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.25528,
+          "duration_ms": 66505,
+          "duration_api_ms": 57732,
+          "num_turns": 11,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/insertion_sort/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "49f33372ddb22a4ed64e16dbf5654a9d5f7f92c7494962393c18b7d08c426b14",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 1350,
+            "seconds_to_first_progress": 27.525,
+            "seconds_to_first_check": 49.883,
+            "pending_tool_recovery": []
+          }
+        }
+      ],
+      "compiler_checks_observed": 2,
+      "max_compiler_checks": 15
+    },
+    "provenance": {
+      "schema_version": 1,
+      "ownership": {
+        "model_owned_sections": [
+          "auxcode",
+          "code",
+          "lemma",
+          "proof"
+        ],
+        "teacher_owned": "all source outside the four marker regions",
+        "teacher_owned_sorry_present": false,
+        "model_section_ranges": {
+          "auxcode": {
+            "start_line": 10,
+            "end_line": 20
+          },
+          "code": {
+            "start_line": 24,
+            "end_line": 26
+          },
+          "lemma": {
+            "start_line": 35,
+            "end_line": 83
+          },
+          "proof": {
+            "start_line": 88,
+            "end_line": 90
+          }
+        }
+      },
+      "hashes": {
+        "original_sha256": "538549844bfb180c4db06aa0e8f0ced03d681184408a661cee54718efd76fb19",
+        "candidate_sha256": "b5a1d905892b2553f7c87cb68b906ffe0ca6b88b2b2fabc5388ba7bb81716227",
+        "merged_sha256": "b5a1d905892b2553f7c87cb68b906ffe0ca6b88b2b2fabc5388ba7bb81716227",
+        "model_sections_sha256": {
+          "auxcode": "a2937cc2cb03dc420f4df168482daa5c626bcf9ddb81b2a84655bf1fa7a704e7",
+          "code": "01c23c1e877270621ddc2c9e4f4b51e3b43cfe6b7d131c1809fa63752881d320",
+          "lemma": "33fed7497cebf267ccbb7718cd9c549e601179bf8e45acc421a50e0ea116ceb7",
+          "proof": "0bce7b752ffd1a0e68241d249d1b8c81058096b05034500f5fc628eec8730170"
+        }
+      }
+    },
+    "targeted_diagnostics": [],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/insertion_sort/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": null,
+      "proof_state": null,
+      "leansearch_queries": null,
+      "checkpoints": null,
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/insertion_sort/.lastdance/prompts"
+    }
+  }
+}

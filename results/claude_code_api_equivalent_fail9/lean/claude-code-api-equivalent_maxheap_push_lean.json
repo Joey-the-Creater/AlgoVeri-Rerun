@@ -1,0 +1,250 @@
+{
+  "verified": true,
+  "details": {
+    "rounds": 8,
+    "llm_response": {
+      "code": "import Mathlib\n\nstructure BinaryMaxHeap where\n  storage : List Int\nderiving Inhabited\n\nnamespace BinaryMaxHeap\n\ndef len (h : BinaryMaxHeap) : Nat :=\n  h.storage.length\n\ndef get (h : BinaryMaxHeap) (i : Nat) : Int :=\n  h.storage.getD i 0 -- Safe access with default\n\ndef parent (i : Nat) : Nat := (i - 1) / 2\n\ndef is_heap (h : BinaryMaxHeap) : Prop :=\n  \u2200 i, 0 < i \u2227 i < h.len \u2192 h.get i \u2264 h.get (parent i)\n\ndef view (h : BinaryMaxHeap) : Multiset Int :=\n  Multiset.ofList h.storage\n\n-- Precondition definitions\n@[reducible, simp]\ndef push_precond (h : BinaryMaxHeap) (v : Int) : Prop :=\n  -- !benchmark @start precond\n  is_heap h \u2227 h.len < 1023 -- Limited capacity as per spec example\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n/-- Swap the entries at positions `i` and `j`. -/\ndef swapAt (l : List Int) (i j : Nat) : List Int :=\n  (l.set i (l.getD j 0)).set j (l.getD i 0)\n\n/-- Bubble the element at position `i` up towards the root. -/\ndef siftUp (l : List Int) (i : Nat) : List Int :=\n  if _h : 0 < i then\n    if l.getD ((i - 1) / 2) 0 < l.getD i 0 then\n      siftUp (swapAt l i ((i - 1) / 2)) ((i - 1) / 2)\n    else l\n  else l\ntermination_by i\ndecreasing_by omega\n\n/-- The heap invariant, stated directly on the underlying list. -/\ndef IsHeapList (l : List Int) : Prop :=\n  \u2200 j, 0 < j \u2192 j < l.length \u2192 l.getD j 0 \u2264 l.getD ((j - 1) / 2) 0\n\n/-- Invariant maintained by `siftUp`: the list is a heap except possibly at `i`,\nwhose value may be too large; moreover the children of `i` are already bounded by\nthe value sitting at the parent of `i` (which is what will be moved into `i`). -/\ndef SiftInv (l : List Int) (i : Nat) : Prop :=\n  (\u2200 j, 0 < j \u2192 j < l.length \u2192 j \u2260 i \u2192 l.getD j 0 \u2264 l.getD ((j - 1) / 2) 0) \u2227\n  (\u2200 c, 0 < c \u2192 c < l.length \u2192 (c - 1) / 2 = i \u2192 l.getD c 0 \u2264 l.getD ((i - 1) / 2) 0)\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef push (h : BinaryMaxHeap) (v : Int)\n    (h_precond : push_precond h v) : BinaryMaxHeap :=\n  -- !benchmark @start code\n  \u27e8siftUp (h.storage ++ [v]) h.storage.length\u27e9\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef push_postcond (h : BinaryMaxHeap) (v : Int) (result : BinaryMaxHeap)\n    (_ : push_precond h v) : Prop :=\n  -- !benchmark @start postcond\n  is_heap result \u2227\n  result.len = h.len + 1 \u2227\n  result.view = h.view + {v}\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\nlemma getD_set_self' (l : List Int) (i : Nat) (a : Int) (hi : i < l.length) :\n    (l.set i a).getD i 0 = a := by\n  simp [List.getD_eq_getElem?_getD, hi]\n\nlemma getD_set_of_ne (l : List Int) (i j : Nat) (a : Int) (hij : j \u2260 i) :\n    (l.set i a).getD j 0 = l.getD j 0 := by\n  simp [List.getD_eq_getElem?_getD, Ne.symm hij]\n\nlemma getD_append_lt (l\u2081 l\u2082 : List Int) (j : Nat) (hj : j < l\u2081.length) :\n    (l\u2081 ++ l\u2082).getD j 0 = l\u2081.getD j 0 := by\n  simp [List.getD_eq_getElem?_getD, List.getElem?_append_left hj]\n\nlemma swapAt_length (l : List Int) (i j : Nat) : (swapAt l i j).length = l.length := by\n  simp [swapAt]\n\nlemma swapAt_get_fst (l : List Int) (i j : Nat) (hij : i \u2260 j) (hi : i < l.length) :\n    (swapAt l i j).getD i 0 = l.getD j 0 := by\n  rw [swapAt, getD_set_of_ne _ _ _ _ hij, getD_set_self' _ _ _ hi]\n\nlemma swapAt_get_snd (l : List Int) (i j : Nat) (hj : j < l.length) :\n    (swapAt l i j).getD j 0 = l.getD i 0 := by\n  rw [swapAt, getD_set_self' _ _ _ (by simpa using hj)]\n\nlemma swapAt_get_other (l : List Int) (i j k : Nat) (hki : k \u2260 i) (hkj : k \u2260 j) :\n    (swapAt l i j).getD k 0 = l.getD k 0 := by\n  rw [swapAt, getD_set_of_ne _ _ _ _ hkj, getD_set_of_ne _ _ _ _ hki]\n\n/-- Overwriting position `i` with `a` replaces the old entry by `a`. -/\nlemma ofList_set (l : List Int) (i : Nat) (a : Int) (hi : i < l.length) :\n    (Multiset.ofList (l.set i a)) + {l.getD i 0} = (Multiset.ofList l) + {a} := by\n  induction l generalizing i with\n  | nil => simp at hi\n  | cons x t ih =>\n    match i with\n    | 0 =>\n      show (Multiset.ofList (a :: t)) + {x} = (Multiset.ofList (x :: t)) + {a}\n      rw [\u2190 Multiset.cons_coe, \u2190 Multiset.cons_coe, Multiset.cons_add, Multiset.cons_add,\n        add_comm (Multiset.ofList t) {x}, add_comm (Multiset.ofList t) {a},\n        Multiset.singleton_add, Multiset.singleton_add, Multiset.cons_swap]\n    | k + 1 =>\n      have hk : k < t.length := by simpa using hi\n      show (Multiset.ofList (x :: t.set k a)) + {t.getD k 0}\n          = (Multiset.ofList (x :: t)) + {a}\n      rw [\u2190 Multiset.cons_coe, \u2190 Multiset.cons_coe, Multiset.cons_add, Multiset.cons_add,\n        ih k hk]\n\nlemma ofList_swapAt (l : List Int) (i j : Nat) (hi : i < l.length) (hj : j < l.length) :\n    Multiset.ofList (swapAt l i j) = Multiset.ofList l := by\n  have hmid : (l.set i (l.getD j 0)).getD j 0 = l.getD j 0 := by\n    by_cases hij : j = i\n    \u00b7 subst hij; exact getD_set_self' _ _ _ hi\n    \u00b7 exact getD_set_of_ne _ _ _ _ hij\n  have h1 := ofList_set l i (l.getD j 0) hi\n  have h2 := ofList_set (l.set i (l.getD j 0)) j (l.getD i 0) (by simpa using hj)\n  rw [hmid, h1] at h2\n  exact add_right_cancel h2\n\nlemma siftUp_length : \u2200 (i : Nat) (l : List Int), (siftUp l i).length = l.length := by\n  intro i\n  induction i using Nat.strong_induction_on with\n  | _ i ih =>\n    intro l\n    rw [siftUp]\n    by_cases h0 : 0 < i\n    \u00b7 rw [dif_pos h0]\n      by_cases hlt : l.getD ((i - 1) / 2) 0 < l.getD i 0\n      \u00b7 rw [if_pos hlt, ih ((i - 1) / 2) (by omega), swapAt_length]\n      \u00b7 rw [if_neg hlt]\n    \u00b7 rw [dif_neg h0]\n\nlemma siftUp_multiset : \u2200 (i : Nat) (l : List Int), i < l.length \u2192\n    Multiset.ofList (siftUp l i) = Multiset.ofList l := by\n  intro i\n  induction i using Nat.strong_induction_on with\n  | _ i ih =>\n    intro l hi\n    rw [siftUp]\n    by_cases h0 : 0 < i\n    \u00b7 rw [dif_pos h0]\n      by_cases hlt : l.getD ((i - 1) / 2) 0 < l.getD i 0\n      \u00b7 rw [if_pos hlt,\n          ih ((i - 1) / 2) (by omega) _ (by rw [swapAt_length]; omega)]\n        exact ofList_swapAt l i ((i - 1) / 2) hi (by omega)\n      \u00b7 rw [if_neg hlt]\n    \u00b7 rw [dif_neg h0]\n\nlemma siftUp_heap : \u2200 (i : Nat) (l : List Int), i < l.length \u2192 SiftInv l i \u2192\n    IsHeapList (siftUp l i) := by\n  intro i\n  induction i using Nat.strong_induction_on with\n  | _ i ih =>\n    intro l hi hinv\n    obtain \u27e8hA, hB\u27e9 := hinv\n    rw [siftUp]\n    by_cases h0 : 0 < i\n    \u00b7 rw [dif_pos h0]\n      by_cases hlt : l.getD ((i - 1) / 2) 0 < l.getD i 0\n      \u00b7 rw [if_pos hlt]\n        have hpi : (i - 1) / 2 < i := by omega\n        have hpl : (i - 1) / 2 < l.length := by omega\n        have hine : i \u2260 (i - 1) / 2 := by omega\n        refine ih ((i - 1) / 2) hpi _ (by rw [swapAt_length]; omega) \u27e8?_, ?_\u27e9\n        \u00b7 -- heap property away from the new focus `(i-1)/2`\n          intro j hj0 hjl hjne\n          rw [swapAt_length] at hjl\n          by_cases hji : j = i\n          \u00b7 subst hji\n            rw [swapAt_get_fst _ _ _ hine hi, swapAt_get_snd _ _ _ hpl]\n            exact hlt.le\n          \u00b7 rw [swapAt_get_other l i ((i - 1) / 2) j hji hjne]\n            by_cases hqi : (j - 1) / 2 = i\n            \u00b7 rw [hqi, swapAt_get_fst _ _ _ hine hi]\n              exact hB j hj0 hjl hqi\n            \u00b7 by_cases hqp : (j - 1) / 2 = (i - 1) / 2\n              \u00b7 rw [hqp, swapAt_get_snd _ _ _ hpl]\n                have h1 := hA j hj0 hjl hji\n                rw [hqp] at h1\n                exact le_trans h1 hlt.le\n              \u00b7 rw [swapAt_get_other l i ((i - 1) / 2) _ hqi hqp]\n                exact hA j hj0 hjl hji\n        \u00b7 -- the children of the new focus are bounded by its parent's value\n          intro c hc0 hcl hcp\n          rw [swapAt_length] at hcl\n          have hcnep : c \u2260 (i - 1) / 2 := by omega\n          by_cases hp0 : 0 < (i - 1) / 2\n          \u00b7 have hgi : ((i - 1) / 2 - 1) / 2 \u2260 i := by omega\n            have hgp : ((i - 1) / 2 - 1) / 2 \u2260 (i - 1) / 2 := by omega\n            rw [swapAt_get_other l i ((i - 1) / 2) _ hgi hgp]\n            have hpar := hA ((i - 1) / 2) hp0 hpl (Ne.symm hine)\n            by_cases hci : c = i\n            \u00b7 subst hci\n              rw [swapAt_get_fst _ _ _ hine hi]\n              exact hpar\n            \u00b7 rw [swapAt_get_other l i ((i - 1) / 2) c hci hcnep]\n              have h1 := hA c hc0 hcl hci\n              rw [hcp] at h1\n              exact le_trans h1 hpar\n          \u00b7 have hg0 : ((i - 1) / 2 - 1) / 2 = (i - 1) / 2 := by omega\n            rw [hg0, swapAt_get_snd _ _ _ hpl]\n            by_cases hci : c = i\n            \u00b7 subst hci\n              rw [swapAt_get_fst _ _ _ hine hi]\n              exact hlt.le\n            \u00b7 rw [swapAt_get_other l i ((i - 1) / 2) c hci hcnep]\n              have h1 := hA c hc0 hcl hci\n              rw [hcp] at h1\n              exact le_trans h1 hlt.le\n      \u00b7 rw [if_neg hlt]\n        intro j hj0 hjl\n        by_cases hji : j = i\n        \u00b7 subst hji\n          exact not_lt.mp hlt\n        \u00b7 exact hA j hj0 hjl hji\n    \u00b7 rw [dif_neg h0]\n      intro j hj0 hjl\n      exact hA j hj0 hjl (by omega)\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem push_postcond_satisfied (h : BinaryMaxHeap) (v : Int)\n    (h_precond : push_precond h v) :\n    push_postcond h v (push h v h_precond) h_precond := by\n  -- !benchmark @start proof\n  obtain \u27e8hheap, -\u27e9 := h_precond\n  have hLlen : (h.storage ++ [v]).length = h.storage.length + 1 := by simp\n  have hnL : h.storage.length < (h.storage ++ [v]).length := by omega\n  have hinv : SiftInv (h.storage ++ [v]) h.storage.length := by\n    constructor\n    \u00b7 intro j hj0 hjl hjne\n      rw [hLlen] at hjl\n      have hjlt : j < h.storage.length := by omega\n      have hqlt : (j - 1) / 2 < h.storage.length := by omega\n      rw [getD_append_lt _ _ _ hjlt, getD_append_lt _ _ _ hqlt]\n      exact hheap j \u27e8hj0, hjlt\u27e9\n    \u00b7 intro c hc0 hcl hcp\n      rw [hLlen] at hcl\n      omega\n  have hres := siftUp_heap h.storage.length (h.storage ++ [v]) hnL hinv\n  have hlen := siftUp_length h.storage.length (h.storage ++ [v])\n  have hmul := siftUp_multiset h.storage.length (h.storage ++ [v]) hnL\n  refine \u27e8?_, ?_, ?_\u27e9\n  \u00b7 intro j hj\n    exact hres j hj.1 hj.2\n  \u00b7 show (siftUp (h.storage ++ [v]) h.storage.length).length = h.storage.length + 1\n    rw [hlen, hLlen]\n  \u00b7 show Multiset.ofList (siftUp (h.storage ++ [v]) h.storage.length)\n        = Multiset.ofList h.storage + {v}\n    rw [hmul]\n    rfl\n  -- !benchmark @end proof\n\nend BinaryMaxHeap\n",
+      "comment": "**LEAN VERIFIED** \u2014 `Solution.lean` compiles with no errors and no `sorry` (the two remaining warnings are about unused binders in the given, unmodified signatures).\n\n## What I implemented\n\n`push h v = \u27e8siftUp (h.storage ++ [v]) h.storage.length\u27e9` \u2014 a genuine append-then-bubble-up, not a re-sort. `siftUp l i` compares `l[i]` with `l[(i-1)/2]`, swaps and recurses on the parent while the child is strictly larger; it terminates because `(i-1)/2 < i` when `i > 0`.\n\n## Key idea in the proof\n\nThe obvious invariant (\"a heap everywhere except possibly at `i`\") is **not** inductive. After swapping `i` with its parent `p`, position `i` receives the *smaller* value `l[p]`, and a child `c` of `i` only gives you `l[c] \u2264 l[i]` \u2014 the wrong direction. So `SiftInv l i` carries a second clause:\n\n- **(A)** every `j \u2260 i` satisfies `l[j] \u2264 l[parent j]`;\n- **(B)** every child `c` of `i` satisfies `l[c] \u2264 l[parent i]` \u2014 i.e. the subtree under `i` survives the incoming parent value.\n\nBoth endpoints then fall out cleanly: at the start `i = n` is the freshly appended slot, whose children are out of range, so (B) is vacuous; and when the recursion stops at `i = 0`, clause (A) *is* the heap property, since `j \u2260 0` is automatic for `j > 0`. The step lemma re-establishes both clauses for `p`, splitting on whether `p = 0` (where `parent p = p` and the grandparent slot coincides with the swapped one).\n\nSupporting pieces: `getD`/`set` access lemmas, `ofList_set` (`\u2191(l.set i a) + {l[i]} = \u2191l + {a}`, an addition-only form that dodges multiset subtraction) proved by induction, and `ofList_swapAt` obtained from it by cancellation \u2014 giving multiset preservation, with length preservation and the heap property each by strong induction on `i`."
+    },
+    "verifier_response": {
+      "verified": true,
+      "feedback": "Verified successfully.",
+      "raw": {
+        "stdout": "claude_code_maxheap_push_final_1786248968389.lean:25:38: warning: unused variable `v`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_maxheap_push_final_1786248968389.lean:59:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+        "stderr": "",
+        "returncode": 0
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": true,
+        "verifier_response": {
+          "verified": true,
+          "feedback": "Verified successfully.",
+          "raw": {
+            "stdout": "claude_code_maxheap_push_final_1786248968389.lean:25:38: warning: unused variable `v`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_maxheap_push_final_1786248968389.lean:59:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+            "stderr": "",
+            "returncode": 0
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "676d3a87-e160-4eb2-bfdb-8128e71b6352",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 1.351322,
+          "duration_ms": 405880,
+          "duration_api_ms": 391554,
+          "num_turns": 9,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/maxheap_push/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "87f81688bc9b4ca5f603d246cc5cf115c9273a96f2067fed0dade206ec670c4d",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 27800,
+            "seconds_to_first_progress": 351.173,
+            "seconds_to_first_check": 359.381,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 291501,
+      "output": 35747,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "676d3a87-e160-4eb2-bfdb-8128e71b6352",
+      "subtype": "success",
+      "provider_subtype": "success",
+      "is_error": false,
+      "total_cost_usd": 1.351322,
+      "duration_ms": 405880,
+      "duration_api_ms": 391554,
+      "num_turns": 9,
+      "returncode": 0,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/maxheap_push/agent_events.jsonl",
+      "pass_number": 1,
+      "prompt_kind": "initial",
+      "prompt_sha256": "87f81688bc9b4ca5f603d246cc5cf115c9273a96f2067fed0dade206ec670c4d",
+      "budget_usd": null,
+      "lastdance_profile": "api",
+      "features": {
+        "profile": "api",
+        "algorithm_plan": false,
+        "lemma_plan": false,
+        "leansearch": false,
+        "semantic_audit": false,
+        "semantic_reminder": false,
+        "early_check": false,
+        "feedback_mode": "exact",
+        "backtracking": false,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": false,
+          "progress_governor": false,
+          "pre_edit_timeout_seconds": 300,
+          "pre_edit_thinking_tokens": 12000,
+          "post_edit_check_timeout_seconds": 180,
+          "planning_mode": false,
+          "diagnostic_wrapper": false,
+          "rescue_mode": false
+        },
+        "governor_stop_reason": null,
+        "max_thinking_tokens_observed": 27800,
+        "seconds_to_first_progress": 351.173,
+        "seconds_to_first_check": 359.381,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 1,
+      "total_sessions": 1,
+      "selected_session": 1,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "676d3a87-e160-4eb2-bfdb-8128e71b6352",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 1.351322,
+          "duration_ms": 405880,
+          "duration_api_ms": 391554,
+          "num_turns": 9,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/maxheap_push/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "87f81688bc9b4ca5f603d246cc5cf115c9273a96f2067fed0dade206ec670c4d",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 27800,
+            "seconds_to_first_progress": 351.173,
+            "seconds_to_first_check": 359.381,
+            "pending_tool_recovery": []
+          }
+        }
+      ],
+      "compiler_checks_observed": 3,
+      "max_compiler_checks": 15
+    },
+    "provenance": {
+      "schema_version": 1,
+      "ownership": {
+        "model_owned_sections": [
+          "auxcode",
+          "code",
+          "lemma",
+          "proof"
+        ],
+        "teacher_owned": "all source outside the four marker regions",
+        "teacher_owned_sorry_present": false,
+        "model_section_ranges": {
+          "auxcode": {
+            "start_line": 30,
+            "end_line": 55
+          },
+          "code": {
+            "start_line": 60,
+            "end_line": 62
+          },
+          "lemma": {
+            "start_line": 74,
+            "end_line": 231
+          },
+          "proof": {
+            "start_line": 237,
+            "end_line": 264
+          }
+        }
+      },
+      "hashes": {
+        "original_sha256": "c57fe65a093ff5a58a1612366ef4560337bd433e242a9dbd29f7c50ed99eaa1d",
+        "candidate_sha256": "cfefe51433d8b5e7119e593c7fbe2d2b7fe7552cb78d1757a4a262c59f08459b",
+        "merged_sha256": "cfefe51433d8b5e7119e593c7fbe2d2b7fe7552cb78d1757a4a262c59f08459b",
+        "model_sections_sha256": {
+          "auxcode": "4ab6316e78d6b5ae05e040d3012a2be80e1f28d5a601fef1546dd15d66a963d3",
+          "code": "a73199f9121f937f7260c591def5127927e0e23c55212066fa3aacead5208434",
+          "lemma": "21be0ba8f0ffdc4b98436549f306fcb2fa813762648ac994aaa1c49761b04dd1",
+          "proof": "a778bb52b0fa439147cf1b02fd0c1c50cf4e283b79be16868e2b40ff2a845a19"
+        }
+      }
+    },
+    "targeted_diagnostics": [],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/maxheap_push/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": null,
+      "proof_state": null,
+      "leansearch_queries": null,
+      "checkpoints": null,
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/maxheap_push/.lastdance/prompts"
+    }
+  }
+}

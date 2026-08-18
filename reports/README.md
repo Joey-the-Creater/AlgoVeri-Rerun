@@ -17,7 +17,8 @@ name for the constrained Claude Code + Opus 5 toolchain:
 - `data/category_results.csv`, `data/repair_curves.csv`, and `data/outcome_breakdown.csv`:
   machine-readable data behind the new figures
 - `figures/`: vector pipeline, category, repair-depth, and outcome figures
-- `prompts/`: exact LastDance initial and compiler-repair prompt templates
+- `prompts/`: exact legacy LastDance templates plus the robust initial,
+  source-targeted repair templates
 - `algoveri_rerun_report.pdf`: compiled conference-style paper
 
 Compile with a standard TeX Live installation:

@@ -1,0 +1,248 @@
+{
+  "verified": true,
+  "details": {
+    "rounds": 25,
+    "llm_response": {
+      "code": "import Mathlib\n\ninductive Color\n| Red\n| Black\nderiving Inhabited, BEq\n\ninductive Node\n| Empty : Node\n| Tree  (color : Color) (val : Int) (left : Node) (right : Node) : Node\nderiving Inhabited\n\ndef view (t : Node) : Set Int :=\n  match t with\n  | Node.Empty => \u2205\n  | Node.Tree _ v l r => view l \u222a view r \u222a {v}\n\ndef is_red (t : Node) : Bool :=\n  match t with\n  | Node.Tree Color.Red _ _ _ => true\n  | _ => false\n\ndef is_bst (t : Node) : Prop :=\n  match t with\n  | Node.Empty => True\n  | Node.Tree _ v l r =>\n    (\u2200 x \u2208 view l, x < v) \u2227\n    is_bst l \u2227\n    (\u2200 x \u2208 view r, x > v) \u2227\n    is_bst r\n\n-- Black Height: Returns -1 if invalid\ndef black_height (t : Node) : Int :=\n  match t with\n  | Node.Empty => 1\n  | Node.Tree c _ l r =>\n    let lh := black_height l\n    let rh := black_height r\n    if lh \u2260 -1 \u2227 rh \u2260 -1 \u2227 lh = rh then\n      if c == Color.Black then lh + 1 else lh\n    else\n      -1\n\ndef satisfies_red_props (t : Node) : Prop :=\n  match t with\n  | Node.Empty => True\n  | Node.Tree c _ l r =>\n    satisfies_red_props l \u2227\n    satisfies_red_props r \u2227\n    -- Rule 1: No Right-Leaning Red (Matches Dafny)\n    (if is_red r then False else True) \u2227\n    -- Rule 2: No Double Red on Left (Matches Dafny)\n    -- Check: If Left is Red, then Left.Left must NOT be Red.\n    -- This applies regardless of 'c' (current color).\n    (match l with\n     | Node.Tree Color.Red _ ll _ => \n       (match ll with | Node.Tree Color.Red _ _ _ => False | _ => True)\n     | _ => True)\n\n-- This definition is tricky because LLRBT insert allows the root to be red temporarily or permanently if it's the root of the whole tree (though usually root is black).\n-- However, the recursive step needs a weaker invariant.\n-- Dafny spec says: \"This allows the root to be Red or Black\"\ndef is_llrbt (t : Node) : Prop :=\n  is_bst t \u2227\n  black_height t \u2260 -1 \u2227\n  -- We need to check red properties. Dafny's satisfies_red_props handles recursive checks.\n  -- But wait, Dafny's `satisfies_red_props` seems to strictly forbid right-leaning reds everywhere?\n  -- Let's re-read Dafny carefully.\n  -- satisfy_red_props:\n  --   left_ok && right_ok && right_is_black && no_double_red\n  --   Right is black: if right is red -> false.\n  --   No double red on left: if left is red, left.left cannot be red? No, `l.is_red` then `l.left` check?\n  --   Dafny: `match this.left { case Some(l) => if l.is_red then match l.left { case Some(ll) => !ll.is_red ...`\n  --   This means: If I am any node, my right child cannot be red. And if my left child is red, IT'S left child cannot be red (no consecutive reds on left edge).\n  --   What about Me being Red and Left being Red? Dafny spec doesn't explicitly ban `this.is_red && this.left.is_red` in `satisfies_red_props` itself?\n  --   Ah, `no_double_red` checks `this.left` (l) and `l.left` (ll).\n  --   So it prevents `Red -> Red` on the left edge.\n  satisfies_red_props t\n\n\n\n-- Precondition definitions\n@[reducible, simp]\ndef insert_precond (t : Node) : Prop :=\n  -- !benchmark @start precond\n  is_llrbt t\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\ndef leftOf (t : Node) : Node :=\n  match t with\n  | Node.Empty => Node.Empty\n  | Node.Tree _ _ l _ => l\n\n/-- Recolour the root black (the standard LLRBT root normalisation). -/\ndef blacken (t : Node) : Node :=\n  match t with\n  | Node.Empty => Node.Empty\n  | Node.Tree _ v l r => Node.Tree Color.Black v l r\n\n/-- Rebalance after an insertion into the **left** subtree.\n    The original right child of an LLRBT node is black, so the only repair that\n    can fire is rotate-right immediately followed by a colour flip. -/\ndef fixL (c : Color) (x : Int) (l r : Node) : Node :=\n  match l with\n  | Node.Tree Color.Red lv (Node.Tree Color.Red llv lll llr) lr =>\n      Node.Tree Color.Red lv (Node.Tree Color.Black llv lll llr)\n        (Node.Tree Color.Black x lr r)\n  | _ => Node.Tree c x l r\n\n/-- Rebalance after an insertion into the **right** subtree:\n    both children red \u2192 flip colours; only the right child red \u2192 rotate left. -/\ndef fixR (c : Color) (x : Int) (l r : Node) : Node :=\n  match l, r with\n  | Node.Tree Color.Red lv ll lr, Node.Tree Color.Red rv rl rr =>\n      Node.Tree Color.Red x (Node.Tree Color.Black lv ll lr)\n        (Node.Tree Color.Black rv rl rr)\n  | _, Node.Tree Color.Red rv rl rr =>\n      Node.Tree c rv (Node.Tree Color.Red x l rl) rr\n  | _, _ => Node.Tree c x l r\n\ndef ins (t : Node) (v : Int) : Node :=\n  match t with\n  | Node.Empty => Node.Tree Color.Red v Node.Empty Node.Empty\n  | Node.Tree c x l r =>\n      if v < x then fixL c x (ins l v) r\n      else if x < v then fixR c x l (ins r v)\n      else Node.Tree c x l r\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef insert (t : Node) (v : Int)\n    (h_precond : insert_precond t) : Node :=\n  -- !benchmark @start code\n  ins (blacken t) v\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef insert_postcond (t : Node) (v : Int) (result : Node)\n    (_ : insert_precond t) : Prop :=\n  -- !benchmark @start postcond\n  is_llrbt result \u2227\n  view result = view t \u222a {v}\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\n\nset_option maxHeartbeats 1000000\n\n/-! ### View toolkit -/\n\ntheorem view_node (c : Color) (v : Int) (l r : Node) :\n    view (Node.Tree c v l r) = view l \u222a view r \u222a {v} := rfl\n\n/-! ### Black-height toolkit -/\n\ntheorem bh_eq (c : Color) (v : Int) (l r : Node) :\n    black_height (Node.Tree c v l r) =\n      if black_height l \u2260 -1 \u2227 black_height r \u2260 -1 \u2227 black_height l = black_height r then\n        (if c == Color.Black then black_height l + 1 else black_height l)\n      else -1 := rfl\n\ntheorem bh_red (v : Int) (l r : Node) (h : black_height l = black_height r)\n    (hne : black_height l \u2260 -1) :\n    black_height (Node.Tree Color.Red v l r) = black_height l := by\n  rw [bh_eq, if_pos \u27e8hne, by rw [\u2190 h]; exact hne, h\u27e9,\n    if_neg (by decide : \u00ac ((Color.Red == Color.Black) = true))]\n\ntheorem bh_black (v : Int) (l r : Node) (h : black_height l = black_height r)\n    (hne : black_height l \u2260 -1) :\n    black_height (Node.Tree Color.Black v l r) = black_height l + 1 := by\n  rw [bh_eq, if_pos \u27e8hne, by rw [\u2190 h]; exact hne, h\u27e9,\n    if_pos (by decide : ((Color.Black == Color.Black) = true))]\n\ntheorem bh_split {c : Color} {v : Int} {l r : Node}\n    (h : black_height (Node.Tree c v l r) \u2260 -1) :\n    black_height l = black_height r \u2227 black_height l \u2260 -1 := by\n  by_cases hcond :\n      black_height l \u2260 -1 \u2227 black_height r \u2260 -1 \u2227 black_height l = black_height r\n  \u00b7 exact \u27e8hcond.2.2, hcond.1\u27e9\n  \u00b7 rw [bh_eq, if_neg hcond] at h\n    exact absurd rfl h\n\ntheorem bh_ge (t : Node) : black_height t = -1 \u2228 1 \u2264 black_height t := by\n  induction t with\n  | Empty => exact Or.inr (le_refl 1)\n  | Tree c v l r ihl ihr =>\n    by_cases hcond :\n        black_height l \u2260 -1 \u2227 black_height r \u2260 -1 \u2227 black_height l = black_height r\n    \u00b7 obtain \u27e8h1, h2, h3\u27e9 := hcond\n      have hl1 : 1 \u2264 black_height l := ihl.resolve_left h1\n      cases c with\n      | Red => rw [bh_red v l r h3 h1]; exact Or.inr hl1\n      | Black => rw [bh_black v l r h3 h1]; exact Or.inr (by omega)\n    \u00b7 exact Or.inl (by rw [bh_eq, if_neg hcond])\n\ntheorem bh_node_ne (c : Color) (v : Int) (l r : Node)\n    (h : black_height l = black_height r) (hne : black_height l \u2260 -1) :\n    black_height (Node.Tree c v l r) \u2260 -1 := by\n  have hl1 : 1 \u2264 black_height l := (bh_ge l).resolve_left hne\n  cases c with\n  | Red => rw [bh_red v l r h hne]; exact hne\n  | Black => rw [bh_black v l r h hne]; omega\n\ntheorem bh_blacken (t : Node) (h : black_height t \u2260 -1) :\n    black_height (blacken t) \u2260 -1 := by\n  cases t with\n  | Empty => exact h\n  | Tree c v l r =>\n    obtain \u27e8h1, h2\u27e9 := bh_split h\n    exact bh_node_ne Color.Black v l r h1 h2\n\n/-! ### Red-property toolkit -/\n\ntheorem rule2_iff (l : Node) :\n    (match l with\n     | Node.Tree Color.Red _ ll _ =>\n       (match ll with | Node.Tree Color.Red _ _ _ => False | _ => True)\n     | _ => True) \u2194 (is_red l = true \u2192 is_red (leftOf l) = false) := by\n  match l with\n  | Node.Empty => simp [is_red, leftOf]\n  | Node.Tree Color.Black lv ll lr => simp [is_red, leftOf]\n  | Node.Tree Color.Red lv Node.Empty lr => simp [is_red, leftOf]\n  | Node.Tree Color.Red lv (Node.Tree Color.Black a b c) lr => simp [is_red, leftOf]\n  | Node.Tree Color.Red lv (Node.Tree Color.Red a b c) lr => simp [is_red, leftOf]\n\ntheorem srp_node (c : Color) (v : Int) (l r : Node) :\n    satisfies_red_props (Node.Tree c v l r) \u2194\n      (satisfies_red_props l \u2227 satisfies_red_props r \u2227 is_red r = false \u2227\n        (is_red l = true \u2192 is_red (leftOf l) = false)) := by\n  constructor\n  \u00b7 rintro \u27e8h1, h2, h3, h4\u27e9\n    refine \u27e8h1, h2, ?_, (rule2_iff l).mp h4\u27e9\n    by_cases h : is_red r = true\n    \u00b7 simp [h] at h3\n    \u00b7 simpa using h\n  \u00b7 rintro \u27e8h1, h2, h3, h4\u27e9\n    exact \u27e8h1, h2, by simp [h3], (rule2_iff l).mpr h4\u27e9\n\n/-! ### Shape lemmas for the rebalancing functions -/\n\ntheorem fixL_default (c : Color) (x : Int) (l r : Node)\n    (h : \u00ac (is_red l = true \u2227 is_red (leftOf l) = true)) :\n    fixL c x l r = Node.Tree c x l r := by\n  rcases l with _ | \u27e8lc, lv, ll, lr\u27e9\n  \u00b7 rfl\n  \u00b7 cases lc with\n    | Red =>\n      rcases ll with _ | \u27e8llc, llv, lll, llr\u27e9\n      \u00b7 rfl\n      \u00b7 cases llc with\n        | Red => exact absurd \u27e8rfl, rfl\u27e9 h\n        | Black => rfl\n    | Black => rfl\n\ntheorem fixR_rotate (c : Color) (x : Int) (l : Node) (rv : Int) (rl rr : Node)\n    (h : is_red l = false) :\n    fixR c x l (Node.Tree Color.Red rv rl rr)\n      = Node.Tree c rv (Node.Tree Color.Red x l rl) rr := by\n  rcases l with _ | \u27e8lc, lv, ll, lr\u27e9\n  \u00b7 rfl\n  \u00b7 cases lc with\n    | Red => simp [is_red] at h\n    | Black => rfl\n\ntheorem fixR_default (c : Color) (x : Int) (l r : Node) (h : is_red r = false) :\n    fixR c x l r = Node.Tree c x l r := by\n  rcases r with _ | \u27e8rc, rv, rl, rr\u27e9\n  \u00b7 rcases l with _ | \u27e8lc, lv, ll, lr\u27e9\n    \u00b7 rfl\n    \u00b7 cases lc <;> rfl\n  \u00b7 cases rc with\n    | Red => simp [is_red] at h\n    | Black =>\n      rcases l with _ | \u27e8lc, lv, ll, lr\u27e9\n      \u00b7 rfl\n      \u00b7 cases lc <;> rfl\n\n/-! ### Full specification of `fixL` -/\n\ntheorem fixL_spec (c : Color) (x : Int) (l r : Node)\n    (hbl : is_bst l) (hbr : is_bst r)\n    (hlx : \u2200 y \u2208 view l, y < x) (hrx : \u2200 y \u2208 view r, y > x)\n    (hh : black_height l = black_height r) (hne : black_height l \u2260 -1)\n    (hsl : satisfies_red_props l) (hsr : satisfies_red_props r)\n    (hrr : is_red r = false)\n    (hc : is_red l = true \u2192 is_red (leftOf l) = true \u2192 c = Color.Black) :\n    is_bst (fixL c x l r) \u2227\n      black_height (fixL c x l r) = black_height (Node.Tree c x l r) \u2227\n      satisfies_red_props (fixL c x l r) \u2227\n      (is_red (fixL c x l r) = true \u2192\n        c = Color.Red \u2228 is_red (leftOf (fixL c x l r)) = false) \u2227\n      view (fixL c x l r) = view l \u222a view r \u222a {x} := by\n  by_cases hred : is_red l = true \u2227 is_red (leftOf l) = true\n  \u00b7 obtain \u27e8h1, h2\u27e9 := hred\n    have hcb : c = Color.Black := hc h1 h2\n    subst hcb\n    rcases l with _ | \u27e8lc, lv, ll, lr\u27e9\n    \u00b7 exact absurd h1 (by simp [is_red])\n    \u00b7 cases lc with\n      | Black => exact absurd h1 (by simp [is_red])\n      | Red =>\n        rcases ll with _ | \u27e8llc, llv, lll, llr\u27e9\n        \u00b7 exact absurd h2 (by simp [is_red, leftOf])\n        \u00b7 cases llc with\n          | Black => exact absurd h2 (by simp [is_red, leftOf])\n          | Red =>\n            have hfix : fixL Color.Black x\n                (Node.Tree Color.Red lv (Node.Tree Color.Red llv lll llr) lr) r\n                = Node.Tree Color.Red lv (Node.Tree Color.Black llv lll llr)\n                    (Node.Tree Color.Black x lr r) := rfl\n            rw [hfix]\n            obtain \u27e8hlvx, hbll, hlrv, hblr\u27e9 := hbl\n            obtain \u27e8hsll, hslr, hslr2, _\u27e9 := (srp_node _ _ _ _).mp hsl\n            obtain \u27e8hbh1, hbh2\u27e9 := bh_split hne\n            obtain \u27e8hbh3, hbh4\u27e9 := bh_split hbh2\n            have hp1 : 1 \u2264 black_height lll := (bh_ge lll).resolve_left hbh4\n            have hp2 : 1 \u2264 black_height r :=\n              (bh_ge r).resolve_left (by rw [\u2190 hh]; exact hne)\n            have hp3 : 1 \u2264 black_height lr :=\n              (bh_ge lr).resolve_left (by rw [\u2190 hbh1]; exact hbh2)\n            have hlvlt : lv < x := by\n              refine hlx lv ?_\n              simp only [view, Set.mem_union, Set.mem_singleton_iff]\n              tauto\n            have hlrlt : \u2200 y \u2208 view lr, y < x := by\n              intro y hy\n              refine hlx y ?_\n              simp only [view, Set.mem_union, Set.mem_singleton_iff]\n              tauto\n            have e1 : black_height (Node.Tree Color.Black llv lll llr)\n                = black_height lll + 1 := bh_black llv lll llr hbh3 hbh4\n            have e2 : black_height (Node.Tree Color.Red llv lll llr)\n                = black_height lll := bh_red llv lll llr hbh3 hbh4\n            have e3 : black_height\n                (Node.Tree Color.Red lv (Node.Tree Color.Red llv lll llr) lr)\n                = black_height (Node.Tree Color.Red llv lll llr) :=\n              bh_red lv _ lr hbh1 hbh2\n            have hlrr : black_height lr = black_height r := by omega\n            have e4 : black_height (Node.Tree Color.Black x lr r)\n                = black_height lr + 1 := bh_black x lr r hlrr (by omega)\n            have e5 : black_height (Node.Tree Color.Red lv\n                (Node.Tree Color.Black llv lll llr) (Node.Tree Color.Black x lr r))\n                = black_height (Node.Tree Color.Black llv lll llr) :=\n              bh_red lv _ _ (by omega) (by omega)\n            have e6 : black_height (Node.Tree Color.Black x\n                (Node.Tree Color.Red lv (Node.Tree Color.Red llv lll llr) lr) r)\n                = black_height\n                    (Node.Tree Color.Red lv (Node.Tree Color.Red llv lll llr) lr) + 1 :=\n              bh_black x _ r hh hne\n            refine \u27e8\u27e8hlvx, hbll, ?_, \u27e8hlrlt, hblr, hrx, hbr\u27e9\u27e9, by omega, ?_, ?_, ?_\u27e9\n            \u00b7 intro y hy\n              simp only [view, Set.mem_union, Set.mem_singleton_iff] at hy\n              rcases hy with (hy | hy) | hy\n              \u00b7 exact hlrv y hy\n              \u00b7 have := hrx y hy; omega\n              \u00b7 omega\n            \u00b7 refine (srp_node _ _ _ _).mpr \u27e8hsll, ?_, rfl, ?_\u27e9\n              \u00b7 exact (srp_node _ _ _ _).mpr \u27e8hslr, hsr, hrr, fun h => by simp [hslr2] at h\u27e9\n              \u00b7 intro h; exact absurd h (by simp [is_red])\n            \u00b7 exact fun _ => Or.inr rfl\n            \u00b7 simp only [view_node, Set.union_assoc, Set.union_comm,\n                Set.union_left_comm]\n  \u00b7 rw [fixL_default c x l r hred]\n    have hl2 : is_red l = true \u2192 is_red (leftOf l) = false := by\n      intro h\n      by_contra hcon\n      exact hred \u27e8h, by simpa using hcon\u27e9\n    refine \u27e8\u27e8hlx, hbl, hrx, hbr\u27e9, rfl,\n      (srp_node _ _ _ _).mpr \u27e8hsl, hsr, hrr, hl2\u27e9, ?_, rfl\u27e9\n    intro h\n    left\n    cases c with\n    | Red => rfl\n    | Black => exact absurd h (by simp [is_red])\n\n/-! ### Full specification of `fixR` -/\n\ntheorem fixR_spec (c : Color) (x : Int) (l r : Node)\n    (hbl : is_bst l) (hbr : is_bst r)\n    (hlx : \u2200 y \u2208 view l, y < x) (hrx : \u2200 y \u2208 view r, y > x)\n    (hh : black_height l = black_height r) (hne : black_height l \u2260 -1)\n    (hsl : satisfies_red_props l) (hsr : satisfies_red_props r)\n    (hl2 : is_red l = true \u2192 is_red (leftOf l) = false)\n    (hr2 : is_red r = true \u2192 is_red (leftOf r) = false)\n    (hc : is_red l = true \u2192 c = Color.Black) :\n    is_bst (fixR c x l r) \u2227\n      black_height (fixR c x l r) = black_height (Node.Tree c x l r) \u2227\n      satisfies_red_props (fixR c x l r) \u2227\n      (is_red (fixR c x l r) = true \u2192\n        c = Color.Red \u2228 is_red (leftOf (fixR c x l r)) = false) \u2227\n      view (fixR c x l r) = view l \u222a view r \u222a {x} := by\n  have hner : black_height r \u2260 -1 := by rw [\u2190 hh]; exact hne\n  by_cases hrred : is_red r = true\n  \u00b7 rcases r with _ | \u27e8rc, rv, rl, rr\u27e9\n    \u00b7 exact absurd hrred (by simp [is_red])\n    \u00b7 cases rc with\n      | Black => exact absurd hrred (by simp [is_red])\n      | Red =>\n        obtain \u27e8hrlv, hbrl, hrrv, hbrr\u27e9 := hbr\n        obtain \u27e8hsrl, hsrr, hsrr2, _\u27e9 := (srp_node _ _ _ _).mp hsr\n        obtain \u27e8hbh1, hbh2\u27e9 := bh_split hner\n        have hrl2 : is_red rl = false := hr2 rfl\n        have er : black_height (Node.Tree Color.Red rv rl rr) = black_height rl :=\n          bh_red rv rl rr hbh1 hbh2\n        by_cases hlred : is_red l = true\n        \u00b7 have hcb : c = Color.Black := hc hlred\n          subst hcb\n          rcases l with _ | \u27e8lc, lv, ll, lr\u27e9\n          \u00b7 exact absurd hlred (by simp [is_red])\n          \u00b7 cases lc with\n            | Black => exact absurd hlred (by simp [is_red])\n            | Red =>\n              have hfix : fixR Color.Black x (Node.Tree Color.Red lv ll lr)\n                  (Node.Tree Color.Red rv rl rr)\n                  = Node.Tree Color.Red x (Node.Tree Color.Black lv ll lr)\n                      (Node.Tree Color.Black rv rl rr) := rfl\n              rw [hfix]\n              obtain \u27e8hbh5, hbh6\u27e9 := bh_split hne\n              have hq1 : 1 \u2264 black_height ll := (bh_ge ll).resolve_left hbh6\n              have hq2 : 1 \u2264 black_height rl := (bh_ge rl).resolve_left hbh2\n              have el : black_height (Node.Tree Color.Red lv ll lr) = black_height ll :=\n                bh_red lv ll lr hbh5 hbh6\n              have f1 : black_height (Node.Tree Color.Black lv ll lr)\n                  = black_height ll + 1 := bh_black lv ll lr hbh5 hbh6\n              have f2 : black_height (Node.Tree Color.Black rv rl rr)\n                  = black_height rl + 1 := bh_black rv rl rr hbh1 hbh2\n              have f3 : black_height (Node.Tree Color.Red x\n                  (Node.Tree Color.Black lv ll lr) (Node.Tree Color.Black rv rl rr))\n                  = black_height (Node.Tree Color.Black lv ll lr) :=\n                bh_red x _ _ (by omega) (by omega)\n              have f4 : black_height (Node.Tree Color.Black x\n                  (Node.Tree Color.Red lv ll lr) (Node.Tree Color.Red rv rl rr))\n                  = black_height (Node.Tree Color.Red lv ll lr) + 1 :=\n                bh_black x _ _ hh hne\n              refine \u27e8\u27e8hlx, hbl, hrx, \u27e8hrlv, hbrl, hrrv, hbrr\u27e9\u27e9, by omega, ?_,\n                fun _ => Or.inr rfl, rfl\u27e9\n              refine (srp_node _ _ _ _).mpr \u27e8hsl, hsr, rfl, ?_\u27e9\n              intro h; exact absurd h (by simp [is_red])\n        \u00b7 have hlf : is_red l = false := by simpa using hlred\n          rw [fixR_rotate c x l rv rl rr hlf]\n          have hxrv : x < rv := by\n            have := hrx rv (by\n              simp only [view, Set.mem_union, Set.mem_singleton_iff]; tauto)\n            omega\n          have hrlx : \u2200 y \u2208 view rl, y > x := by\n            intro y hy\n            refine hrx y ?_\n            simp only [view, Set.mem_union, Set.mem_singleton_iff]\n            tauto\n          have g1 : black_height (Node.Tree Color.Red x l rl) = black_height l :=\n            bh_red x l rl (by omega) hne\n          refine \u27e8\u27e8?_, \u27e8hlx, hbl, hrlx, hbrl\u27e9, hrrv, hbrr\u27e9, ?_, ?_, ?_, ?_\u27e9\n          \u00b7 intro y hy\n            simp only [view, Set.mem_union, Set.mem_singleton_iff] at hy\n            rcases hy with (hy | hy) | hy\n            \u00b7 have := hlx y hy; omega\n            \u00b7 exact hrlv y hy\n            \u00b7 omega\n          \u00b7 cases c with\n            | Red =>\n              rw [bh_red rv _ rr (by omega) (by omega), bh_red x l _ hh hne]\n              omega\n            | Black =>\n              rw [bh_black rv _ rr (by omega) (by omega), bh_black x l _ hh hne]\n              omega\n          \u00b7 refine (srp_node _ _ _ _).mpr \u27e8?_, hsrr, hsrr2, ?_\u27e9\n            \u00b7 exact (srp_node _ _ _ _).mpr \u27e8hsl, hsrl, hrl2, hl2\u27e9\n            \u00b7 intro _; simpa [leftOf] using hlf\n          \u00b7 intro h\n            left\n            cases c with\n            | Red => rfl\n            | Black => exact absurd h (by simp [is_red])\n          \u00b7 simp only [view_node, Set.union_assoc, Set.union_comm,\n              Set.union_left_comm]\n  \u00b7 have hrf : is_red r = false := by simpa using hrred\n    rw [fixR_default c x l r hrf]\n    refine \u27e8\u27e8hlx, hbl, hrx, hbr\u27e9, rfl,\n      (srp_node _ _ _ _).mpr \u27e8hsl, hsr, hrf, hl2\u27e9, ?_, rfl\u27e9\n    intro h\n    left\n    cases c with\n    | Red => rfl\n    | Black => exact absurd h (by simp [is_red])\n\n/-! ### Main induction -/\n\ntheorem ins_spec (v : Int) : \u2200 t : Node, is_bst t \u2192 black_height t \u2260 -1 \u2192\n    satisfies_red_props t \u2192 (is_red t = true \u2192 is_red (leftOf t) = false) \u2192\n    is_bst (ins t v) \u2227 black_height (ins t v) = black_height t \u2227\n      satisfies_red_props (ins t v) \u2227\n      (is_red (ins t v) = true \u2192\n        is_red t = true \u2228 is_red (leftOf (ins t v)) = false) \u2227\n      view (ins t v) = view t \u222a {v} := by\n  intro t\n  induction t with\n  | Empty =>\n    intro _ _ _ _\n    have hE : black_height Node.Empty = 1 := rfl\n    have hins : ins Node.Empty v = Node.Tree Color.Red v Node.Empty Node.Empty := rfl\n    rw [hins]\n    refine \u27e8\u27e8by simp [view], trivial, by simp [view], trivial\u27e9, ?_, ?_,\n      fun _ => Or.inr rfl, ?_\u27e9\n    \u00b7 rw [bh_red v Node.Empty Node.Empty rfl (by rw [hE]; norm_num)]\n    \u00b7 exact (srp_node _ _ _ _).mpr\n        \u27e8trivial, trivial, rfl, fun h => absurd h (by simp [is_red])\u27e9\n    \u00b7 ext y; simp [view]\n  | Tree c x l r ihl ihr =>\n    intro hb hh hs hst\n    obtain \u27e8hlx, hbl, hrx, hbr\u27e9 := hb\n    obtain \u27e8hsl, hsr, hrr, hl2\u27e9 := (srp_node c x l r).mp hs\n    obtain \u27e8hhlr, hhl\u27e9 := bh_split hh\n    have hhr : black_height r \u2260 -1 := by rw [\u2190 hhlr]; exact hhl\n    have hIL := ihl hbl hhl hsl hl2\n    have hIR := ihr hbr hhr hsr (fun h => by rw [hrr] at h; exact absurd h (by simp))\n    have hins : ins (Node.Tree c x l r) v =\n        if v < x then fixL c x (ins l v) r\n        else if x < v then fixR c x l (ins r v)\n        else Node.Tree c x l r := rfl\n    rw [hins]\n    split_ifs with h1 h2\n    \u00b7 obtain \u27e8ibl, ibh, isl, ip4, iv\u27e9 := hIL\n      have hlx' : \u2200 y \u2208 view (ins l v), y < x := by\n        intro y hy\n        rw [iv] at hy\n        rcases hy with hy | hy\n        \u00b7 exact hlx y hy\n        \u00b7 simp only [Set.mem_singleton_iff] at hy; omega\n      have hhc : black_height (ins l v) = black_height r := by rw [ibh]; exact hhlr\n      have hnec : black_height (ins l v) \u2260 -1 := by rw [ibh]; exact hhl\n      have hcc : is_red (ins l v) = true \u2192 is_red (leftOf (ins l v)) = true \u2192\n          c = Color.Black := by\n        intro ha hb2\n        rcases ip4 ha with h | h\n        \u00b7 cases c with\n          | Red => exact absurd (hst rfl) (by simp [leftOf, h])\n          | Black => rfl\n        \u00b7 rw [h] at hb2; exact absurd hb2 (by simp)\n      obtain \u27e8f1, f2, f3, f4, f5\u27e9 :=\n        fixL_spec c x (ins l v) r ibl hbr hlx' hrx hhc hnec isl hsr hrr hcc\n      refine \u27e8f1, ?_, f3, ?_, ?_\u27e9\n      \u00b7 rw [f2, bh_eq, bh_eq, ibh]\n      \u00b7 intro h\n        rcases f4 h with hc' | hc'\n        \u00b7 left; rw [hc']; rfl\n        \u00b7 right; exact hc'\n      \u00b7 rw [f5, iv]\n        simp only [view_node, Set.union_assoc, Set.union_comm, Set.union_left_comm]\n    \u00b7 obtain \u27e8ibr, ibh, isr, ip4, iv\u27e9 := hIR\n      have hrx' : \u2200 y \u2208 view (ins r v), y > x := by\n        intro y hy\n        rw [iv] at hy\n        rcases hy with hy | hy\n        \u00b7 exact hrx y hy\n        \u00b7 simp only [Set.mem_singleton_iff] at hy; omega\n      have hhc : black_height l = black_height (ins r v) := by rw [ibh]; exact hhlr\n      have hr2' : is_red (ins r v) = true \u2192 is_red (leftOf (ins r v)) = false := by\n        intro ha\n        rcases ip4 ha with h | h\n        \u00b7 rw [hrr] at h; exact absurd h (by simp)\n        \u00b7 exact h\n      have hcc : is_red l = true \u2192 c = Color.Black := by\n        intro ha\n        cases c with\n        | Red => exact absurd (hst rfl) (by simp [leftOf, ha])\n        | Black => rfl\n      obtain \u27e8f1, f2, f3, f4, f5\u27e9 :=\n        fixR_spec c x l (ins r v) hbl ibr hlx hrx' hhc hhl hsl isr hl2 hr2' hcc\n      refine \u27e8f1, ?_, f3, ?_, ?_\u27e9\n      \u00b7 rw [f2, bh_eq, bh_eq, ibh]\n      \u00b7 intro h\n        rcases f4 h with hc' | hc'\n        \u00b7 left; rw [hc']; rfl\n        \u00b7 right; exact hc'\n      \u00b7 rw [f5, iv]\n        simp only [view_node, Set.union_assoc, Set.union_comm, Set.union_left_comm]\n    \u00b7 have hvx : v = x := by omega\n      subst hvx\n      refine \u27e8\u27e8hlx, hbl, hrx, hbr\u27e9, rfl, hs, fun h => Or.inl h, ?_\u27e9\n      simp only [view_node, Set.union_assoc, Set.union_comm, Set.union_left_comm,\n        Set.union_self]\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem insert_postcond_satisfied (t : Node) (v : Int)\n    (h_precond : insert_precond t) :\n    insert_postcond t v (insert t v h_precond) h_precond := by\n  -- !benchmark @start proof\n  obtain \u27e8hb, hh, hs\u27e9 := h_precond\n  have hbb : is_bst (blacken t) := by cases t <;> exact hb\n  have hhb : black_height (blacken t) \u2260 -1 := bh_blacken t hh\n  have hsb : satisfies_red_props (blacken t) := by cases t <;> exact hs\n  have hvb : view (blacken t) = view t := by cases t <;> rfl\n  have hstb : is_red (blacken t) = true \u2192 is_red (leftOf (blacken t)) = false := by\n    intro h\n    cases t with\n    | Empty => exact absurd h (by simp [blacken, is_red])\n    | Tree c y l r => exact absurd h (by simp [blacken, is_red])\n  obtain \u27e8a1, a2, a3, _, a5\u27e9 := ins_spec v (blacken t) hbb hhb hsb hstb\n  refine \u27e8\u27e8a1, ?_, a3\u27e9, ?_\u27e9\n  \u00b7 show black_height (ins (blacken t) v) \u2260 -1\n    rw [a2]; exact hhb\n  \u00b7 show view (ins (blacken t) v) = view t \u222a {v}\n    rw [a5, hvb]\n  -- !benchmark @end proof\n",
+      "comment": "**LEAN VERIFIED.** Only linter warnings remain (unused variables in teacher-owned definitions, and a redundant `Set.union_assoc` in five AC simp calls).\n\n## What was wrong and how each error was fixed\n\n| Reported error | Cause | Fix |\n|---|---|---|\n| `159`/`164` unsolved goals in `bh_red`/`bh_black` | `rw`'s auto-`rfl` doesn't reduce the derived `BEq Color` comparison inside the inner `if` | chained `if_neg (by decide : \u00ac((Color.Red == Color.Black) = true))` and `if_pos (by decide : (Color.Black == Color.Black) = true)` |\n| `332`, `417` `omega` failures | `omega` sees `black_height _` as an opaque atom with no lower bound, so `\u2026 \u2260 -1` goals were unprovable | materialised `1 \u2264 black_height _` from the existing `bh_ge` lemma (`hp1\u2013hp3`, `hq1`, `hq2`) before each `omega` |\n| `422` unknown identifier `hbr` | `obtain \u27e8hrlv, hbrl, hrrv, hbrr\u27e9 := hbr` had already consumed the name | rebuilt the `is_bst` conjunction as `\u27e8hrlv, hbrl, hrrv, hbrr\u27e9` |\n| `462`, `367`, `537`, `568` heartbeat timeouts | `ext y; simp only [view, \u2026]; tauto` on the set-union goals exhausted the budget and aborted the whole enclosing declaration | replaced with AC-normalising `simp only [view_node, Set.union_comm, Set.union_left_comm]` (plus `Set.union_self` for the duplicate-key case); added a new `view_node : view (Tree c v l r) = view l \u222a view r \u222a {v}` (`rfl`) and `set_option maxHeartbeats 1000000` as headroom |\n| `523` unsolved goals / unused simp arg `h` | `simp` couldn't see through `leftOf`, so `h : is_red l = true` never applied | `by simp [leftOf, h]` (two sites) |\n| `532` unsolved `pos.refine_2.inl.h` | `left; rw [hc']` leaves `is_red (Tree Red \u2026) = true` open | appended an explicit `rfl` (two sites) |\n\n## Semantic audit against TASK.md\n\n- **Precondition** `is_llrbt t` is the untouched original; **postcondition** proved is the full `is_llrbt result \u2227 view result = view t \u222a {v}` \u2014 BST order, black-height validity, and both colour rules, not a weakened variant.\n- **Algorithm** is genuine Sedgewick LLRBT insertion: BST descent, `fixL` (rotate-right + flip on a left double-red), `fixR` (colour flip when both children are red, rotate-left when only the right child is red), and `ins_spec` proves exact black-height preservation at every level.\n- **Root normalisation is load-bearing, not a shortcut.** `insert = ins (blacken t) v`. The given `satisfies_red_props` does *not* forbid a red root with a red left child, so the recursion hypothesis `is_red t \u2192 is_red (leftOf t) = false` isn't derivable from `is_llrbt t`; blackening the root discharges it vacuously while leaving `is_bst`, `satisfies_red_props`, and `view` unchanged. The textbook alternative `blacken (ins t v)` fails for exactly that reason \u2014 recorded in `ProofState.md`.\n- **Edge cases** covered: empty tree (red leaf; a red root is explicitly permitted), duplicate value (tree unchanged, `view t \u222a {v} = view t`), left-spine double red, red right child, two red children propagating a red root. Values are `Int` throughout with comparisons only \u2014 all-negative inputs need no special handling, and there is no `0` sentinel or default anywhere.\n- **No placeholders**: no `sorry`, `admit`, `native_decide`, `:= True`, or `:= 0` in any editable region; every helper (`leftOf`, `blacken`, `fixL`, `fixR`, `ins`) is a real definition and every lemma has a real proof. Edits were confined to the `auxcode`, `code`, `lemma`, and `proof` marker regions plus `AlgorithmPlan.md` and `ProofState.md`."
+    },
+    "verifier_response": {
+      "verified": true,
+      "feedback": "Verified successfully.",
+      "raw": {
+        "stdout": "claude_code_llrbt_insert_final_1786130954751.lean:47:14: warning: unused variable `c`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_insert_final_1786130954751.lean:133:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_insert_final_1786130954751.lean:363:36: warning: This simp argument is unused:\n  Set.union_assoc\n\nHint: Omit it from the simp argument list.\n  simp only [view_node, S\u0335e\u0335t\u0335.\u0335u\u0335n\u0335i\u0335o\u0335n\u0335_\u0335a\u0335s\u0335s\u0335o\u0335c\u0335,\u0335 \u0335Set.union_comm, Set.union_left_comm]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_llrbt_insert_final_1786130954751.lean:476:34: warning: This simp argument is unused:\n  Set.union_assoc\n\nHint: Omit it from the simp argument list.\n  simp only [view_node, S\u0335e\u0335t\u0335.\u0335u\u0335n\u0335i\u0335o\u0335n\u0335_\u0335a\u0335s\u0335s\u0335o\u0335c\u0335,\u0335 \u0335Set.union_comm, Set.union_left_comm]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_llrbt_insert_final_1786130954751.lean:550:30: warning: This simp argument is unused:\n  Set.union_assoc\n\nHint: Omit it from the simp argument list.\n  simp only [view_node, S\u0335e\u0335t\u0335.\u0335u\u0335n\u0335i\u0335o\u0335n\u0335_\u0335a\u0335s\u0335s\u0335o\u0335c\u0335,\u0335 \u0335Set.union_comm, Set.union_left_comm]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_llrbt_insert_final_1786130954751.lean:578:30: warning: This simp argument is unused:\n  Set.union_assoc\n\nHint: Omit it from the simp argument list.\n  simp only [view_node, S\u0335e\u0335t\u0335.\u0335u\u0335n\u0335i\u0335o\u0335n\u0335_\u0335a\u0335s\u0335s\u0335o\u0335c\u0335,\u0335 \u0335Set.union_comm, Set.union_left_comm]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_llrbt_insert_final_1786130954751.lean:582:28: warning: This simp argument is unused:\n  Set.union_assoc\n\nHint: Omit it from the simp argument list.\n  simp only [view_node, S\u0335e\u0335t\u0335.\u0335u\u0335n\u0335i\u0335o\u0335n\u0335_\u0335a\u0335s\u0335s\u0335o\u0335c\u0335,\u0335 \u0335Set.union_comm, Set.union_left_comm, Set.union_self]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\n",
+        "stderr": "",
+        "returncode": 0
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": true,
+        "verifier_response": {
+          "verified": true,
+          "feedback": "Verified successfully.",
+          "raw": {
+            "stdout": "claude_code_llrbt_insert_final_1786130954751.lean:47:14: warning: unused variable `c`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_insert_final_1786130954751.lean:133:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_insert_final_1786130954751.lean:363:36: warning: This simp argument is unused:\n  Set.union_assoc\n\nHint: Omit it from the simp argument list.\n  simp only [view_node, S\u0335e\u0335t\u0335.\u0335u\u0335n\u0335i\u0335o\u0335n\u0335_\u0335a\u0335s\u0335s\u0335o\u0335c\u0335,\u0335 \u0335Set.union_comm, Set.union_left_comm]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_llrbt_insert_final_1786130954751.lean:476:34: warning: This simp argument is unused:\n  Set.union_assoc\n\nHint: Omit it from the simp argument list.\n  simp only [view_node, S\u0335e\u0335t\u0335.\u0335u\u0335n\u0335i\u0335o\u0335n\u0335_\u0335a\u0335s\u0335s\u0335o\u0335c\u0335,\u0335 \u0335Set.union_comm, Set.union_left_comm]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_llrbt_insert_final_1786130954751.lean:550:30: warning: This simp argument is unused:\n  Set.union_assoc\n\nHint: Omit it from the simp argument list.\n  simp only [view_node, S\u0335e\u0335t\u0335.\u0335u\u0335n\u0335i\u0335o\u0335n\u0335_\u0335a\u0335s\u0335s\u0335o\u0335c\u0335,\u0335 \u0335Set.union_comm, Set.union_left_comm]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_llrbt_insert_final_1786130954751.lean:578:30: warning: This simp argument is unused:\n  Set.union_assoc\n\nHint: Omit it from the simp argument list.\n  simp only [view_node, S\u0335e\u0335t\u0335.\u0335u\u0335n\u0335i\u0335o\u0335n\u0335_\u0335a\u0335s\u0335s\u0335o\u0335c\u0335,\u0335 \u0335Set.union_comm, Set.union_left_comm]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_llrbt_insert_final_1786130954751.lean:582:28: warning: This simp argument is unused:\n  Set.union_assoc\n\nHint: Omit it from the simp argument list.\n  simp only [view_node, S\u0335e\u0335t\u0335.\u0335u\u0335n\u0335i\u0335o\u0335n\u0335_\u0335a\u0335s\u0335s\u0335o\u0335c\u0335,\u0335 \u0335Set.union_comm, Set.union_left_comm, Set.union_self]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\n",
+            "stderr": "",
+            "returncode": 0
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "35bb8098-61fd-4876-8696-c64892c83f17",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 1.15732775,
+          "duration_ms": 289059,
+          "duration_api_ms": 277633,
+          "num_turns": 26,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/llrbt_insert/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "f4a0ead6c9b849d93203019bd807598e7b56fffce721a08ea364791c4dbc11fd",
+          "budget_usd": 2.0,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 9450,
+            "seconds_to_first_progress": 120.846,
+            "seconds_to_first_check": 175.663,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 605265,
+      "output": 22817,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "35bb8098-61fd-4876-8696-c64892c83f17",
+      "subtype": "success",
+      "provider_subtype": "success",
+      "is_error": false,
+      "total_cost_usd": 1.15732775,
+      "duration_ms": 289059,
+      "duration_api_ms": 277633,
+      "num_turns": 26,
+      "returncode": 0,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/llrbt_insert/agent_events.jsonl",
+      "pass_number": 1,
+      "prompt_kind": "compiler_repair",
+      "prompt_sha256": "f4a0ead6c9b849d93203019bd807598e7b56fffce721a08ea364791c4dbc11fd",
+      "budget_usd": 2.0,
+      "lastdance_profile": "robust",
+      "features": {
+        "profile": "robust",
+        "algorithm_plan": true,
+        "lemma_plan": true,
+        "leansearch": true,
+        "semantic_audit": true,
+        "semantic_reminder": true,
+        "early_check": true,
+        "feedback_mode": "structured",
+        "backtracking": true,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": true,
+          "progress_governor": false,
+          "pre_edit_timeout_seconds": 300,
+          "pre_edit_thinking_tokens": 12000,
+          "post_edit_check_timeout_seconds": 180,
+          "planning_mode": false,
+          "diagnostic_wrapper": false,
+          "rescue_mode": false
+        },
+        "governor_stop_reason": null,
+        "max_thinking_tokens_observed": 9450,
+        "seconds_to_first_progress": 120.846,
+        "seconds_to_first_check": 175.663,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 1,
+      "total_sessions": 1,
+      "selected_session": 1,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "35bb8098-61fd-4876-8696-c64892c83f17",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 1.15732775,
+          "duration_ms": 289059,
+          "duration_api_ms": 277633,
+          "num_turns": 26,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/llrbt_insert/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "f4a0ead6c9b849d93203019bd807598e7b56fffce721a08ea364791c4dbc11fd",
+          "budget_usd": 2.0,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 9450,
+            "seconds_to_first_progress": 120.846,
+            "seconds_to_first_check": 175.663,
+            "pending_tool_recovery": []
+          }
+        }
+      ]
+    },
+    "provenance": {
+      "schema_version": 1,
+      "ownership": {
+        "model_owned_sections": [
+          "auxcode",
+          "code",
+          "lemma",
+          "proof"
+        ],
+        "teacher_owned": "all source outside the four marker regions",
+        "teacher_owned_sorry_present": false,
+        "model_section_ranges": {
+          "auxcode": {
+            "start_line": 89,
+            "end_line": 129
+          },
+          "code": {
+            "start_line": 134,
+            "end_line": 136
+          },
+          "lemma": {
+            "start_line": 147,
+            "end_line": 584
+          },
+          "proof": {
+            "start_line": 590,
+            "end_line": 607
+          }
+        }
+      },
+      "hashes": {
+        "original_sha256": "f10a8963ffa2188b25fde5dd97262970734fcec7cbd2f41ec4df705065efbd83",
+        "candidate_sha256": "2610652ca08ae4b617319d4b70048fa1bdbb75a2535a40ff329050a36481473c",
+        "merged_sha256": "8a39984ff13c54bd74675d99db85c5f55cb413f66248fca274a7a92f157b0978",
+        "model_sections_sha256": {
+          "auxcode": "29da6e0578e9cd50f834a5a1786202b5bd3859b5ea80c6be4922a2e1f9064d05",
+          "code": "a72b4e29c4c465efda60d17db42f4f19f6bd7d71ee77f413b5fc11de5fc1d73e",
+          "lemma": "4e0d3f283415c514e6b0511ca7c11965d066363ef4c3e7af7bcc682244082aa0",
+          "proof": "65dc44bd7a47c76e95a891cdffda7797db6f3fae4bdffa343b38bbd1d54a1f65"
+        }
+      }
+    },
+    "targeted_diagnostics": [],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/llrbt_insert/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/llrbt_insert/AlgorithmPlan.md",
+      "proof_state": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/llrbt_insert/ProofState.md",
+      "leansearch_queries": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/llrbt_insert/.lastdance/leansearch_queries.jsonl",
+      "checkpoints": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/llrbt_insert/.lastdance/checkpoints/manifest.jsonl",
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/llrbt_insert/.lastdance/prompts"
+    }
+  }
+}

@@ -1,0 +1,259 @@
+{
+    "verified": true,
+    "details": {
+        "rounds": 9,
+        "llm_response": {
+            "code": "import Mathlib\n\n-- Precondition definitions\n@[reducible, simp]\ndef karatsuba_mul_precond (a b : List Int) : Prop :=\n  -- !benchmark @start precond\n  a.length > 0 \u2227\n  b.length > 0 \u2227\n  a.length + b.length \u2264 1000 \u2227\n  (\u2203 k : Nat, 2 ^ k = a.length) \u2227\n  (\u2203 k : Nat, 2 ^ k = b.length) \u2227\n  a.length = b.length \u2227\n  (\u2200 c, c \u2208 a \u2192 -1000000 \u2264 c \u2227 c \u2264 1000000) \u2227\n  (\u2200 c, c \u2208 b \u2192 -1000000 \u2264 c \u2227 c \u2264 1000000)\n  -- !benchmark @end precond\n\ndef spec_poly_mul_coeff (a b : List Int) (k : Nat) : Int :=\n  -- Omitted definition for brevity, same as naive\n  0 -- placeholder\n\n-- !benchmark @start auxcode\n/-- Coefficientwise addition of two coefficient lists (the shorter one is\nimplicitly padded with zeros). -/\ndef addL : List Int \u2192 List Int \u2192 List Int\n  | [], b => b\n  | a, [] => a\n  | x :: as, y :: bs => (x + y) :: addL as bs\n\n/-- Coefficientwise negation. -/\ndef negL : List Int \u2192 List Int\n  | [] => []\n  | x :: l => (-x) :: negL l\n\n/-- Multiplication by `x ^ m`, i.e. prepending `m` zero coefficients. -/\ndef shiftL (m : Nat) (l : List Int) : List Int := List.replicate m 0 ++ l\n\n/-- Karatsuba multiplication of two coefficient lists of length `2 ^ k`.\n\n`kara 0` is the base case (a single multiplication); for `k + 1` the lists are\nsplit into halves `a0, a1, b0, b1` and the result is\n`z0 + (z1 - z0 - z2) * x ^ m + z2 * x ^ (2 * m)` with `m = 2 ^ k`,\n`z0 = a0 * b0`, `z2 = a1 * b1`, `z1 = (a0 + a1) * (b0 + b1)`. -/\ndef kara : Nat \u2192 List Int \u2192 List Int \u2192 List Int\n  | 0, a, b => [a.getD 0 0 * b.getD 0 0]\n  | k + 1, a, b =>\n      addL (kara k (a.take (2 ^ k)) (b.take (2 ^ k)))\n        (addL\n          (shiftL (2 ^ k)\n            (addL\n              (kara k (addL (a.take (2 ^ k)) (a.drop (2 ^ k)))\n                      (addL (b.take (2 ^ k)) (b.drop (2 ^ k))))\n              (negL (addL (kara k (a.take (2 ^ k)) (b.take (2 ^ k)))\n                          (kara k (a.drop (2 ^ k)) (b.drop (2 ^ k)))))))\n          (shiftL (2 * 2 ^ k) (kara k (a.drop (2 ^ k)) (b.drop (2 ^ k)))))\n-- !benchmark @end auxcode\n\n-- Main function definitions\ndef karatsuba_mul (a b : List Int) (h_precond : karatsuba_mul_precond a b) : List Int :=\n  -- !benchmark @start code\n  kara (Nat.log 2 a.length) a b\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef karatsuba_mul_postcond (a b : List Int) (result : List Int) (h_precond : karatsuba_mul_precond a b) : Prop :=\n  -- !benchmark @start postcond\n   result.length = a.length + b.length - 1 \u2227\n   \u2200 k : Nat, k < result.length \u2192\n     result.getD k 0 = (List.range (k + 1)).foldl (fun acc i =>\n         if i < a.length \u2227 k - i < b.length then\n           acc + a.getD i 0 * b.getD (k - i) 0\n         else acc) 0\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\nopen Polynomial\n\n/-- The polynomial denoted by a coefficient list. -/\nnoncomputable def toPoly : List Int \u2192 Polynomial Int\n  | [] => 0\n  | x :: l => C x + X * toPoly l\n\nlemma toPoly_coeff (l : List Int) : \u2200 i : Nat, (toPoly l).coeff i = l.getD i 0 := by\n  induction l with\n  | nil => intro i; simp [toPoly]\n  | cons x l ih =>\n    intro i\n    cases i with\n    | zero => simp [toPoly, Polynomial.mul_coeff_zero]\n    | succ i =>\n      have hC : (C x : Polynomial Int).coeff (i + 1) = 0 := by\n        rw [Polynomial.coeff_C]; simp\n      simp only [toPoly, Polynomial.coeff_add, Polynomial.coeff_X_mul, hC, zero_add, ih]\n      all_goals simp\n\nlemma toPoly_addL (a b : List Int) : toPoly (addL a b) = toPoly a + toPoly b := by\n  induction a generalizing b with\n  | nil => simp [addL, toPoly]\n  | cons x as ih =>\n    cases b with\n    | nil => simp [addL, toPoly]\n    | cons y bs =>\n      simp only [addL, toPoly, ih, Polynomial.C_add]\n      ring\n\nlemma length_addL (a b : List Int) : (addL a b).length = max a.length b.length := by\n  induction a generalizing b with\n  | nil => simp [addL]\n  | cons x as ih =>\n    cases b with\n    | nil => simp [addL]\n    | cons y bs =>\n      simp only [addL, List.length_cons, ih]\n      omega\n\nlemma toPoly_negL (l : List Int) : toPoly (negL l) = - toPoly l := by\n  induction l with\n  | nil => simp [negL, toPoly]\n  | cons x l ih =>\n    simp only [negL, toPoly, ih, map_neg]\n    ring\n\nlemma length_negL (l : List Int) : (negL l).length = l.length := by\n  induction l with\n  | nil => simp [negL]\n  | cons x l ih => simp [negL, ih]\n\nlemma toPoly_shiftL (m : Nat) (l : List Int) :\n    toPoly (shiftL m l) = X ^ m * toPoly l := by\n  induction m with\n  | zero => simp [shiftL, toPoly]\n  | succ m ih =>\n    have h : shiftL (m + 1) l = 0 :: shiftL m l := by\n      simp [shiftL, List.replicate_succ]\n    rw [h]\n    simp only [toPoly, map_zero, zero_add, ih]\n    ring\n\nlemma length_shiftL (m : Nat) (l : List Int) : (shiftL m l).length = m + l.length := by\n  simp [shiftL]\n\nlemma toPoly_append (l1 l2 : List Int) :\n    toPoly (l1 ++ l2) = toPoly l1 + X ^ l1.length * toPoly l2 := by\n  induction l1 with\n  | nil => simp [toPoly]\n  | cons x l ih =>\n    simp only [List.cons_append, toPoly, ih, List.length_cons]\n    ring\n\nlemma kara_length (k : Nat) (a b : List Int) (ha : a.length = 2 ^ k)\n    (hb : b.length = 2 ^ k) : (kara k a b).length = 2 ^ (k + 1) - 1 := by\n  induction k generalizing a b with\n  | zero => simp [kara]\n  | succ k ih =>\n    have h1 : (1 : Nat) \u2264 2 ^ k := Nat.one_le_two_pow\n    have hps : (2 : Nat) ^ (k + 1) = 2 ^ k + 2 ^ k := by rw [pow_succ]; omega\n    have hps2 : (2 : Nat) ^ (k + 1 + 1) = 2 ^ (k + 1) + 2 ^ (k + 1) := by rw [pow_succ]; omega\n    have ha0 : (a.take (2 ^ k)).length = 2 ^ k := by rw [List.length_take, ha]; omega\n    have ha1 : (a.drop (2 ^ k)).length = 2 ^ k := by rw [List.length_drop, ha]; omega\n    have hb0 : (b.take (2 ^ k)).length = 2 ^ k := by rw [List.length_take, hb]; omega\n    have hb1 : (b.drop (2 ^ k)).length = 2 ^ k := by rw [List.length_drop, hb]; omega\n    have hs : (addL (a.take (2 ^ k)) (a.drop (2 ^ k))).length = 2 ^ k := by\n      rw [length_addL, ha0, ha1, max_self]\n    have hsb : (addL (b.take (2 ^ k)) (b.drop (2 ^ k))).length = 2 ^ k := by\n      rw [length_addL, hb0, hb1, max_self]\n    have e0 := ih _ _ ha0 hb0\n    have e2 := ih _ _ ha1 hb1\n    have e1 := ih _ _ hs hsb\n    simp only [kara, length_addL, length_shiftL, length_negL, e0, e1, e2]\n    omega\n\nlemma kara_toPoly (k : Nat) (a b : List Int) (ha : a.length = 2 ^ k)\n    (hb : b.length = 2 ^ k) : toPoly (kara k a b) = toPoly a * toPoly b := by\n  induction k generalizing a b with\n  | zero =>\n    simp only [pow_zero] at ha hb\n    cases a with\n    | nil => simp at ha\n    | cons x ta =>\n      cases ta with\n      | cons u v => simp only [List.length_cons] at ha; omega\n      | nil =>\n        cases b with\n        | nil => simp at hb\n        | cons y tb =>\n          cases tb with\n          | cons u v => simp only [List.length_cons] at hb; omega\n          | nil => simp [kara, toPoly, Polynomial.C_mul]\n  | succ k ih =>\n    have h1 : (1 : Nat) \u2264 2 ^ k := Nat.one_le_two_pow\n    have hps : (2 : Nat) ^ (k + 1) = 2 ^ k + 2 ^ k := by rw [pow_succ]; omega\n    have ha0 : (a.take (2 ^ k)).length = 2 ^ k := by rw [List.length_take, ha]; omega\n    have ha1 : (a.drop (2 ^ k)).length = 2 ^ k := by rw [List.length_drop, ha]; omega\n    have hb0 : (b.take (2 ^ k)).length = 2 ^ k := by rw [List.length_take, hb]; omega\n    have hb1 : (b.drop (2 ^ k)).length = 2 ^ k := by rw [List.length_drop, hb]; omega\n    have hs : (addL (a.take (2 ^ k)) (a.drop (2 ^ k))).length = 2 ^ k := by\n      rw [length_addL, ha0, ha1, max_self]\n    have hsb : (addL (b.take (2 ^ k)) (b.drop (2 ^ k))).length = 2 ^ k := by\n      rw [length_addL, hb0, hb1, max_self]\n    have e0 := ih _ _ ha0 hb0\n    have e2 := ih _ _ ha1 hb1\n    have e1 := ih _ _ hs hsb\n    have hA : toPoly a = toPoly (a.take (2 ^ k)) + X ^ (2 ^ k) * toPoly (a.drop (2 ^ k)) := by\n      conv_lhs => rw [\u2190 List.take_append_drop (2 ^ k) a]\n      rw [toPoly_append, ha0]\n    have hB : toPoly b = toPoly (b.take (2 ^ k)) + X ^ (2 ^ k) * toPoly (b.drop (2 ^ k)) := by\n      conv_lhs => rw [\u2190 List.take_append_drop (2 ^ k) b]\n      rw [toPoly_append, hb0]\n    have hx : (X : Polynomial Int) ^ (2 * 2 ^ k) = X ^ (2 ^ k) * X ^ (2 ^ k) := by\n      rw [two_mul, pow_add]\n    simp only [kara, toPoly_addL, toPoly_shiftL, toPoly_negL, e0, e1, e2, hx]\n    rw [hA, hB]\n    ring\n\nlemma getD_zero_of_le (l : List Int) (i : Nat) (h : l.length \u2264 i) : l.getD i 0 = 0 := by\n  rw [List.getD_eq_getElem?_getD, List.getElem?_eq_none h]\n  rfl\n\nlemma foldl_eq_sum (f : Nat \u2192 Int) (l : List Nat) (init : Int) :\n    l.foldl (fun acc i => acc + f i) init = init + (l.map f).sum := by\n  induction l generalizing init with\n  | nil => simp\n  | cons x xs ih => simp only [List.foldl_cons, List.map_cons, List.sum_cons, ih]; ring\n\nlemma sum_range_eq (f : Nat \u2192 Int) (n : Nat) :\n    \u2211 j \u2208 Finset.range n, f j = ((List.range n).map f).sum := by\n  induction n with\n  | zero => simp\n  | succ n ih => rw [Finset.sum_range_succ, List.range_succ, ih]; simp\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem karatsuba_mul_postcond_satisfied (a b : List Int) (h_precond : karatsuba_mul_precond a b) :\n    karatsuba_mul_postcond a b (karatsuba_mul a b h_precond) h_precond := by\n  -- !benchmark @start proof\n  have hp := h_precond\n  obtain \u27e8-, -, -, \u27e8k, hk\u27e9, -, hab, -, -\u27e9 := hp\n  have hlog : Nat.log 2 a.length = k := by rw [\u2190 hk, Nat.log_pow one_lt_two]\n  have ha : a.length = 2 ^ k := hk.symm\n  have hb : b.length = 2 ^ k := by rw [\u2190 hab]; exact hk.symm\n  have hres : karatsuba_mul a b h_precond = kara k a b := by\n    unfold karatsuba_mul; rw [hlog]\n  constructor\n  \u00b7 rw [hres, kara_length k a b ha hb, ha, hb, pow_succ]\n    omega\n  \u00b7 intro n hn\n    rw [hres]\n    rw [\u2190 toPoly_coeff, kara_toPoly k a b ha hb, Polynomial.coeff_mul,\n      Finset.Nat.sum_antidiagonal_eq_sum_range_succ_mk]\n    simp only [toPoly_coeff]\n    have hfun :\n        (fun (acc : Int) (i : Nat) =>\n          if i < a.length \u2227 n - i < b.length then acc + a.getD i 0 * b.getD (n - i) 0 else acc)\n        = (fun (acc : Int) (i : Nat) => acc + a.getD i 0 * b.getD (n - i) 0) := by\n      funext acc i\n      by_cases h : i < a.length \u2227 n - i < b.length\n      \u00b7 simp [h]\n      \u00b7 have hz : a.getD i 0 * b.getD (n - i) 0 = 0 := by\n          rcases not_and_or.mp h with h1 | h1\n          \u00b7 rw [getD_zero_of_le a i (by omega), zero_mul]\n          \u00b7 rw [getD_zero_of_le b (n - i) (by omega), mul_zero]\n        rw [if_neg h, hz, add_zero]\n    rw [hfun, foldl_eq_sum, zero_add, \u2190 sum_range_eq]\n  -- !benchmark @end proof\n",
+            "comment": "`LEAN VERIFIED` \u2014 the file compiles with no errors and no `sorry`/axioms (only warnings: unused variables from the given skeleton and two redundant simp arguments).\n\n## What was implemented\n\n**`auxcode`** \u2014 list helpers plus the algorithm:\n- `addL` (coefficientwise add, zero-padding the shorter list), `negL`, `shiftL m` (prepend `m` zeros = multiply by `x\u1d50`).\n- `kara : Nat \u2192 List Int \u2192 List Int \u2192 List Int`, structurally recursive on the *exponent* `k` (lists of length `2^k`). Base case `k = 0` is a single multiplication; the step splits at `m = 2^k` into `a0,a1,b0,b1`, computes `z0 = a0*b0`, `z2 = a1*b1`, `z1 = (a0+a1)*(b0+b1)`, and combines as `z0 + (z1 - z0 - z2)\u00b7x\u1d50 + z2\u00b7x\u00b2\u1d50`.\n\nIndexing the recursion by `k` rather than by list length makes termination structural \u2014 no well-founded recursion or `decreasing_by` needed. `karatsuba_mul` recovers `k` as `Nat.log 2 a.length`, which equals the `k` from the precondition's `\u2203 k, 2^k = a.length` via `Nat.log_pow`.\n\n**`lemma`** \u2014 the algebraic bridge. A denotation `toPoly : List Int \u2192 Polynomial Int` with `toPoly (x::l) = C x + X * toPoly l`, and:\n- `toPoly_coeff : (toPoly l).coeff i = l.getD i 0` (both directions of the bridge, valid out of range too since `getD` returns `0`);\n- homomorphism lemmas `toPoly_addL`, `toPoly_negL`, `toPoly_shiftL` (`\u21a6 X^m * \u00b7`), `toPoly_append` (the split `a = a.take m ++ a.drop m` becomes `A0 + X^m\u00b7A1`);\n- `kara_length : (kara k a b).length = 2^(k+1) - 1` and `kara_toPoly : toPoly (kara k a b) = toPoly a * toPoly b`, both by induction on `k`.\n\nThe Karatsuba identity `(A0+A1)(B0+B1) - A0B0 - A1B1 = A0B1 + A1B0` never needs a bespoke lemma: once everything is pushed through `toPoly`, the whole combine step is closed by `ring` (after rewriting `X^(2*m)` as `X^m * X^m`).\n\n**`proof`** \u2014 length from `kara_length`; for the coefficients, `result.getD n 0 = (toPoly a * toPoly b).coeff n`, expanded by `Polynomial.coeff_mul` and `Finset.Nat.sum_antidiagonal_eq_sum_range_succ_mk` into `\u2211 i \u2208 range (n+1), a.getD i 0 * b.getD (n-i) 0`. That sum is matched to the postcondition's `foldl`: the guard `i < a.length \u2227 n - i < b.length` is discharged by showing the product is `0` whenever it fails, so the folded function is *pointwise equal* to the unguarded one, and `foldl` collapses to a sum."
+        },
+        "verifier_response": {
+            "verified": true,
+            "feedback": "Verified successfully.",
+            "raw": {
+                "stdout": "claude_code_polymul_karatsuba_final_1786249515911.lean:17:25: warning: unused variable `a`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_polymul_karatsuba_final_1786249515911.lean:17:27: warning: unused variable `b`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_polymul_karatsuba_final_1786249515911.lean:17:42: warning: unused variable `k`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_polymul_karatsuba_final_1786249515911.lean:58:36: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_polymul_karatsuba_final_1786249515911.lean:65:65: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_polymul_karatsuba_final_1786249515911.lean:131:26: warning: This simp argument is unused:\n  toPoly\n\nHint: Omit it from the simp argument list.\n  simp [shiftL,\u0335 \u0335t\u0335o\u0335P\u0335o\u0335l\u0335y\u0335]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_polymul_karatsuba_final_1786249515911.lean:188:39: warning: This simp argument is unused:\n  Polynomial.C_mul\n\nHint: Omit it from the simp argument list.\n  simp [kara, toPoly,\u0335 \u0335P\u0335o\u0335l\u0335y\u0335n\u0335o\u0335m\u0335i\u0335a\u0335l\u0335.\u0335C\u0335_\u0335m\u0335u\u0335l\u0335]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\n",
+                "stderr": "",
+                "returncode": 0
+            }
+        },
+        "history": [
+            {
+                "compiler_pass": 1,
+                "verified": true,
+                "verifier_response": {
+                    "verified": true,
+                    "feedback": "Verified successfully.",
+                    "raw": {
+                        "stdout": "claude_code_polymul_karatsuba_final_1786249515911.lean:17:25: warning: unused variable `a`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_polymul_karatsuba_final_1786249515911.lean:17:27: warning: unused variable `b`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_polymul_karatsuba_final_1786249515911.lean:17:42: warning: unused variable `k`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_polymul_karatsuba_final_1786249515911.lean:58:36: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_polymul_karatsuba_final_1786249515911.lean:65:65: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_polymul_karatsuba_final_1786249515911.lean:131:26: warning: This simp argument is unused:\n  toPoly\n\nHint: Omit it from the simp argument list.\n  simp [shiftL,\u0335 \u0335t\u0335o\u0335P\u0335o\u0335l\u0335y\u0335]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_polymul_karatsuba_final_1786249515911.lean:188:39: warning: This simp argument is unused:\n  Polynomial.C_mul\n\nHint: Omit it from the simp argument list.\n  simp [kara, toPoly,\u0335 \u0335P\u0335o\u0335l\u0335y\u0335n\u0335o\u0335m\u0335i\u0335a\u0335l\u0335.\u0335C\u0335_\u0335m\u0335u\u0335l\u0335]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\n",
+                        "stderr": "",
+                        "returncode": 0
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "5a0c6a31-9937-471a-a723-f6efba216778",
+                    "subtype": "success",
+                    "provider_subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 1.2276702499999999,
+                    "duration_ms": 381356,
+                    "duration_api_ms": 363391,
+                    "num_turns": 10,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/polymul_karatsuba/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "prompt_sha256": "d32851a233d194fa64becff28f7577b78d70dae1b17bd7e45e45e67ad904d2bc",
+                    "budget_usd": null,
+                    "lastdance_profile": "api",
+                    "features": {
+                        "profile": "api",
+                        "algorithm_plan": false,
+                        "lemma_plan": false,
+                        "leansearch": false,
+                        "semantic_audit": false,
+                        "semantic_reminder": false,
+                        "early_check": false,
+                        "feedback_mode": "exact",
+                        "backtracking": false,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": false,
+                            "progress_governor": false,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": false,
+                            "rescue_mode": false
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 23050,
+                        "seconds_to_first_progress": 300.322,
+                        "seconds_to_first_check": 309.507,
+                        "pending_tool_recovery": []
+                    }
+                }
+            }
+        ],
+        "tokens": {
+            "input": 277112,
+            "output": 33531,
+            "reasoning": 0
+        },
+        "agent": {
+            "kind": "claude-code",
+            "cli_version": "2.1.220 (Claude Code)",
+            "model": "claude-opus-5",
+            "effort": "medium",
+            "session_id": "5a0c6a31-9937-471a-a723-f6efba216778",
+            "subtype": "success",
+            "provider_subtype": "success",
+            "is_error": false,
+            "total_cost_usd": 1.2276702499999999,
+            "duration_ms": 381356,
+            "duration_api_ms": 363391,
+            "num_turns": 10,
+            "returncode": 0,
+            "timed_out": false,
+            "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/polymul_karatsuba/agent_events.jsonl",
+            "pass_number": 1,
+            "prompt_kind": "initial",
+            "prompt_sha256": "d32851a233d194fa64becff28f7577b78d70dae1b17bd7e45e45e67ad904d2bc",
+            "budget_usd": null,
+            "lastdance_profile": "api",
+            "features": {
+                "profile": "api",
+                "algorithm_plan": false,
+                "lemma_plan": false,
+                "leansearch": false,
+                "semantic_audit": false,
+                "semantic_reminder": false,
+                "early_check": false,
+                "feedback_mode": "exact",
+                "backtracking": false,
+                "stagnation_threshold": 2
+            },
+            "run_control": {
+                "control": {
+                    "recover_pending_tool": false,
+                    "progress_governor": false,
+                    "pre_edit_timeout_seconds": 300,
+                    "pre_edit_thinking_tokens": 12000,
+                    "post_edit_check_timeout_seconds": 180,
+                    "planning_mode": false,
+                    "diagnostic_wrapper": false,
+                    "rescue_mode": false
+                },
+                "governor_stop_reason": null,
+                "max_thinking_tokens_observed": 23050,
+                "seconds_to_first_progress": 300.322,
+                "seconds_to_first_check": 309.507,
+                "pending_tool_recovery": []
+            },
+            "compiler_passes": 1,
+            "total_sessions": 1,
+            "selected_session": 1,
+            "sessions": [
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "5a0c6a31-9937-471a-a723-f6efba216778",
+                    "subtype": "success",
+                    "provider_subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 1.2276702499999999,
+                    "duration_ms": 381356,
+                    "duration_api_ms": 363391,
+                    "num_turns": 10,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/polymul_karatsuba/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "prompt_sha256": "d32851a233d194fa64becff28f7577b78d70dae1b17bd7e45e45e67ad904d2bc",
+                    "budget_usd": null,
+                    "lastdance_profile": "api",
+                    "features": {
+                        "profile": "api",
+                        "algorithm_plan": false,
+                        "lemma_plan": false,
+                        "leansearch": false,
+                        "semantic_audit": false,
+                        "semantic_reminder": false,
+                        "early_check": false,
+                        "feedback_mode": "exact",
+                        "backtracking": false,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": false,
+                            "progress_governor": false,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": false,
+                            "rescue_mode": false
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 23050,
+                        "seconds_to_first_progress": 300.322,
+                        "seconds_to_first_check": 309.507,
+                        "pending_tool_recovery": []
+                    }
+                }
+            ],
+            "compiler_checks_observed": 3,
+            "max_compiler_checks": 15
+        },
+        "provenance": {
+            "schema_version": 1,
+            "ownership": {
+                "model_owned_sections": [
+                    "auxcode",
+                    "code",
+                    "lemma",
+                    "proof"
+                ],
+                "teacher_owned": "all source outside the four marker regions",
+                "teacher_owned_sorry_present": false,
+                "model_section_ranges": {
+                    "auxcode": {
+                        "start_line": 21,
+                        "end_line": 55
+                    },
+                    "code": {
+                        "start_line": 59,
+                        "end_line": 61
+                    },
+                    "lemma": {
+                        "start_line": 75,
+                        "end_line": 230
+                    },
+                    "proof": {
+                        "start_line": 235,
+                        "end_line": 264
+                    }
+                }
+            },
+            "hashes": {
+                "original_sha256": "78fb8cc0d383bf4bb81983315278f9ce88b83abef4fb198126e9b4a09be2f923",
+                "candidate_sha256": "8e24f8bb50160e83c9826a38e2a713239679702da8c0ed74bc776f621f9b886e",
+                "merged_sha256": "8e24f8bb50160e83c9826a38e2a713239679702da8c0ed74bc776f621f9b886e",
+                "model_sections_sha256": {
+                    "auxcode": "4164530fcbfad8ae7ab5eb4faa72d64e3ab06d299808e5879233b55a70071e4b",
+                    "code": "83de76ff6658cde53794247abd9107486347d0eafbaa0138625b7a3963e9bc75",
+                    "lemma": "11a1fbc30398563459f504b71501ab2499539a511fd716c588869e43452e0551",
+                    "proof": "97fbe557dc4ab2dd22cf4e68b5cac0c3816b1d3ed45ed16486591b0391b4387e"
+                }
+            }
+        },
+        "targeted_diagnostics": [],
+        "lastdance_artifacts": {
+            "ledger": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/polymul_karatsuba/.lastdance/run_ledger.jsonl",
+            "algorithm_plan": null,
+            "proof_state": null,
+            "leansearch_queries": null,
+            "checkpoints": null,
+            "prompts": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/polymul_karatsuba/.lastdance/prompts"
+        }
+    },
+    "parsed": true,
+    "verdict": true,
+    "analysis": "The student\u2019s submission does implement a genuine Karatsuba-style divide-and-conquer polynomial multiplication algorithm, rather than calling a library multiplication routine or using a trivial placeholder for the main implementation.\n\nKey points:\n\n1. **Algorithm structure matches Karatsuba**\n   - They define `kara : Nat \u2192 List Int \u2192 List Int \u2192 List Int`.\n   - Base case `0`: multiplies the single coefficients.\n   - Recursive case `k+1`:\n     - splits inputs into halves using `take (2 ^ k)` and `drop (2 ^ k)`,\n     - computes:\n       - `z0 = kara k (a.take ...) (b.take ...)`\n       - `z2 = kara k (a.drop ...) (b.drop ...)`\n       - `z1 = kara k (addL ...) (addL ...)`\n     - combines as\n       - `z0 + shift m (z1 - z0 - z2) + shift (2m) z2`\n       implemented via `addL`, `negL`, and `shiftL`.\n   - This is exactly the required Karatsuba recurrence.\n\n2. **No obvious cheating in the student-owned implementation**\n   - No `sorry`, `admit`, or empty bodies appear in the student-owned regions.\n   - They do not call an existing polynomial multiplication function to compute the result.\n   - The recursive implementation is explicit and from scratch.\n\n3. **Correct divide-and-conquer approach**\n   - The natural language specifically requires Karatsuba, not just any correct multiplication.\n   - The student indeed uses the Karatsuba decomposition with the cross term computed as\n     `(A0+A1)(B0+B1) - A0B0 - A1B1`.\n\n4. **Proof effort aligns with the intended verification challenge**\n   - They define a polynomial interpretation `toPoly`.\n   - They prove lemmas about addition, negation, shifting, append decomposition, length, and the main theorem `kara_toPoly`.\n   - This is consistent with verifying algebraic equivalence of Karatsuba to standard multiplication.\n\n5. **Termination**\n   - Recursion is structurally on `k : Nat`, so termination is properly handled.\n\n6. **One suspicious point, but not disqualifying for the algorithm itself**\n   - `spec_poly_mul_coeff` is defined as `0 -- placeholder`, but this definition is outside the student-owned benchmark regions and is not used in the implementation/proof that matters here.\n   - Per your instruction and the benchmark ownership note, this should not be used to penalize the student.\n\nOverall, the student implemented the required Karatsuba multiplication algorithm and did not appear to exploit verification loopholes in the student-owned code.",
+    "semantic_judge": {
+        "model": "gpt-5.4",
+        "temperature": 0.0,
+        "reasoning_effort": "medium",
+        "provenance_aware": true
+    }
+}

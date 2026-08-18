@@ -1,0 +1,707 @@
+{
+    "verified": false,
+    "details": {
+        "rounds": 47,
+        "llm_response": {
+            "code": "import Mathlib\n\nstructure WeightedGraph where\n  adj : Array (Array (Nat \u00d7 Int))\n\ndef WeightedGraph.size (g : WeightedGraph) : Nat :=\n  g.adj.size\n\ndef WeightedGraph.has_edge (g : WeightedGraph) (u v : Nat) (w : Int) : Prop :=\n  u < g.size \u2227\n  \u2203 pair, pair \u2208 g.adj.getD u #[] \u2227 pair.1 = v \u2227 pair.2 = w\n\ndef WeightedGraph.well_formed (g : WeightedGraph) : Prop :=\n  \u2200 u, u < g.size \u2192\n    -- Bounds check\n    (\u2200 pair, pair \u2208 g.adj.getD u #[] \u2192 pair.1 < g.size) \u2227\n    -- Simple graph check (matches Dafny)\n    (\u2200 p1 p2, p1 \u2208 g.adj.getD u #[] \u2192 p2 \u2208 g.adj.getD u #[] \u2192 p1.1 = p2.1 \u2192 p1 = p2)\n\nstructure MSTEdge where\n  u : Nat\n  v : Nat\n  w : Int\n\n-- 1. Validity\ndef MSTEdge.is_valid (e : MSTEdge) (g : WeightedGraph) : Prop :=\n  g.has_edge e.u e.v e.w\n\n-- 2. Connectivity for Solution Edges (Undirected View)\n-- Dafny: `edge_in_set` checks (u, v) || (v, u)\ndef edges_contain (edges : List MSTEdge) (u v : Nat) : Prop :=\n  \u2203 e, e \u2208 edges \u2227 ((e.u = u \u2227 e.v = v) \u2228 (e.u = v \u2227 e.v = u))\n\ndef path_follows_edges (edges : List MSTEdge) (p : List Nat) : Prop :=\n  p.length > 0 \u2227\n  \u2200 i, i + 1 < p.length \u2192\n    edges_contain edges (p.getD i 0) (p.getD (i + 1) 0)\n\ndef is_connected_with_edges (g : WeightedGraph) (edges : List MSTEdge) : Prop :=\n  \u2200 u v, u < g.size \u2192 v < g.size \u2192\n    \u2203 p, p.head? = some u \u2227 p.getLast? = some v \u2227 path_follows_edges edges p\n\n-- 3. Spanning Tree Definition\ndef is_spanning_tree (g : WeightedGraph) (edges : List MSTEdge) : Prop :=\n  edges.length = g.size - 1 \u2227\n  (\u2200 e, e \u2208 edges \u2192 e.is_valid g) \u2227\n  is_connected_with_edges g edges\n  -- Note: |V|-1 edges + Connected implies Acyclic (Tree)\n\ndef total_weight (edges : List MSTEdge) : Int :=\n  edges.foldl (\u03bb sum e => sum + e.w) 0\n\n-- 4. Optimality (MST)\ndef is_mst (g : WeightedGraph) (edges : List MSTEdge) : Prop :=\n  is_spanning_tree g edges \u2227\n  \u2200 other, is_spanning_tree g other \u2192 total_weight edges \u2264 total_weight other\n\n-- 5. Graph Connectivity (Precondition)\n-- Dafny uses directed edges for the graph path check: `graph_has_any_edge`\ndef path_follows_graph (g : WeightedGraph) (p : List Nat) : Prop :=\n  p.length > 0 \u2227\n  \u2200 i, i + 1 < p.length \u2192\n    \u2203 w, g.has_edge (p.getD i 0) (p.getD (i + 1) 0) w\n\ndef WeightedGraph.is_connected (g : WeightedGraph) : Prop :=\n  \u2200 u v, u < g.size \u2192 v < g.size \u2192\n    \u2203 p, p.head? = some u \u2227 p.getLast? = some v \u2227 path_follows_graph g p\n\ndef WeightedGraph.weights_bounded (g : WeightedGraph) : Prop :=\n  g.size \u2264 100000 \u2227\n  \u2200 u v w, g.has_edge u v w \u2192 w \u2265 -100000 \u2227 w \u2264 100000\n\n-- Precondition definitions\n@[reducible, simp]\ndef kruskal_mst_precond (graph : WeightedGraph) : Prop :=\n  -- !benchmark @start precond\n  graph.well_formed \u2227\n  graph.size > 0 \u2227\n  graph.is_connected \u2227\n  graph.weights_bounded\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n\n/-- All directed edges read out of the adjacency list, as `MSTEdge`s. -/\ndef mkEdges (g : WeightedGraph) : List MSTEdge :=\n  (List.range g.size).flatMap fun u =>\n    (g.adj.getD u #[]).toList.map fun p => \u27e8u, p.1, p.2\u27e9\n\n/-- Union-Find as a flat label array: `c[i]` is the representative of `i`. -/\ndef UFfind (c : Array Nat) (u : Nat) : Nat := c.getD u u\n\n/-- Merge the class of `v` into the class of `u`. -/\ndef UFunion (c : Array Nat) (u v : Nat) : Array Nat :=\n  let ru := UFfind c u\n  let rv := UFfind c v\n  c.map fun x => if x = rv then ru else x\n\n/-- The Kruskal scan: walk the weight-sorted edge list, keeping an edge exactly\nwhen its endpoints currently lie in different components.  Returns the final\nUnion-Find state together with the kept edges. -/\ndef kruskalRun : List MSTEdge \u2192 Array Nat \u2192 List MSTEdge \u2192 Array Nat \u00d7 List MSTEdge\n  | [], c, acc => (c, acc.reverse)\n  | e :: es, c, acc =>\n      if UFfind c e.u = UFfind c e.v then kruskalRun es c acc\n      else kruskalRun es (UFunion c e.u e.v) (e :: acc)\n\ndef kruskalGo (es : List MSTEdge) (c : Array Nat) (acc : List MSTEdge) : List MSTEdge :=\n  (kruskalRun es c acc).2\n\n/-- The set of distinct component labels among the first `n` vertices. -/\ndef labelSet (n : Nat) (c : Array Nat) : Finset Nat :=\n  (Finset.range n).image (fun i => UFfind c i)\n\n/-- Reachability in the undirected graph spanned by a list of edges. -/\ndef Reach (S : List MSTEdge) : Nat \u2192 Nat \u2192 Prop :=\n  Relation.ReflTransGen (fun a b => edges_contain S a b)\n\n/-- Sort all graph edges by ascending weight. -/\ndef sortedEdges (g : WeightedGraph) : List MSTEdge :=\n  (mkEdges g).mergeSort (fun a b => decide (a.w \u2264 b.w))\n\n/-- Initial Union-Find state: every vertex is its own representative. -/\ndef initUF (n : Nat) : Array Nat := Array.ofFn (n := n) (fun i => i.val)\n\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef kruskal_mst (graph : WeightedGraph)\n    (h_precond : kruskal_mst_precond graph) : List MSTEdge :=\n  -- !benchmark @start code\n  kruskalGo (sortedEdges graph) (initUF graph.size) []\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef kruskal_mst_postcond (graph : WeightedGraph) (result : List MSTEdge)\n    (_ : kruskal_mst_precond graph) : Prop :=\n  -- !benchmark @start postcond\n  is_mst graph result\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\n\n/-- Every edge produced by `mkEdges` really occurs in the adjacency list. -/\ntheorem mkEdges_valid {g : WeightedGraph} {e : MSTEdge} (he : e \u2208 mkEdges g) :\n    e.is_valid g := by\n  unfold mkEdges at he\n  rw [List.mem_flatMap] at he\n  obtain \u27e8u, hu, he\u27e9 := he\n  rw [List.mem_map] at he\n  obtain \u27e8p, hp, rfl\u27e9 := he\n  rw [List.mem_range] at hu\n  exact \u27e8hu, p, Array.mem_toList_iff.mp hp, rfl, rfl\u27e9\n\n/-- `UFunion` is an `Array.map`, so it preserves the size. -/\ntheorem UFunion_size (c : Array Nat) (u v : Nat) : (UFunion c u v).size = c.size := by\n  simp [UFunion]\n\n/-- The single computational fact about `UFunion`: it relabels exactly the class of `v`. -/\ntheorem UFfind_union {c : Array Nat} {u v x : Nat} (hx : x < c.size) :\n    UFfind (UFunion c u v) x =\n      if UFfind c x = UFfind c v then UFfind c u else UFfind c x := by\n  have hs : (UFunion c u v).size = c.size := UFunion_size c u v\n  have hx' : x < (UFunion c u v).size := by omega\n  simp [UFfind, UFunion, Array.getD, hx, hx', Array.getElem_map]\n\n/-- After a union the two merged endpoints share a label. -/\ntheorem UFunion_merges {c : Array Nat} {u v : Nat} (hu : u < c.size) (hv : v < c.size) :\n    UFfind (UFunion c u v) u = UFfind (UFunion c u v) v := by\n  rw [UFfind_union hu, UFfind_union hv]\n  by_cases h : UFfind c u = UFfind c v <;> simp [h]\n\n/-- Labels only ever merge: an equality of labels survives every union. -/\ntheorem UFunion_mono {c : Array Nat} {u v a b : Nat} (ha : a < c.size) (hb : b < c.size)\n    (h : UFfind c a = UFfind c b) :\n    UFfind (UFunion c u v) a = UFfind (UFunion c u v) b := by\n  rw [UFfind_union ha, UFfind_union hb, h]\n\n/-- Backward half of the \"labels = components\" invariant. -/\ntheorem UFunion_cases {c : Array Nat} {u v a b : Nat} (ha : a < c.size) (hb : b < c.size)\n    (h : UFfind (UFunion c u v) a = UFfind (UFunion c u v) b) :\n    UFfind c a = UFfind c b \u2228\n      (UFfind c a = UFfind c v \u2227 UFfind c b = UFfind c u) \u2228\n      (UFfind c a = UFfind c u \u2227 UFfind c b = UFfind c v) := by\n  rw [UFfind_union ha, UFfind_union hb] at h\n  by_cases h1 : UFfind c a = UFfind c v <;> by_cases h2 : UFfind c b = UFfind c v <;>\n    simp [h1, h2] at h \u22a2 <;> omega\n\n-- Reachability helpers (`Reach` is a `def`, so dot notation on `ReflTransGen` does not fire).\n\ntheorem Reach.refl' (S : List MSTEdge) (a : Nat) : Reach S a a :=\n  Relation.ReflTransGen.refl\n\ntheorem Reach.single' {S : List MSTEdge} {a b : Nat} (h : edges_contain S a b) : Reach S a b :=\n  Relation.ReflTransGen.single h\n\ntheorem Reach.trans' {S : List MSTEdge} {a b c : Nat} (h1 : Reach S a b) (h2 : Reach S b c) :\n    Reach S a c :=\n  Relation.ReflTransGen.trans h1 h2\n\ntheorem edges_contain_mono {S S' : List MSTEdge} (hs : \u2200 e \u2208 S, e \u2208 S') {a b : Nat}\n    (h : edges_contain S a b) : edges_contain S' a b := by\n  obtain \u27e8e, he, hb\u27e9 := h\n  exact \u27e8e, hs e he, hb\u27e9\n\ntheorem Reach_mono {S S' : List MSTEdge} (hs : \u2200 e \u2208 S, e \u2208 S') {a b : Nat}\n    (h : Reach S a b) : Reach S' a b :=\n  Relation.ReflTransGen.mono (fun _ _ hx => edges_contain_mono hs hx) h\n\n/-- Bridge lemma: the closure `Reach` produces an explicit `path_follows_edges` witness. -/\ntheorem reach_path {S : List MSTEdge} {u v : Nat} (h : Reach S u v) :\n    \u2203 p, p.head? = some u \u2227 p.getLast? = some v \u2227 path_follows_edges S p := by\n  induction h using Relation.ReflTransGen.head_induction_on with\n  | refl => exact \u27e8[v], rfl, rfl, by simp [path_follows_edges]\u27e9\n  | head hab _ ih =>\n      rename_i a b _\n      obtain \u27e8p, hp1, hp2, hp3\u27e9 := ih\n      have hpne : p \u2260 [] := by\n        intro hnil; rw [hnil] at hp1; simp at hp1\n      cases p with\n      | nil => exact absurd rfl hpne\n      | cons x xs =>\n        have hx : x = b := by simpa using hp1\n        subst hx\n        refine \u27e8a :: x :: xs, rfl, by simpa using hp2, by simp, ?_\u27e9\n        intro i hi\n        match i with\n        | 0 => simpa using hab\n        | (k + 1) => simpa using hp3.2 k (by simpa using hi)\n\n/-- The scan only ever returns edges it was given. -/\ntheorem kruskalGo_mem {es : List MSTEdge} {c : Array Nat} {acc : List MSTEdge}\n    {e : MSTEdge} (he : e \u2208 kruskalGo es c acc) : e \u2208 es \u2228 e \u2208 acc := by\n  induction es generalizing c acc with\n  | nil => simp [kruskalGo, kruskalRun, List.mem_reverse] at he; exact Or.inr he\n  | cons a es ih =>\n      unfold kruskalGo kruskalRun at he\n      split at he\n      \u00b7 rcases ih he with h | h\n        \u00b7 exact Or.inl (List.mem_cons_of_mem _ h)\n        \u00b7 exact Or.inr h\n      \u00b7 rcases ih he with h | h\n        \u00b7 exact Or.inl (List.mem_cons_of_mem _ h)\n        \u00b7 rcases List.mem_cons.mp h with rfl | h\n          \u00b7 exact Or.inl (List.mem_cons_self ..)\n          \u00b7 exact Or.inr h\n\ntheorem mem_sortedEdges {g : WeightedGraph} {e : MSTEdge}\n    (he : e \u2208 sortedEdges g) : e \u2208 mkEdges g :=\n  (List.mergeSort_perm (mkEdges g) (fun a b => decide (a.w \u2264 b.w))).subset he\n\n/-- P2: every returned edge is a genuine graph edge. -/\ntheorem kruskal_valid (graph : WeightedGraph) (h : kruskal_mst_precond graph)\n    (e : MSTEdge) (he : e \u2208 kruskal_mst graph h) : e.is_valid graph := by\n  unfold kruskal_mst at he\n  rcases kruskalGo_mem he with h' | h'\n  \u00b7 exact mkEdges_valid (mem_sortedEdges h')\n  \u00b7 simp at h'\n\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem kruskal_mst_postcond_satisfied (graph : WeightedGraph)\n    (h_precond : kruskal_mst_precond graph) :\n    kruskal_mst_postcond graph (kruskal_mst graph h_precond) h_precond := by\n  -- !benchmark @start proof\n  refine \u27e8\u27e8?_, kruskal_valid graph h_precond, ?_\u27e9, ?_\u27e9\n  -- !benchmark @end proof",
+            "comment": ""
+        },
+        "verifier_response": {
+            "verified": false,
+            "feedback": "Stdout:\nclaude_code_kruskal_final_1786120221175.lean:130:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786120221175.lean:166:41: warning: This simp argument is unused:\n  hx'\n\nHint: Omit it from the simp argument list.\n  simp [UFfind, UFunion, Array.getD, hx, h\u0335x\u0335'\u0335,\u0335 \u0335Array.getElem_map]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_kruskal_final_1786120221175.lean:266:74: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskal_mst graph h_precond).length = graph.size - 1\n\ncase refine_2\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskal_mst graph h_precond)\n\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge),\n    is_spanning_tree graph other \u2192 total_weight (kruskal_mst graph h_precond) \u2264 total_weight other\n\n\nStderr:\n",
+            "raw": {
+                "stdout": "claude_code_kruskal_final_1786120221175.lean:130:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786120221175.lean:166:41: warning: This simp argument is unused:\n  hx'\n\nHint: Omit it from the simp argument list.\n  simp [UFfind, UFunion, Array.getD, hx, h\u0335x\u0335'\u0335,\u0335 \u0335Array.getElem_map]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_kruskal_final_1786120221175.lean:266:74: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskal_mst graph h_precond).length = graph.size - 1\n\ncase refine_2\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskal_mst graph h_precond)\n\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge),\n    is_spanning_tree graph other \u2192 total_weight (kruskal_mst graph h_precond) \u2264 total_weight other\n",
+                "stderr": "",
+                "returncode": 1
+            }
+        },
+        "history": [
+            {
+                "compiler_pass": 1,
+                "verified": false,
+                "verifier_response": {
+                    "verified": false,
+                    "feedback": "Stdout:\nclaude_code_kruskal_final_1786119572030.lean:130:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786119572030.lean:154:16: warning: `Array.mem_toList` has been deprecated: Use `Array.mem_toList_iff` instead\nclaude_code_kruskal_final_1786119572030.lean:190:74: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskal_mst graph h_precond).length = graph.size - 1\n\ncase refine_2\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskal_mst graph h_precond)\n\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge),\n    is_spanning_tree graph other \u2192 total_weight (kruskal_mst graph h_precond) \u2264 total_weight other\n\n\nStderr:\n",
+                    "raw": {
+                        "stdout": "claude_code_kruskal_final_1786119572030.lean:130:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786119572030.lean:154:16: warning: `Array.mem_toList` has been deprecated: Use `Array.mem_toList_iff` instead\nclaude_code_kruskal_final_1786119572030.lean:190:74: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskal_mst graph h_precond).length = graph.size - 1\n\ncase refine_2\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskal_mst graph h_precond)\n\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge),\n    is_spanning_tree graph other \u2192 total_weight (kruskal_mst graph h_precond) \u2264 total_weight other\n",
+                        "stderr": "",
+                        "returncode": 1
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "3dac91a2-62ab-434a-b872-7de443a2a1b7",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 1.17129775,
+                    "duration_ms": 344383,
+                    "duration_api_ms": 330863,
+                    "num_turns": 19,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/kruskal/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "prompt_sha256": "60600234c557e21fe589bfc7efcdfc5f70477253fb67889669365c4b3c6d5aed",
+                    "budget_usd": 1.35,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": true
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 7450,
+                        "seconds_to_first_progress": 57.135,
+                        "seconds_to_first_check": 62.441,
+                        "pending_tool_recovery": []
+                    }
+                }
+            },
+            {
+                "compiler_pass": 2,
+                "verified": false,
+                "verifier_response": {
+                    "verified": false,
+                    "feedback": "Stdout:\nclaude_code_kruskal_final_1786119819201.lean:130:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786119819201.lean:166:41: warning: This simp argument is unused:\n  hx'\n\nHint: Omit it from the simp argument list.\n  simp [UFfind, UFunion, Array.getD, hx, h\u0335x\u0335'\u0335,\u0335 \u0335Array.getElem_map]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_kruskal_final_1786119819201.lean:266:74: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskal_mst graph h_precond).length = graph.size - 1\n\ncase refine_2\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskal_mst graph h_precond)\n\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge),\n    is_spanning_tree graph other \u2192 total_weight (kruskal_mst graph h_precond) \u2264 total_weight other\n\n\nStderr:\n",
+                    "raw": {
+                        "stdout": "claude_code_kruskal_final_1786119819201.lean:130:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786119819201.lean:166:41: warning: This simp argument is unused:\n  hx'\n\nHint: Omit it from the simp argument list.\n  simp [UFfind, UFunion, Array.getD, hx, h\u0335x\u0335'\u0335,\u0335 \u0335Array.getElem_map]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_kruskal_final_1786119819201.lean:266:74: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskal_mst graph h_precond).length = graph.size - 1\n\ncase refine_2\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskal_mst graph h_precond)\n\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge),\n    is_spanning_tree graph other \u2192 total_weight (kruskal_mst graph h_precond) \u2264 total_weight other\n",
+                        "stderr": "",
+                        "returncode": 1
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "3458ca7e-b1df-46b6-84c7-92fc821bb6c7",
+                    "subtype": "error_max_budget_usd",
+                    "is_error": true,
+                    "total_cost_usd": 0.78301375,
+                    "duration_ms": 241747,
+                    "duration_api_ms": 230695,
+                    "num_turns": 12,
+                    "returncode": 1,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/kruskal/agent_events.jsonl",
+                    "pass_number": 2,
+                    "prompt_kind": "compiler_repair",
+                    "prompt_sha256": "ad2c64b00991306d4fed7f3afa9288318c36d1f9329cc721cd773cb888f29145",
+                    "budget_usd": 0.75,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": true
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 9700,
+                        "seconds_to_first_progress": 206.917,
+                        "seconds_to_first_check": 219.112,
+                        "pending_tool_recovery": [
+                            {
+                                "tool_use_id": "toolu_015vzDowBiSZVnE8RoxSkZw3",
+                                "tool_name": "Edit",
+                                "recovered": false,
+                                "denial": null,
+                                "error": "Edit old_string was not present"
+                            }
+                        ]
+                    }
+                }
+            },
+            {
+                "compiler_pass": 3,
+                "verified": false,
+                "verifier_response": {
+                    "verified": false,
+                    "feedback": "Stdout:\nclaude_code_kruskal_final_1786119975972.lean:130:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786119975972.lean:166:41: warning: This simp argument is unused:\n  hx'\n\nHint: Omit it from the simp argument list.\n  simp [UFfind, UFunion, Array.getD, hx, h\u0335x\u0335'\u0335,\u0335 \u0335Array.getElem_map]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_kruskal_final_1786119975972.lean:266:74: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskal_mst graph h_precond).length = graph.size - 1\n\ncase refine_2\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskal_mst graph h_precond)\n\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge),\n    is_spanning_tree graph other \u2192 total_weight (kruskal_mst graph h_precond) \u2264 total_weight other\n\n\nStderr:\n",
+                    "raw": {
+                        "stdout": "claude_code_kruskal_final_1786119975972.lean:130:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786119975972.lean:166:41: warning: This simp argument is unused:\n  hx'\n\nHint: Omit it from the simp argument list.\n  simp [UFfind, UFunion, Array.getD, hx, h\u0335x\u0335'\u0335,\u0335 \u0335Array.getElem_map]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_kruskal_final_1786119975972.lean:266:74: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskal_mst graph h_precond).length = graph.size - 1\n\ncase refine_2\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskal_mst graph h_precond)\n\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge),\n    is_spanning_tree graph other \u2192 total_weight (kruskal_mst graph h_precond) \u2264 total_weight other\n",
+                        "stderr": "",
+                        "returncode": 1
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "d3106181-d811-4377-aea6-c02f519c1b15",
+                    "subtype": "error_during_execution",
+                    "is_error": true,
+                    "total_cost_usd": 0.10238175,
+                    "duration_ms": 150965,
+                    "duration_api_ms": 13488,
+                    "num_turns": 8,
+                    "returncode": 143,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/kruskal/agent_events.jsonl",
+                    "pass_number": 3,
+                    "prompt_kind": "compiler_repair",
+                    "prompt_sha256": "93ebfc8051fb14cbb414fa9674c9f8a280559cb733bdd236454a868321062805",
+                    "budget_usd": 0.75,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": true
+                        },
+                        "governor_stop_reason": "no durable edit before 12000 thinking tokens",
+                        "max_thinking_tokens_observed": 12000,
+                        "seconds_to_first_progress": null,
+                        "seconds_to_first_check": null,
+                        "pending_tool_recovery": []
+                    }
+                }
+            },
+            {
+                "compiler_pass": 4,
+                "verified": false,
+                "verifier_response": {
+                    "verified": false,
+                    "feedback": "Stdout:\nclaude_code_kruskal_final_1786120221175.lean:130:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786120221175.lean:166:41: warning: This simp argument is unused:\n  hx'\n\nHint: Omit it from the simp argument list.\n  simp [UFfind, UFunion, Array.getD, hx, h\u0335x\u0335'\u0335,\u0335 \u0335Array.getElem_map]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_kruskal_final_1786120221175.lean:266:74: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskal_mst graph h_precond).length = graph.size - 1\n\ncase refine_2\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskal_mst graph h_precond)\n\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge),\n    is_spanning_tree graph other \u2192 total_weight (kruskal_mst graph h_precond) \u2264 total_weight other\n\n\nStderr:\n",
+                    "raw": {
+                        "stdout": "claude_code_kruskal_final_1786120221175.lean:130:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786120221175.lean:166:41: warning: This simp argument is unused:\n  hx'\n\nHint: Omit it from the simp argument list.\n  simp [UFfind, UFunion, Array.getD, hx, h\u0335x\u0335'\u0335,\u0335 \u0335Array.getElem_map]\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_kruskal_final_1786120221175.lean:266:74: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskal_mst graph h_precond).length = graph.size - 1\n\ncase refine_2\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskal_mst graph h_precond)\n\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge),\n    is_spanning_tree graph other \u2192 total_weight (kruskal_mst graph h_precond) \u2264 total_weight other\n",
+                        "stderr": "",
+                        "returncode": 1
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "f5eee435-56a3-4084-a881-1b84f056dc01",
+                    "subtype": "error_during_execution",
+                    "is_error": true,
+                    "total_cost_usd": 0.3601105,
+                    "duration_ms": 239293,
+                    "duration_api_ms": 119071,
+                    "num_turns": 9,
+                    "returncode": 143,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/kruskal/agent_events.jsonl",
+                    "pass_number": 4,
+                    "prompt_kind": "compiler_repair",
+                    "prompt_sha256": "2f386a3ff597a4812ffc9eb9054ba3549f91fc0b6d8cdd68a7d798311cba4e4c",
+                    "budget_usd": 0.75,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": true
+                        },
+                        "governor_stop_reason": "no durable edit before 12000 thinking tokens",
+                        "max_thinking_tokens_observed": 12100,
+                        "seconds_to_first_progress": null,
+                        "seconds_to_first_check": null,
+                        "pending_tool_recovery": []
+                    }
+                }
+            }
+        ],
+        "tokens": {
+            "input": 815369,
+            "output": 62807,
+            "reasoning": 0
+        },
+        "agent": {
+            "kind": "claude-code",
+            "cli_version": "2.1.220 (Claude Code)",
+            "model": "claude-opus-5",
+            "effort": "medium",
+            "session_id": "f5eee435-56a3-4084-a881-1b84f056dc01",
+            "subtype": "error_during_execution",
+            "is_error": true,
+            "total_cost_usd": 2.8249362499999995,
+            "duration_ms": 1109559,
+            "duration_api_ms": 815989,
+            "num_turns": 48,
+            "returncode": 143,
+            "timed_out": false,
+            "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/kruskal/agent_events.jsonl",
+            "pass_number": 4,
+            "prompt_kind": "compiler_repair",
+            "prompt_sha256": "2f386a3ff597a4812ffc9eb9054ba3549f91fc0b6d8cdd68a7d798311cba4e4c",
+            "budget_usd": 0.75,
+            "lastdance_profile": "robust",
+            "features": {
+                "profile": "robust",
+                "algorithm_plan": true,
+                "lemma_plan": true,
+                "leansearch": true,
+                "semantic_audit": true,
+                "semantic_reminder": true,
+                "early_check": true,
+                "feedback_mode": "structured",
+                "backtracking": true,
+                "stagnation_threshold": 2
+            },
+            "run_control": {
+                "control": {
+                    "recover_pending_tool": true,
+                    "progress_governor": true,
+                    "pre_edit_timeout_seconds": 300,
+                    "pre_edit_thinking_tokens": 12000,
+                    "post_edit_check_timeout_seconds": 180,
+                    "planning_mode": false,
+                    "diagnostic_wrapper": true
+                },
+                "governor_stop_reason": "no durable edit before 12000 thinking tokens",
+                "max_thinking_tokens_observed": 12100,
+                "seconds_to_first_progress": null,
+                "seconds_to_first_check": null,
+                "pending_tool_recovery": []
+            },
+            "compiler_passes": 4,
+            "total_sessions": 5,
+            "selected_session": 4,
+            "sessions": [
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "low",
+                    "session_id": "d819cfe6-7ad9-4ae3-b9c5-f781d799acf5",
+                    "subtype": "error_max_budget_usd",
+                    "is_error": true,
+                    "total_cost_usd": 0.4081325,
+                    "duration_ms": 133171,
+                    "duration_api_ms": 121872,
+                    "num_turns": 9,
+                    "returncode": 1,
+                    "timed_out": false,
+                    "stderr": "",
+                    "pass_number": 0,
+                    "prompt_kind": "proof_feasibility_planning",
+                    "prompt_sha256": "b42c58b24c0343206a1b93f7515d4bf7e2c482e437f105dd35dd18a7f4386777",
+                    "budget_usd": 0.4,
+                    "tokens": {
+                        "input": 65720,
+                        "output": 8942,
+                        "reasoning": 0
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": true,
+                            "diagnostic_wrapper": true
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 900,
+                        "seconds_to_first_progress": 72.929,
+                        "seconds_to_first_check": null,
+                        "pending_tool_recovery": []
+                    }
+                },
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "3dac91a2-62ab-434a-b872-7de443a2a1b7",
+                    "subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 1.17129775,
+                    "duration_ms": 344383,
+                    "duration_api_ms": 330863,
+                    "num_turns": 19,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/kruskal/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "prompt_sha256": "60600234c557e21fe589bfc7efcdfc5f70477253fb67889669365c4b3c6d5aed",
+                    "budget_usd": 1.35,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": true
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 7450,
+                        "seconds_to_first_progress": 57.135,
+                        "seconds_to_first_check": 62.441,
+                        "pending_tool_recovery": []
+                    }
+                },
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "3458ca7e-b1df-46b6-84c7-92fc821bb6c7",
+                    "subtype": "error_max_budget_usd",
+                    "is_error": true,
+                    "total_cost_usd": 0.78301375,
+                    "duration_ms": 241747,
+                    "duration_api_ms": 230695,
+                    "num_turns": 12,
+                    "returncode": 1,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/kruskal/agent_events.jsonl",
+                    "pass_number": 2,
+                    "prompt_kind": "compiler_repair",
+                    "prompt_sha256": "ad2c64b00991306d4fed7f3afa9288318c36d1f9329cc721cd773cb888f29145",
+                    "budget_usd": 0.75,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": true
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 9700,
+                        "seconds_to_first_progress": 206.917,
+                        "seconds_to_first_check": 219.112,
+                        "pending_tool_recovery": [
+                            {
+                                "tool_use_id": "toolu_015vzDowBiSZVnE8RoxSkZw3",
+                                "tool_name": "Edit",
+                                "recovered": false,
+                                "denial": null,
+                                "error": "Edit old_string was not present"
+                            }
+                        ]
+                    }
+                },
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "d3106181-d811-4377-aea6-c02f519c1b15",
+                    "subtype": "error_during_execution",
+                    "is_error": true,
+                    "total_cost_usd": 0.10238175,
+                    "duration_ms": 150965,
+                    "duration_api_ms": 13488,
+                    "num_turns": 8,
+                    "returncode": 143,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/kruskal/agent_events.jsonl",
+                    "pass_number": 3,
+                    "prompt_kind": "compiler_repair",
+                    "prompt_sha256": "93ebfc8051fb14cbb414fa9674c9f8a280559cb733bdd236454a868321062805",
+                    "budget_usd": 0.75,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": true
+                        },
+                        "governor_stop_reason": "no durable edit before 12000 thinking tokens",
+                        "max_thinking_tokens_observed": 12000,
+                        "seconds_to_first_progress": null,
+                        "seconds_to_first_check": null,
+                        "pending_tool_recovery": []
+                    }
+                },
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "f5eee435-56a3-4084-a881-1b84f056dc01",
+                    "subtype": "error_during_execution",
+                    "is_error": true,
+                    "total_cost_usd": 0.3601105,
+                    "duration_ms": 239293,
+                    "duration_api_ms": 119071,
+                    "num_turns": 9,
+                    "returncode": 143,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/kruskal/agent_events.jsonl",
+                    "pass_number": 4,
+                    "prompt_kind": "compiler_repair",
+                    "prompt_sha256": "2f386a3ff597a4812ffc9eb9054ba3549f91fc0b6d8cdd68a7d798311cba4e4c",
+                    "budget_usd": 0.75,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": true,
+                            "progress_governor": true,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": true
+                        },
+                        "governor_stop_reason": "no durable edit before 12000 thinking tokens",
+                        "max_thinking_tokens_observed": 12100,
+                        "seconds_to_first_progress": null,
+                        "seconds_to_first_check": null,
+                        "pending_tool_recovery": []
+                    }
+                }
+            ],
+            "planning_session": {
+                "kind": "claude-code",
+                "cli_version": "2.1.220 (Claude Code)",
+                "model": "claude-opus-5",
+                "effort": "low",
+                "session_id": "d819cfe6-7ad9-4ae3-b9c5-f781d799acf5",
+                "subtype": "error_max_budget_usd",
+                "is_error": true,
+                "total_cost_usd": 0.4081325,
+                "duration_ms": 133171,
+                "duration_api_ms": 121872,
+                "num_turns": 9,
+                "returncode": 1,
+                "timed_out": false,
+                "stderr": "",
+                "pass_number": 0,
+                "prompt_kind": "proof_feasibility_planning",
+                "prompt_sha256": "b42c58b24c0343206a1b93f7515d4bf7e2c482e437f105dd35dd18a7f4386777",
+                "budget_usd": 0.4,
+                "tokens": {
+                    "input": 65720,
+                    "output": 8942,
+                    "reasoning": 0
+                },
+                "run_control": {
+                    "control": {
+                        "recover_pending_tool": true,
+                        "progress_governor": true,
+                        "pre_edit_timeout_seconds": 300,
+                        "pre_edit_thinking_tokens": 12000,
+                        "post_edit_check_timeout_seconds": 180,
+                        "planning_mode": true,
+                        "diagnostic_wrapper": true
+                    },
+                    "governor_stop_reason": null,
+                    "max_thinking_tokens_observed": 900,
+                    "seconds_to_first_progress": 72.929,
+                    "seconds_to_first_check": null,
+                    "pending_tool_recovery": []
+                }
+            }
+        },
+        "provenance": {
+            "schema_version": 1,
+            "ownership": {
+                "model_owned_sections": [
+                    "auxcode",
+                    "code",
+                    "lemma",
+                    "proof"
+                ],
+                "teacher_owned": "all source outside the four marker regions",
+                "teacher_owned_sorry_present": false,
+                "model_section_ranges": {
+                    "auxcode": {
+                        "start_line": 83,
+                        "end_line": 126
+                    },
+                    "code": {
+                        "start_line": 131,
+                        "end_line": 133
+                    },
+                    "lemma": {
+                        "start_line": 143,
+                        "end_line": 261
+                    },
+                    "proof": {
+                        "start_line": 267,
+                        "end_line": 269
+                    }
+                }
+            },
+            "hashes": {
+                "original_sha256": "5d113897367eab13dcafd39f60958ee1b9214a9d84ea9e1722486def30fe9a70",
+                "candidate_sha256": "41a7384bdb380899af312089acafa0b250a5d713468495d5154360108f51bc76",
+                "merged_sha256": "41a7384bdb380899af312089acafa0b250a5d713468495d5154360108f51bc76",
+                "model_sections_sha256": {
+                    "auxcode": "62c099789fbdaf2cf2a1fff790143cd3e6c1ee22deb3e011909284ac27ea4f55",
+                    "code": "0cb2b7017b97c013b8cd025a2de6c5e9e0a70ea5104abfb6c899df3b9b73faf8",
+                    "lemma": "f34eb94e8a21b1cc34e2c827cac549d677543e2370586b54fcc63e23e89fecc9",
+                    "proof": "8c6381131a130b9826f2a5a29dbf8154b67429a72b8807979136e78f68716dfc"
+                }
+            }
+        },
+        "targeted_diagnostics": [
+            {
+                "line": 130,
+                "column": 5,
+                "kind": "warning",
+                "message": "unused variable `h_precond`",
+                "section": "teacher-owned-or-generated",
+                "nearest_declaration": "kruskal_mst"
+            },
+            {
+                "line": 166,
+                "column": 41,
+                "kind": "warning",
+                "message": "This simp argument is unused:",
+                "section": "lemma",
+                "nearest_declaration": "UFfind_union"
+            },
+            {
+                "line": 266,
+                "column": 74,
+                "kind": "error",
+                "message": "unsolved goals",
+                "section": "teacher-owned-or-generated",
+                "nearest_declaration": "kruskal_mst_postcond_satisfied"
+            }
+        ],
+        "lastdance_artifacts": {
+            "ledger": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/kruskal/.lastdance/run_ledger.jsonl",
+            "algorithm_plan": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/kruskal/AlgorithmPlan.md",
+            "proof_state": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/kruskal/ProofState.md",
+            "leansearch_queries": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/kruskal/.lastdance/leansearch_queries.jsonl",
+            "checkpoints": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/kruskal/.lastdance/checkpoints/manifest.jsonl",
+            "prompts": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_full_13/kruskal/.lastdance/prompts"
+        }
+    },
+    "parsed": false,
+    "verdict": false,
+    "analysis": "",
+    "semantic_judge": {
+        "model": "gpt-5.4",
+        "temperature": 0.0,
+        "reasoning_effort": "medium",
+        "provenance_aware": true
+    }
+}

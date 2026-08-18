@@ -1,5 +1,10 @@
 # LastDance: Claude Code + Opus 5 Lean toolchain
 
+For the opt-in robust profile with algorithm planning, checkpointed repair,
+the Frenzymath LeanSearch v2 API, prompt-level semantic auditing, and provenance-aware
+evaluation, see [LASTDANCE_V2.md](LASTDANCE_V2.md). The legacy defaults in this
+document remain unchanged for reproducibility.
+
 **LastDance** uses Claude Code as a coding agent rather than calling the Anthropic
 Messages API through AlgoVeri's original chat-and-revision loop. Each task gets
 an isolated working directory containing `TASK.md`, `Original.lean`, and an

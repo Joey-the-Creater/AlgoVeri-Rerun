@@ -1,0 +1,250 @@
+{
+  "verified": true,
+  "details": {
+    "rounds": 8,
+    "llm_response": {
+      "code": "import Mathlib\n\n-- Precondition definitions\n@[reducible, simp]\ndef bracket_match_precond (s : Array UInt8) : Prop :=\n  -- !benchmark @start precond\n  s.size \u2264 1000000\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n/-- Linear scan over the remaining characters, carrying the running balance `c`.\n    Fails immediately as soon as the balance would drop below zero. -/\ndef bm_go : List UInt8 \u2192 Int \u2192 Bool\n  | [], c => c == 0\n  | x :: xs, c =>\n      if c + (if x == 40 then (1 : Int) else if x == 41 then -1 else 0) < 0 then false\n      else bm_go xs (c + (if x == 40 then (1 : Int) else if x == 41 then -1 else 0))\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef bracket_match (s : Array UInt8) (_ : bracket_match_precond s) : Bool :=\n  -- !benchmark @start code\n  bm_go s.toList 0\n  -- !benchmark @end code\n\n-- Helper definitions\ndef char_weight (c : UInt8) : Int :=\n  if c == 40 then 1      -- '('\n  else if c == 41 then -1 -- ')'\n  else 0\n\n-- Calculates total weight of a list of characters\ndef total_weight (s : List UInt8) : Int :=\n  (s.map char_weight).sum\n\n-- Prefix property: all prefixes have non-negative total weight\ndef valid_prefix_weights (s : List UInt8) : Prop :=\n  \u2200 i, i \u2264 s.length \u2192 total_weight (s.take i) \u2265 0\n\n-- Correctness predicate\ndef is_matched (s : List UInt8) : Prop :=\n  total_weight s = 0 \u2227 valid_prefix_weights s\n\n-- Postcondition definitions\n@[reducible, simp]\ndef bracket_match_postcond (s : Array UInt8) (result : Bool) (_ : bracket_match_precond s) : Prop :=\n  -- !benchmark @start postcond\n  result = is_matched s.toList\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\ntheorem total_weight_nil : total_weight [] = 0 := rfl\n\ntheorem total_weight_cons (x : UInt8) (xs : List UInt8) :\n    total_weight (x :: xs) = char_weight x + total_weight xs := by\n  simp [total_weight]\n\ntheorem bm_go_nil (c : Int) : bm_go [] c = (c == 0) := by\n  simp [bm_go]\n\ntheorem bm_go_cons (x : UInt8) (xs : List UInt8) (c : Int) :\n    bm_go (x :: xs) c =\n      (if c + char_weight x < 0 then false else bm_go xs (c + char_weight x)) := rfl\n\n/-- The scan starting from a non-negative balance `c` succeeds exactly when the\n    total weight brings the balance back to zero and every prefix keeps it\n    non-negative. -/\ntheorem bm_go_spec :\n    \u2200 (l : List UInt8) (c : Int), 0 \u2264 c \u2192\n      (bm_go l c = true \u2194\n        (c + total_weight l = 0 \u2227 \u2200 i, i \u2264 l.length \u2192 c + total_weight (l.take i) \u2265 0)) := by\n  intro l\n  induction l with\n  | nil =>\n    intro c hc\n    rw [bm_go_nil]\n    constructor\n    \u00b7 intro h\n      simp only [beq_iff_eq] at h\n      refine \u27e8by rw [total_weight_nil]; linarith, ?_\u27e9\n      intro i _\n      rw [List.take_nil, total_weight_nil]\n      linarith\n    \u00b7 rintro \u27e8h1, -\u27e9\n      rw [total_weight_nil] at h1\n      simp only [beq_iff_eq]\n      linarith\n  | cons x xs ih =>\n    intro c hc\n    rw [bm_go_cons]\n    by_cases hneg : c + char_weight x < 0\n    \u00b7 rw [if_pos hneg]\n      refine iff_of_false (by simp) ?_\n      rintro \u27e8-, h2\u27e9\n      have h := h2 1 (by simp only [List.length_cons]; omega)\n      rw [show ((x :: xs).take 1) = [x] by simp, total_weight_cons, total_weight_nil] at h\n      linarith\n    \u00b7 rw [if_neg hneg]\n      push_neg at hneg\n      rw [ih (c + char_weight x) hneg]\n      constructor\n      \u00b7 rintro \u27e8h1, h2\u27e9\n        refine \u27e8by rw [total_weight_cons]; linarith, ?_\u27e9\n        intro i hi\n        cases i with\n        | zero =>\n          rw [List.take_zero, total_weight_nil]\n          linarith\n        | succ j =>\n          simp only [List.length_cons] at hi\n          have h := h2 j (by omega)\n          rw [List.take_succ_cons, total_weight_cons]\n          linarith\n      \u00b7 rintro \u27e8h1, h2\u27e9\n        rw [total_weight_cons] at h1\n        refine \u27e8by linarith, ?_\u27e9\n        intro j hj\n        have h := h2 (j + 1) (by simp only [List.length_cons]; omega)\n        rw [List.take_succ_cons, total_weight_cons] at h\n        linarith\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem bracket_match_postcond_satisfied\n    (s : Array UInt8) (h_precond : bracket_match_precond s) :\n    bracket_match_postcond s (bracket_match s h_precond) h_precond := by\n  -- !benchmark @start proof\n  simp only [bracket_match_postcond, bracket_match, is_matched, valid_prefix_weights]\n  rw [eq_iff_iff, bm_go_spec s.toList 0 le_rfl]\n  simp\n  -- !benchmark @end proof\n",
+      "comment": "Verified. `Solution.lean` now compiles cleanly (`LEAN VERIFIED`, 2 compiler checks used).\n\n**Approach**\n\n- **auxcode** \u2014 `bm_go : List UInt8 \u2192 Int \u2192 Bool`, a structurally-recursive linear scan carrying the running balance `c`: it returns `false` the moment `c` would go negative, and at the end tests `c == 0`. The per-character weight is inlined (`char_weight` is defined below `bracket_match` in the file, so it isn't in scope there).\n- **code** \u2014 `bracket_match s _ := bm_go s.toList 0`.\n- **lemma** \u2014 the key generalized invariant, proved by induction on the list with `c` universally quantified:\n\n  ```\n  0 \u2264 c \u2192 (bm_go l c = true \u2194\n            c + total_weight l = 0 \u2227 \u2200 i \u2264 l.length, c + total_weight (l.take i) \u2265 0)\n  ```\n\n  The `c` offset is exactly the \"counter equals the weight sum of the part already processed\" invariant. In the early-failure branch the right side is refuted by instantiating the prefix property at `i = 1`; in the continuing branch the `cons` step matches prefixes `i+1` of `x :: xs` with prefixes `i` of `xs` via `List.take_succ_cons` and `total_weight_cons`.\n- **proof** \u2014 instantiate at `c = 0` (`le_rfl`), turn the `Bool`/`Prop` postcondition equality into an `Iff` with `eq_iff_iff`, and discharge the `0 + _` offsets with `simp`.\n\nNo `sorry`, `axiom`, `partial`, `unsafe`, or extern/implemented-by attributes; only the four marker regions were changed, and no other file was touched."
+    },
+    "verifier_response": {
+      "verified": true,
+      "feedback": "Verified successfully.",
+      "raw": {
+        "stdout": "",
+        "stderr": "",
+        "returncode": 0
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": true,
+        "verifier_response": {
+          "verified": true,
+          "feedback": "Verified successfully.",
+          "raw": {
+            "stdout": "",
+            "stderr": "",
+            "returncode": 0
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "75a5b6b0-9b9f-499b-b1be-ae640fbafa85",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.38192750000000003,
+          "duration_ms": 104184,
+          "duration_api_ms": 94929,
+          "num_turns": 9,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/bracket_matching/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "de5415cce59496a896c4077d29adb3e206d613f6a0bd5357399a0a55da989150",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 3950,
+            "seconds_to_first_progress": 65.884,
+            "seconds_to_first_check": 74.51,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 131319,
+      "output": 8725,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "75a5b6b0-9b9f-499b-b1be-ae640fbafa85",
+      "subtype": "success",
+      "provider_subtype": "success",
+      "is_error": false,
+      "total_cost_usd": 0.38192750000000003,
+      "duration_ms": 104184,
+      "duration_api_ms": 94929,
+      "num_turns": 9,
+      "returncode": 0,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/bracket_matching/agent_events.jsonl",
+      "pass_number": 1,
+      "prompt_kind": "initial",
+      "prompt_sha256": "de5415cce59496a896c4077d29adb3e206d613f6a0bd5357399a0a55da989150",
+      "budget_usd": null,
+      "lastdance_profile": "api",
+      "features": {
+        "profile": "api",
+        "algorithm_plan": false,
+        "lemma_plan": false,
+        "leansearch": false,
+        "semantic_audit": false,
+        "semantic_reminder": false,
+        "early_check": false,
+        "feedback_mode": "exact",
+        "backtracking": false,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": false,
+          "progress_governor": false,
+          "pre_edit_timeout_seconds": 300,
+          "pre_edit_thinking_tokens": 12000,
+          "post_edit_check_timeout_seconds": 180,
+          "planning_mode": false,
+          "diagnostic_wrapper": false,
+          "rescue_mode": false
+        },
+        "governor_stop_reason": null,
+        "max_thinking_tokens_observed": 3950,
+        "seconds_to_first_progress": 65.884,
+        "seconds_to_first_check": 74.51,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 1,
+      "total_sessions": 1,
+      "selected_session": 1,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "75a5b6b0-9b9f-499b-b1be-ae640fbafa85",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.38192750000000003,
+          "duration_ms": 104184,
+          "duration_api_ms": 94929,
+          "num_turns": 9,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/bracket_matching/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "de5415cce59496a896c4077d29adb3e206d613f6a0bd5357399a0a55da989150",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 3950,
+            "seconds_to_first_progress": 65.884,
+            "seconds_to_first_check": 74.51,
+            "pending_tool_recovery": []
+          }
+        }
+      ],
+      "compiler_checks_observed": 2,
+      "max_compiler_checks": 15
+    },
+    "provenance": {
+      "schema_version": 1,
+      "ownership": {
+        "model_owned_sections": [
+          "auxcode",
+          "code",
+          "lemma",
+          "proof"
+        ],
+        "teacher_owned": "all source outside the four marker regions",
+        "teacher_owned_sorry_present": false,
+        "model_section_ranges": {
+          "auxcode": {
+            "start_line": 10,
+            "end_line": 18
+          },
+          "code": {
+            "start_line": 22,
+            "end_line": 24
+          },
+          "lemma": {
+            "start_line": 51,
+            "end_line": 121
+          },
+          "proof": {
+            "start_line": 127,
+            "end_line": 131
+          }
+        }
+      },
+      "hashes": {
+        "original_sha256": "37fa6ec41a102607902160ed2de0a8a8e440e01a498d177ed47400c2a83e7dfa",
+        "candidate_sha256": "d150d287dfb0022d81febcb1bc54d61b89ff69c0f1a8f1d55fbf1976e4efc63d",
+        "merged_sha256": "d150d287dfb0022d81febcb1bc54d61b89ff69c0f1a8f1d55fbf1976e4efc63d",
+        "model_sections_sha256": {
+          "auxcode": "201d8260c80421420463e83cd425333ac10e42934e90bfcfaedc2fd4a017ad0f",
+          "code": "184ddf21c1402112822c7747e512042c1021991329e691c93770bf72376cedb4",
+          "lemma": "c0a249a0a7a5914883315f323ff7ca5744f2fea861580ad30342223f3018382f",
+          "proof": "3f686aae976b3994ce887ee1689a62e8488665be7e1f54980bd85b24c74f50b9"
+        }
+      }
+    },
+    "targeted_diagnostics": [],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/bracket_matching/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": null,
+      "proof_state": null,
+      "leansearch_queries": null,
+      "checkpoints": null,
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/bracket_matching/.lastdance/prompts"
+    }
+  }
+}

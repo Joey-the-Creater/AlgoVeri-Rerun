@@ -1,0 +1,257 @@
+{
+    "verified": true,
+    "details": {
+        "rounds": 51,
+        "llm_response": {
+            "code": "import Mathlib\n\nstructure MaxMatchingGraph where\n  left_size : Nat\n  right_size : Nat\n  adj : Array (Array Nat)\n\ndef MaxMatchingGraph.well_formed (g : MaxMatchingGraph) : Prop :=\n  g.adj.size = g.left_size \u2227\n  \u2200 u, u < g.left_size \u2192\n    \u2200 v, v \u2208 g.adj.getD u #[] \u2192 v < g.right_size\n\ndef MaxMatchingGraph.has_edge (g : MaxMatchingGraph) (u v : Nat) : Prop :=\n  u < g.left_size \u2227\n  v \u2208 g.adj.getD u #[]\n\n-- Matching definition\nstructure Matching where\n  edges : List (Nat \u00d7 Nat)\n\ndef Matching.is_valid (m : Matching) (g : MaxMatchingGraph) : Prop :=\n  \u2200 e, e \u2208 m.edges \u2192 g.has_edge e.1 e.2\n\ndef Matching.is_disjoint (m : Matching) : Prop :=\n  \u2200 e1 e2, e1 \u2208 m.edges \u2192 e2 \u2208 m.edges \u2192 e1 \u2260 e2 \u2192\n    e1.1 \u2260 e2.1 \u2227 e1.2 \u2260 e2.2\n\ndef Matching.size (m : Matching) : Nat :=\n  m.edges.length\n\ndef is_matching (g : MaxMatchingGraph) (m : Matching) : Prop :=\n  m.is_valid g \u2227 \n  m.is_disjoint \u2227\n  m.edges.Nodup\n\ndef is_max_matching_size (g : MaxMatchingGraph) (k : Nat) : Prop :=\n  (\u2203 m, is_matching g m \u2227 m.size = k) \u2227\n  (\u2200 m, is_matching g m \u2192 m.size \u2264 k)\n\n-- Precondition definitions\n@[reducible, simp]\ndef max_bipartite_matching_precond (graph : MaxMatchingGraph) : Prop :=\n  -- !benchmark @start precond\n  graph.well_formed \u2227 graph.left_size \u2264 1000 \u2227 graph.right_size \u2264 1000\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\nnamespace MaxMatch\n\n/-- A matching, represented as a duplicate-free list of `(left, right)` pairs. -/\nabbrev Mat := List (Nat \u00d7 Nat)\n\n/-- Neighbours (right vertices) of a left vertex. -/\ndef nbrs (g : MaxMatchingGraph) (u : Nat) : List Nat := (g.adj.getD u #[]).toList\n\n/-- The left partner of a right vertex `v`, if any. -/\ndef partR (M : Mat) (v : Nat) : Option Nat :=\n  (M.find? (fun p => p.2 == v)).map Prod.fst\n\n/-- The right partner of a left vertex `u`, if any. -/\ndef partL (M : Mat) (u : Nat) : Option Nat :=\n  (M.find? (fun p => p.1 == u)).map Prod.snd\n\n/-- `M` is a valid matching of `g`: every pair is an edge, and the pairing is\n    injective in both coordinates. -/\ndef MOK (g : MaxMatchingGraph) (M : Mat) : Prop :=\n  (\u2200 p \u2208 M, g.has_edge p.1 p.2) \u2227\n  (\u2200 p \u2208 M, \u2200 q \u2208 M, p.1 = q.1 \u2192 p.2 = q.2) \u2227\n  (\u2200 p \u2208 M, \u2200 q \u2208 M, p.2 = q.2 \u2192 p.1 = q.1) \u2227\n  M.Nodup\n\n/-- Kuhn's DFS for an augmenting path starting at the free left vertex `u`,\n    scanning the remaining neighbour list `vs`, with `Z` the set of already visited\n    right vertices.  Returns the augmented matching (if a path was found) together\n    with the visited set. -/\ndef dfs (g : MaxMatchingGraph) (M : Mat) (Z : Finset Nat) (u : Nat)\n    (vs : List Nat) (fuel : Nat) : Option Mat \u00d7 Finset Nat :=\n  match fuel, vs with\n  | 0, _ => (none, Z)\n  | _ + 1, [] => (none, Z)\n  | fuel + 1, v :: rest =>\n      if v \u2208 Z then dfs g M Z u rest (fuel + 1)\n      else\n        match partR M v with\n        | none => (some ((u, v) :: M), insert v Z)\n        | some w =>\n          match dfs g (M.erase (w, v)) (insert v Z) w (nbrs g w) fuel with\n          | (some M', Z') => (some ((u, v) :: M'), Z')\n          | (none, Z') => dfs g M Z' u rest (fuel + 1)\ntermination_by (fuel, vs.length)\n\n/-- One pass over the left vertices `us`, augmenting from every still free vertex.\n    The boolean records whether any augmentation happened. -/\ndef scan (g : MaxMatchingGraph) (M : Mat) (Z : Finset Nat) (us : List Nat) :\n    Mat \u00d7 Finset Nat \u00d7 Bool :=\n  match us with\n  | [] => (M, Z, false)\n  | u :: rest =>\n      match partL M u with\n      | some _ => scan g M Z rest\n      | none =>\n        match dfs g M Z u (nbrs g u) g.right_size with\n        | (some M', _) => let r := scan g M' \u2205 rest; (r.1, r.2.1, true)\n        | (none, Z') => scan g M Z' rest\n\n/-- Repeat the scan until a whole pass finds no augmenting path. -/\ndef loop (g : MaxMatchingGraph) (M : Mat) (fuel : Nat) : Mat \u00d7 Finset Nat :=\n  match fuel with\n  | 0 => (M, \u2205)\n  | fuel + 1 =>\n      match scan g M \u2205 (List.range g.left_size) with\n      | (M', Z', true) => loop g M' fuel\n      | (M', Z', false) => (M', Z')\n\n/-- The invariant accumulated by a full scan: every visited right vertex is matched\n    and its partner has been fully explored. -/\ndef CInv (g : MaxMatchingGraph) (M : Mat) (Z : Finset Nat) : Prop :=\n  \u2200 v \u2208 Z, \u2203 w, (w, v) \u2208 M \u2227 \u2200 v' \u2208 nbrs g w, v' \u2208 Z\n\n/-- Postconditions of `dfs`. -/\ndef DfsOK (g : MaxMatchingGraph) (M : Mat) (Z : Finset Nat) (u : Nat)\n    (vs : List Nat) (res : Option Mat \u00d7 Finset Nat) : Prop :=\n  Z \u2286 res.2 \u2227 (\u2200 v \u2208 res.2, v < g.right_size) \u2227\n  (res.1 = none \u2192\n      (\u2200 v \u2208 vs, v \u2208 res.2) \u2227\n      (\u2200 v \u2208 res.2, v \u2209 Z \u2192 \u2203 w, (w, v) \u2208 M \u2227 \u2200 v' \u2208 nbrs g w, v' \u2208 res.2)) \u2227\n  (\u2200 M', res.1 = some M' \u2192\n      MOK g M' \u2227 M'.length = M.length + 1 \u2227\n      (\u2200 p \u2208 M', (\u2203 c, (p.1, c) \u2208 M) \u2228 p.1 = u) \u2227\n      (\u2200 p \u2208 M', (\u2203 c, (c, p.2) \u2208 M) \u2228 (p.2 \u2208 res.2 \u2227 p.2 \u2209 Z)))\n\n/-- Postconditions of one `scan` pass. -/\ndef ScanOK (g : MaxMatchingGraph) (M : Mat) (Z : Finset Nat) (us : List Nat)\n    (r : Mat \u00d7 Finset Nat \u00d7 Bool) : Prop :=\n  MOK g r.1 \u2227 M.length \u2264 r.1.length \u2227\n  (r.2.2 = true \u2192 M.length < r.1.length) \u2227\n  (r.2.2 = false \u2192\n      r.1 = M \u2227 Z \u2286 r.2.1 \u2227 (\u2200 v \u2208 r.2.1, v < g.right_size) \u2227\n      CInv g M r.2.1 \u2227\n      (\u2200 u \u2208 us, (\u2200 x, (u, x) \u2209 M) \u2192 \u2200 v \u2208 nbrs g u, v \u2208 r.2.1))\n\nend MaxMatch\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef max_bipartite_matching (graph : MaxMatchingGraph)\n    (h_precond : max_bipartite_matching_precond graph) : Nat :=\n  -- !benchmark @start code\n  (MaxMatch.loop graph [] (graph.left_size + 1)).1.length\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef max_bipartite_matching_postcond (graph : MaxMatchingGraph) (result : Nat)\n    (_ : max_bipartite_matching_precond graph) : Prop :=\n  -- !benchmark @start postcond\n  is_max_matching_size graph result\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\nnamespace MaxMatch\n\nvariable {g : MaxMatchingGraph}\n\ntheorem mem_nbrs_iff {u v : Nat} : v \u2208 nbrs g u \u2194 v \u2208 g.adj.getD u #[] := by\n  simp [nbrs]\n\ntheorem mem_nbrs_lt (hg : g.well_formed) {u v : Nat} (h : v \u2208 nbrs g u) :\n    u < g.left_size := by\n  by_contra hu\n  rw [mem_nbrs_iff] at h\n  have hsz : \u00ac u < g.adj.size := by rw [hg.1]; exact hu\n  rw [Array.getD_eq_getD_getElem?, Array.getElem?_eq_none (by omega)] at h\n  simp at h\n\ntheorem nbrs_edge (hg : g.well_formed) {u v : Nat} (h : v \u2208 nbrs g u) :\n    g.has_edge u v := \u27e8mem_nbrs_lt hg h, mem_nbrs_iff.mp h\u27e9\n\ntheorem nbrs_lt (hg : g.well_formed) {u v : Nat} (h : v \u2208 nbrs g u) :\n    v < g.right_size := hg.2 u (mem_nbrs_lt hg h) v (mem_nbrs_iff.mp h)\n\ntheorem has_edge_nbrs {u v : Nat} (h : g.has_edge u v) : v \u2208 nbrs g u :=\n  mem_nbrs_iff.mpr h.2\n\ntheorem partR_some {M : Mat} {v w : Nat} (h : partR M v = some w) : (w, v) \u2208 M := by\n  unfold partR at h\n  rcases hf : M.find? (fun p => p.2 == v) with _ | p\n  \u00b7 rw [hf] at h; simp at h\n  \u00b7 rw [hf] at h\n    simp only [Option.map_some] at h\n    have hp : p \u2208 M := List.mem_of_find?_eq_some hf\n    have hp2 : p.2 = v := by simpa using List.find?_some hf\n    have hpe : p = (w, v) := Prod.ext (by simpa using h) hp2\n    exact hpe \u25b8 hp\n\ntheorem partR_none {M : Mat} {v : Nat} (h : partR M v = none) (w : Nat) :\n    (w, v) \u2209 M := by\n  intro hmem\n  unfold partR at h\n  rcases hf : M.find? (fun p => p.2 == v) with _ | p\n  \u00b7 rw [List.find?_eq_none] at hf\n    have := hf (w, v) hmem\n    simp at this\n  \u00b7 rw [hf] at h; simp at h\n\ntheorem partL_some {M : Mat} {u w : Nat} (h : partL M u = some w) : (u, w) \u2208 M := by\n  unfold partL at h\n  rcases hf : M.find? (fun p => p.1 == u) with _ | p\n  \u00b7 rw [hf] at h; simp at h\n  \u00b7 rw [hf] at h\n    simp only [Option.map_some] at h\n    have hp : p \u2208 M := List.mem_of_find?_eq_some hf\n    have hp1 : p.1 = u := by simpa using List.find?_some hf\n    have hpe : p = (u, w) := Prod.ext hp1 (by simpa using h)\n    exact hpe \u25b8 hp\n\ntheorem partL_none {M : Mat} {u : Nat} (h : partL M u = none) (w : Nat) :\n    (u, w) \u2209 M := by\n  intro hmem\n  unfold partL at h\n  rcases hf : M.find? (fun p => p.1 == u) with _ | p\n  \u00b7 rw [List.find?_eq_none] at hf\n    have := hf (u, w) hmem\n    simp at this\n  \u00b7 rw [hf] at h; simp at h\n\ntheorem partR_of_mem {M : Mat} (hM : MOK g M) {v w : Nat} (h : (w, v) \u2208 M) :\n    partR M v = some w := by\n  rcases hp : partR M v with _ | w'\n  \u00b7 exact absurd h (partR_none hp w)\n  \u00b7 have h' := partR_some hp\n    have : w' = w := hM.2.2.1 (w', v) h' (w, v) h rfl\n    rw [this]\n\ntheorem partL_of_mem {M : Mat} (hM : MOK g M) {u w : Nat} (h : (u, w) \u2208 M) :\n    partL M u = some w := by\n  rcases hp : partL M u with _ | w'\n  \u00b7 exact absurd h (partL_none hp w)\n  \u00b7 have h' := partL_some hp\n    have : w' = w := hM.2.1 (u, w') h' (u, w) h rfl\n    rw [this]\n\ntheorem MOK_sub {M N : Mat} (hM : MOK g M) (h : N \u2286 M) (hn : N.Nodup) : MOK g N :=\n  \u27e8fun p hp => hM.1 p (h hp),\n   fun p hp q hq => hM.2.1 p (h hp) q (h hq),\n   fun p hp q hq => hM.2.2.1 p (h hp) q (h hq), hn\u27e9\n\ntheorem MOK_erase {M : Mat} (hM : MOK g M) (p : Nat \u00d7 Nat) : MOK g (M.erase p) :=\n  MOK_sub hM (fun _ hx => M.mem_of_mem_erase hx) (hM.2.2.2.erase p)\n\n/-- The left endpoints of a matching are distinct, so a matching is not larger than\n    the left vertex set. -/\ntheorem MOK_card_le {M : Mat} (hM : MOK g M) : M.length \u2264 g.left_size := by\n  have hcard : M.toFinset.card = M.length := List.toFinset_card_of_nodup hM.2.2.2\n  have : M.toFinset.card \u2264 (Finset.range g.left_size).card := by\n    apply Finset.card_le_card_of_injOn (fun p => p.1)\n    \u00b7 intro p hp\n      simp only [Finset.mem_coe, List.mem_toFinset] at hp\n      simp only [Finset.mem_coe, Finset.mem_range]\n      exact (hM.1 p hp).1\n    \u00b7 intro p hp q hq h\n      simp only [Finset.mem_coe, List.mem_toFinset] at hp hq\n      exact Prod.ext h (hM.2.1 p hp q hq h)\n  rw [Finset.card_range] at this\n  omega\n\ntheorem MOK_nil : MOK g ([] : Mat) := by\n  refine \u27e8?_, ?_, ?_, List.nodup_nil\u27e9 <;> simp\n\ntheorem not_mem_erase_self {l : Mat} (h : l.Nodup) (a : Nat \u00d7 Nat) : a \u2209 l.erase a := by\n  intro hc\n  exact ((List.Nodup.mem_erase_iff h).mp hc).1 rfl\n\n/-- Extending a matching by an edge whose endpoints are both free. -/\ntheorem MOK_cons {M : Mat} (hM : MOK g M) {u v : Nat} (he : g.has_edge u v)\n    (hu : \u2200 x, (u, x) \u2209 M) (hv : \u2200 x, (x, v) \u2209 M) : MOK g ((u, v) :: M) := by\n  refine \u27e8?_, ?_, ?_, List.nodup_cons.mpr \u27e8hu v, hM.2.2.2\u27e9\u27e9\n  \u00b7 intro p hp\n    rcases List.mem_cons.mp hp with h | h\n    \u00b7 subst h; exact he\n    \u00b7 exact hM.1 p h\n  \u00b7 intro p hp q hq hpq\n    rcases List.mem_cons.mp hp with h | h <;> rcases List.mem_cons.mp hq with h' | h'\n    \u00b7 rw [h, h']\n    \u00b7 exfalso\n      subst h\n      have hq' : q = (u, q.2) := Prod.ext (show u = q.1 from hpq).symm rfl\n      rw [hq'] at h'\n      exact hu q.2 h'\n    \u00b7 exfalso\n      subst h'\n      have hp' : p = (u, p.2) := Prod.ext (show p.1 = u from hpq) rfl\n      rw [hp'] at h\n      exact hu p.2 h\n    \u00b7 exact hM.2.1 p h q h' hpq\n  \u00b7 intro p hp q hq hpq\n    rcases List.mem_cons.mp hp with h | h <;> rcases List.mem_cons.mp hq with h' | h'\n    \u00b7 rw [h, h']\n    \u00b7 exfalso\n      subst h\n      have hq' : q = (q.1, v) := Prod.ext rfl (show v = q.2 from hpq).symm\n      rw [hq'] at h'\n      exact hv q.1 h'\n    \u00b7 exfalso\n      subst h'\n      have hp' : p = (p.1, v) := Prod.ext rfl (show p.2 = v from hpq)\n      rw [hp'] at h\n      exact hv p.1 h\n    \u00b7 exact hM.2.2.1 p h q h' hpq\n\n/-- Correctness of the augmenting-path search. -/\ntheorem dfs_spec (hg : g.well_formed) :\n    \u2200 (fuel : Nat) (vs : List Nat) (M : Mat) (Z : Finset Nat) (u : Nat),\n      MOK g M \u2192 (\u2200 x, (u, x) \u2209 M) \u2192 (\u2200 v \u2208 vs, v \u2208 nbrs g u) \u2192\n      (\u2200 v \u2208 Z, v < g.right_size) \u2192 g.right_size \u2264 fuel + Z.card \u2192\n      DfsOK g M Z u vs (dfs g M Z u vs fuel) := by\n  intro fuel\n  induction fuel with\n  | zero =>\n    intro vs M Z u _ _ hvs hZ hfuel\n    have hd : dfs g M Z u vs 0 = (none, Z) := by rw [dfs]\n    have heq : Z = Finset.range g.right_size := by\n      apply Finset.eq_of_subset_of_card_le\n      \u00b7 intro x hx; exact Finset.mem_range.mpr (hZ x hx)\n      \u00b7 rw [Finset.card_range]; omega\n    rw [hd]\n    refine \u27e8subset_rfl, hZ, ?_, ?_\u27e9\n    \u00b7 intro _\n      refine \u27e8fun x hx => ?_, fun x hx hx' => absurd hx hx'\u27e9\n      rw [heq, Finset.mem_range]\n      exact nbrs_lt hg (hvs x hx)\n    \u00b7 intro M' hM'; simp at hM'\n  | succ fuel ih =>\n    intro vs\n    induction vs with\n    | nil =>\n      intro M Z u _ _ _ hZ _\n      have hd : dfs g M Z u [] (fuel + 1) = (none, Z) := by rw [dfs]\n      rw [hd]\n      refine \u27e8subset_rfl, hZ, ?_, ?_\u27e9\n      \u00b7 intro _\n        exact \u27e8fun x hx => by simp at hx, fun x hx hx' => absurd hx hx'\u27e9\n      \u00b7 intro M' hM'; simp at hM'\n    | cons v rest ihr =>\n      intro M Z u hM hu hvs hZ hfuel\n      have hvnb : v \u2208 nbrs g u := hvs v (by simp)\n      have hvlt : v < g.right_size := nbrs_lt hg hvnb\n      have hrest : \u2200 x \u2208 rest, x \u2208 nbrs g u := fun x hx => hvs x (by simp [hx])\n      by_cases hvZ : v \u2208 Z\n      \u00b7 -- already visited: skip\n        have hd : dfs g M Z u (v :: rest) (fuel + 1) = dfs g M Z u rest (fuel + 1) := by\n          rw [dfs]; simp [hvZ]\n        rw [hd]\n        obtain \u27e8h1, h2, h3, h4\u27e9 := ihr M Z u hM hu hrest hZ hfuel\n        refine \u27e8h1, h2, ?_, h4\u27e9\n        intro hn\n        obtain \u27e8ha, hb\u27e9 := h3 hn\n        refine \u27e8?_, hb\u27e9\n        intro x hx\n        rcases List.mem_cons.mp hx with h | h\n        \u00b7 exact h \u25b8 h1 hvZ\n        \u00b7 exact ha x h\n      \u00b7 rcases hpr : partR M v with _ | w\n        \u00b7 -- v is free: augment directly\n          have hd : dfs g M Z u (v :: rest) (fuel + 1) = (some ((u, v) :: M), insert v Z) := by\n            rw [dfs]; simp [hvZ, hpr]\n          rw [hd]\n          have hvfree : \u2200 x, (x, v) \u2209 M := partR_none hpr\n          refine \u27e8Finset.subset_insert v Z, ?_, ?_, ?_\u27e9\n          \u00b7 intro x hx\n            rcases Finset.mem_insert.mp hx with h | h\n            \u00b7 exact h \u25b8 hvlt\n            \u00b7 exact hZ x h\n          \u00b7 intro hn; simp at hn\n          \u00b7 intro M' hM'\n            simp only [Option.some.injEq] at hM'\n            subst hM'\n            refine \u27e8MOK_cons hM (nbrs_edge hg hvnb) hu hvfree, rfl, ?_, ?_\u27e9\n            \u00b7 intro p hp\n              rcases List.mem_cons.mp hp with h | h\n              \u00b7 exact Or.inr (by rw [h])\n              \u00b7 exact Or.inl \u27e8p.2, h\u27e9\n            \u00b7 intro p hp\n              rcases List.mem_cons.mp hp with h | h\n              \u00b7 exact Or.inr \u27e8by rw [h]; exact Finset.mem_insert_self v Z, by rw [h]; exact hvZ\u27e9\n              \u00b7 exact Or.inl \u27e8p.1, h\u27e9\n        \u00b7 -- v is matched to w: recurse from w\n          have hwv : (w, v) \u2208 M := partR_some hpr\n          have hM1 : MOK g (M.erase (w, v)) := MOK_erase hM (w, v)\n          have hwfree : \u2200 x, (w, x) \u2209 (M.erase (w, v)) := by\n            intro x hx\n            have hxM : (w, x) \u2208 M := List.mem_of_mem_erase hx\n            have hxv : x = v := hM.2.1 (w, x) hxM (w, v) hwv rfl\n            exact absurd (hxv \u25b8 hx) (not_mem_erase_self hM.2.2.2 (w, v))\n          have hZ1 : \u2200 x \u2208 insert v Z, x < g.right_size := by\n            intro x hx\n            rcases Finset.mem_insert.mp hx with h | h\n            \u00b7 exact h \u25b8 hvlt\n            \u00b7 exact hZ x h\n          have hcard1 : (insert v Z).card = Z.card + 1 := Finset.card_insert_of_notMem hvZ\n          have hfuel1 : g.right_size \u2264 fuel + (insert v Z).card := by omega\n          have child := ih (nbrs g w) (M.erase (w, v)) (insert v Z) w hM1 hwfree\n            (fun _ h => h) hZ1 hfuel1\n          obtain \u27e8c1, c2, c3, c4\u27e9 := child\n          rcases hch : dfs g (M.erase (w, v)) (insert v Z) w (nbrs g w) fuel with \u27e8o, Z1\u27e9\n          rw [hch] at c1 c2 c3 c4\n          simp only at c1 c2 c3 c4\n          rcases o with _ | M1\n          \u00b7 -- search from w failed: continue with the remaining neighbours\n            have hd : dfs g M Z u (v :: rest) (fuel + 1) = dfs g M Z1 u rest (fuel + 1) := by\n              rw [dfs]; simp [hvZ, hpr, hch]\n            rw [hd]\n            obtain \u27e8ca, cb\u27e9 := c3 rfl\n            have hZZ1 : Z \u2286 Z1 := (Finset.subset_insert v Z).trans c1\n            have hfuel2 : g.right_size \u2264 fuel + 1 + Z1.card := by\n              have := Finset.card_le_card hZZ1\n              omega\n            obtain \u27e8h1, h2, h3, h4\u27e9 := ihr M Z1 u hM hu hrest c2 hfuel2\n            refine \u27e8hZZ1.trans h1, h2, ?_, ?_\u27e9\n            \u00b7 intro hn\n              obtain \u27e8ha, hb\u27e9 := h3 hn\n              refine \u27e8?_, ?_\u27e9\n              \u00b7 intro x hx\n                rcases List.mem_cons.mp hx with h | h\n                \u00b7 exact h \u25b8 h1 (c1 (Finset.mem_insert_self v Z))\n                \u00b7 exact ha x h\n              \u00b7 intro x hx hxZ\n                by_cases hxZ1 : x \u2208 Z1\n                \u00b7 by_cases hxv : x = v\n                  \u00b7 exact \u27e8w, hxv \u25b8 hwv, fun v' hv' => h1 (ca v' hv')\u27e9\n                  \u00b7 have hxZ1' : x \u2209 insert v Z := by\n                      intro hc\n                      rcases Finset.mem_insert.mp hc with h | h\n                      \u00b7 exact hxv h\n                      \u00b7 exact hxZ h\n                    obtain \u27e8w', hw'1, hw'2\u27e9 := cb x hxZ1 hxZ1'\n                    exact \u27e8w', List.mem_of_mem_erase hw'1, fun v' hv' => h1 (hw'2 v' hv')\u27e9\n                \u00b7 obtain \u27e8w', hw'1, hw'2\u27e9 := hb x hx hxZ1\n                  exact \u27e8w', hw'1, hw'2\u27e9\n            \u00b7 intro M' hM'\n              obtain \u27e8k1, k2, k3, k4\u27e9 := h4 M' hM'\n              refine \u27e8k1, k2, k3, ?_\u27e9\n              intro p hp\n              rcases k4 p hp with h | h\n              \u00b7 exact Or.inl h\n              \u00b7 exact Or.inr \u27e8h.1, fun hc => h.2 (hZZ1 hc)\u27e9\n          \u00b7 -- search from w succeeded: re-attach v to u\n            have hd : dfs g M Z u (v :: rest) (fuel + 1) = (some ((u, v) :: M1), Z1) := by\n              rw [dfs]; simp [hvZ, hpr, hch]\n            rw [hd]\n            obtain \u27e8k1, k2, k3, k4\u27e9 := c4 M1 rfl\n            have hufree : \u2200 x, (u, x) \u2209 M1 := by\n              intro x hx\n              rcases k3 (u, x) hx with h | h\n              \u00b7 obtain \u27e8c, hc\u27e9 := h\n                exact hu c (List.mem_of_mem_erase hc)\n              \u00b7 exact hu v (by have huw : u = w := h; rw [huw]; exact hwv)\n            have hvfree : \u2200 x, (x, v) \u2209 M1 := by\n              intro x hx\n              rcases k4 (x, v) hx with h | h\n              \u00b7 obtain \u27e8c, hc\u27e9 := h\n                have hcM : (c, v) \u2208 M := List.mem_of_mem_erase hc\n                have hcw : c = w := hM.2.2.1 (c, v) hcM (w, v) hwv rfl\n                exact absurd (hcw \u25b8 hc) (not_mem_erase_self hM.2.2.2 (w, v))\n              \u00b7 exact h.2 (Finset.mem_insert_self v Z)\n            have hlen : M1.length = M.length := by\n              have h1 : (M.erase (w, v)).length = M.length - 1 := List.length_erase_of_mem hwv\n              have h2 : 0 < M.length := List.length_pos_of_mem hwv\n              omega\n            refine \u27e8(Finset.subset_insert v Z).trans c1, c2, ?_, ?_\u27e9\n            \u00b7 intro hn; simp at hn\n            \u00b7 intro M' hM'\n              simp only [Option.some.injEq] at hM'\n              subst hM'\n              refine \u27e8MOK_cons k1 (nbrs_edge hg hvnb) hufree hvfree, by simp [hlen], ?_, ?_\u27e9\n              \u00b7 intro p hp\n                rcases List.mem_cons.mp hp with h | h\n                \u00b7 exact Or.inr (by rw [h])\n                \u00b7 rcases k3 p h with h' | h'\n                  \u00b7 obtain \u27e8c, hc\u27e9 := h'\n                    exact Or.inl \u27e8c, List.mem_of_mem_erase hc\u27e9\n                  \u00b7 exact Or.inl \u27e8v, h' \u25b8 hwv\u27e9\n              \u00b7 intro p hp\n                rcases List.mem_cons.mp hp with h | h\n                \u00b7 exact Or.inr \u27e8by rw [h]; exact c1 (Finset.mem_insert_self v Z),\n                    by rw [h]; exact hvZ\u27e9\n                \u00b7 rcases k4 p h with h' | h'\n                  \u00b7 obtain \u27e8c, hc\u27e9 := h'\n                    exact Or.inl \u27e8c, List.mem_of_mem_erase hc\u27e9\n                  \u00b7 exact Or.inr \u27e8h'.1, fun hc => h'.2 (Finset.mem_insert_of_mem hc)\u27e9\n\n/-- Correctness of one full pass over the left vertices. -/\ntheorem scan_spec (hg : g.well_formed) :\n    \u2200 (us : List Nat) (M : Mat) (Z : Finset Nat),\n      MOK g M \u2192 (\u2200 v \u2208 Z, v < g.right_size) \u2192 CInv g M Z \u2192\n      ScanOK g M Z us (scan g M Z us) := by\n  intro us\n  induction us with\n  | nil =>\n    intro M Z hM hZ hC\n    have hd : scan g M Z [] = (M, Z, false) := by rw [scan]\n    rw [hd]\n    exact \u27e8hM, le_refl _, by simp, fun _ => \u27e8rfl, subset_rfl, hZ, hC, by simp\u27e9\u27e9\n  | cons u rest ih =>\n    intro M Z hM hZ hC\n    rcases hpl : partL M u with _ | c\n    \u00b7 -- `u` is still free: search for an augmenting path\n      have hufree : \u2200 x, (u, x) \u2209 M := partL_none hpl\n      obtain \u27e8d1, d2, d3, d4\u27e9 := dfs_spec hg g.right_size (nbrs g u) M Z u hM hufree\n        (fun _ h => h) hZ (by omega)\n      rcases hch : dfs g M Z u (nbrs g u) g.right_size with \u27e8o, Z1\u27e9\n      rw [hch] at d1 d2 d3 d4\n      simp only at d1 d2 d3 d4\n      rcases o with _ | M1\n      \u00b7 -- no augmenting path from `u`\n        have hd : scan g M Z (u :: rest) = scan g M Z1 rest := by\n          rw [scan]; simp [hpl, hch]\n        rw [hd]\n        obtain \u27e8da, db\u27e9 := d3 rfl\n        have hC1 : CInv g M Z1 := by\n          intro x hx\n          by_cases hxZ : x \u2208 Z\n          \u00b7 obtain \u27e8w, hw1, hw2\u27e9 := hC x hxZ\n            exact \u27e8w, hw1, fun v' hv' => d1 (hw2 v' hv')\u27e9\n          \u00b7 exact db x hx hxZ\n        obtain \u27e8s1, s2, s3, s4\u27e9 := ih M Z1 hM d2 hC1\n        refine \u27e8s1, s2, s3, ?_\u27e9\n        intro hf\n        obtain \u27e8f1, f2, f3, f4, f5\u27e9 := s4 hf\n        refine \u27e8f1, d1.trans f2, f3, f4, ?_\u27e9\n        intro u' hu' hu'free v hv\n        rcases List.mem_cons.mp hu' with h | h\n        \u00b7 subst h; exact f2 (da v hv)\n        \u00b7 exact f5 u' h hu'free v hv\n      \u00b7 -- augmented: restart the visited set and record progress\n        have hd : scan g M Z (u :: rest) =\n            ((scan g M1 \u2205 rest).1, (scan g M1 \u2205 rest).2.1, true) := by\n          rw [scan]; simp [hpl, hch]\n        rw [hd]\n        obtain \u27e8k1, k2, _, _\u27e9 := d4 M1 rfl\n        obtain \u27e8s1, s2, _, _\u27e9 := ih M1 \u2205 k1 (by intro x hx; simp at hx)\n          (by intro x hx; simp at hx)\n        refine \u27e8s1, ?_, ?_, fun hf => by simp at hf\u27e9\n        \u00b7 show M.length \u2264 (scan g M1 \u2205 rest).1.length\n          omega\n        \u00b7 intro _\n          show M.length < (scan g M1 \u2205 rest).1.length\n          omega\n    \u00b7 -- `u` is already matched\n      have hd : scan g M Z (u :: rest) = scan g M Z rest := by\n        rw [scan]; simp [hpl]\n      rw [hd]\n      obtain \u27e8s1, s2, s3, s4\u27e9 := ih M Z hM hZ hC\n      refine \u27e8s1, s2, s3, ?_\u27e9\n      intro hf\n      obtain \u27e8f1, f2, f3, f4, f5\u27e9 := s4 hf\n      refine \u27e8f1, f2, f3, f4, ?_\u27e9\n      intro u' hu' hu'free v hv\n      rcases List.mem_cons.mp hu' with h | h\n      \u00b7 exact absurd (partL_some hpl) (by rw [h] at hu'free; exact hu'free c)\n      \u00b7 exact f5 u' h hu'free v hv\n\n/-- Correctness of the outer loop: on termination we hold a matching together with a\n    K\u00f6nig certificate. -/\ntheorem loop_spec (hg : g.well_formed) :\n    \u2200 (fuel : Nat) (M : Mat), MOK g M \u2192 g.left_size + 1 \u2264 M.length + fuel \u2192\n      MOK g (loop g M fuel).1 \u2227 (\u2200 v \u2208 (loop g M fuel).2, v < g.right_size) \u2227\n      CInv g (loop g M fuel).1 (loop g M fuel).2 \u2227\n      (\u2200 u, u < g.left_size \u2192 (\u2200 x, (u, x) \u2209 (loop g M fuel).1) \u2192\n        \u2200 v \u2208 nbrs g u, v \u2208 (loop g M fuel).2) := by\n  intro fuel\n  induction fuel with\n  | zero =>\n    intro M hM hf\n    exact absurd (MOK_card_le hM) (by omega)\n  | succ fuel ih =>\n    intro M hM hf\n    obtain \u27e8s1, s2, s3, s4\u27e9 := scan_spec hg (List.range g.left_size) M \u2205 hM\n      (by intro x hx; simp at hx) (by intro x hx; simp at hx)\n    rcases hs : scan g M \u2205 (List.range g.left_size) with \u27e8M', Z', b\u27e9\n    rw [hs] at s1 s2 s3 s4\n    simp only at s1 s2 s3 s4\n    cases b\n    \u00b7 have hd : loop g M (fuel + 1) = (M', Z') := by rw [loop]; simp [hs]\n      rw [hd]\n      obtain \u27e8f1, f2, f3, f4, f5\u27e9 := s4 rfl\n      subst f1\n      refine \u27e8s1, f3, f4, ?_\u27e9\n      intro u hu hufree v hv\n      exact f5 u (List.mem_range.mpr hu) hufree v hv\n    \u00b7 have hd : loop g M (fuel + 1) = loop g M' fuel := by rw [loop]; simp [hs]\n      rw [hd]\n      exact ih M' s1 (by have := s3 rfl; omega)\n\n/-- K\u00f6nig/Berge optimality: a matching `M` together with a set `R` of right vertices\n    closed under alternating steps and covering the neighbourhood of every free left\n    vertex is maximum. -/\ntheorem cert_bound (hg : g.well_formed) {M : Mat} {R : Finset Nat}\n    (hM : MOK g M) (hC : CInv g M R)\n    (hcov : \u2200 u, u < g.left_size \u2192 (\u2200 x, (u, x) \u2209 M) \u2192 \u2200 v \u2208 nbrs g u, v \u2208 R)\n    (m : Matching) (hm : is_matching g m) : m.size \u2264 M.length := by\n  set F : (Nat \u00d7 Nat) \u2192 (Nat \u00d7 Nat) := fun e =>\n    if e.2 \u2208 R then ((partR M e.2).getD 0, e.2) else (e.1, (partL M e.1).getD 0) with hF\n  have hfA : \u2200 e : Nat \u00d7 Nat, e.2 \u2208 R \u2192 F e = ((partR M e.2).getD 0, e.2) := by\n    intro e h; rw [hF]; simp [h]\n  have hfB : \u2200 e : Nat \u00d7 Nat, e.2 \u2209 R \u2192 F e = (e.1, (partL M e.1).getD 0) := by\n    intro e h; rw [hF]; simp [h]\n  -- an edge whose right endpoint is reached is covered by the matching edge at it\n  have hA : \u2200 e \u2208 m.edges, e.2 \u2208 R \u2192 \u2203 w, (w, e.2) \u2208 M \u2227 F e = (w, e.2) := by\n    intro e _ hR\n    obtain \u27e8w, hw1, _\u27e9 := hC e.2 hR\n    refine \u27e8w, hw1, ?_\u27e9\n    rw [hfA e hR, partR_of_mem hM hw1]\n    rfl\n  -- otherwise its left endpoint is matched, and to a vertex outside `R`\n  have hB : \u2200 e \u2208 m.edges, e.2 \u2209 R \u2192 \u2203 c, (e.1, c) \u2208 M \u2227 c \u2209 R \u2227 F e = (e.1, c) := by\n    intro e he hR\n    have hed : g.has_edge e.1 e.2 := hm.1 e he\n    have hnb : e.2 \u2208 nbrs g e.1 := has_edge_nbrs hed\n    have hex : \u2203 c, (e.1, c) \u2208 M := by\n      by_contra hcon\n      push_neg at hcon\n      exact hR (hcov e.1 hed.1 (fun x hx => hcon x hx) e.2 hnb)\n    obtain \u27e8c, hc\u27e9 := hex\n    have hcR : c \u2209 R := by\n      intro hcR\n      obtain \u27e8w, hw1, hw2\u27e9 := hC c hcR\n      have hw : w = e.1 := hM.2.2.1 (w, c) hw1 (e.1, c) hc rfl\n      exact hR (hw2 e.2 (by rw [hw]; exact hnb))\n    refine \u27e8c, hc, hcR, ?_\u27e9\n    rw [hfB e hR, partL_of_mem hM hc]\n    rfl\n  have hmaps : \u2200 e \u2208 m.edges.toFinset, F e \u2208 M.toFinset := by\n    intro e he\n    rw [List.mem_toFinset] at he\n    by_cases hR : e.2 \u2208 R\n    \u00b7 obtain \u27e8w, hw, hfe\u27e9 := hA e he hR\n      rw [List.mem_toFinset, hfe]; exact hw\n    \u00b7 obtain \u27e8c, hc, _, hfe\u27e9 := hB e he hR\n      rw [List.mem_toFinset, hfe]; exact hc\n  have hinj : Set.InjOn F \u2191m.edges.toFinset := by\n    intro e he e' he' hEq\n    simp only [Finset.mem_coe, List.mem_toFinset] at he he'\n    by_contra hne\n    obtain \u27e8hne1, hne2\u27e9 := hm.2.1 e e' he he' hne\n    by_cases hR : e.2 \u2208 R <;> by_cases hR' : e'.2 \u2208 R\n    \u00b7 obtain \u27e8w, _, hfe\u27e9 := hA e he hR\n      obtain \u27e8w', _, hfe'\u27e9 := hA e' he' hR'\n      rw [hfe, hfe'] at hEq\n      simp only [Prod.mk.injEq] at hEq\n      exact hne2 hEq.2\n    \u00b7 obtain \u27e8w, _, hfe\u27e9 := hA e he hR\n      obtain \u27e8c, _, hcR, hfe'\u27e9 := hB e' he' hR'\n      rw [hfe, hfe'] at hEq\n      simp only [Prod.mk.injEq] at hEq\n      exact hcR (by rw [\u2190 hEq.2]; exact hR)\n    \u00b7 obtain \u27e8c, _, hcR, hfe\u27e9 := hB e he hR\n      obtain \u27e8w', _, hfe'\u27e9 := hA e' he' hR'\n      rw [hfe, hfe'] at hEq\n      simp only [Prod.mk.injEq] at hEq\n      exact hcR (by rw [hEq.2]; exact hR')\n    \u00b7 obtain \u27e8c, _, _, hfe\u27e9 := hB e he hR\n      obtain \u27e8c', _, _, hfe'\u27e9 := hB e' he' hR'\n      rw [hfe, hfe'] at hEq\n      simp only [Prod.mk.injEq] at hEq\n      exact hne1 hEq.1\n  have hcard := Finset.card_le_card_of_injOn F hmaps hinj\n  rw [List.toFinset_card_of_nodup hm.2.2, List.toFinset_card_of_nodup hM.2.2.2] at hcard\n  exact hcard\n\n/-- A valid matching in the internal representation yields a `Matching`. -/\ntheorem toMatching_ok {M : Mat} (hM : MOK g M) : is_matching g \u27e8M\u27e9 := by\n  refine \u27e8fun e he => hM.1 e he, ?_, hM.2.2.2\u27e9\n  intro e1 e2 h1 h2 hne\n  constructor\n  \u00b7 intro hc; exact hne (Prod.ext hc (hM.2.1 e1 h1 e2 h2 hc))\n  \u00b7 intro hc; exact hne (Prod.ext (hM.2.2.1 e1 h1 e2 h2 hc) hc)\n\ntheorem main_spec (hg : g.well_formed) :\n    is_max_matching_size g (loop g [] (g.left_size + 1)).1.length := by\n  obtain \u27e8l1, _, l3, l4\u27e9 := loop_spec hg (g.left_size + 1) [] MOK_nil (by simp)\n  exact \u27e8\u27e8\u27e8(loop g [] (g.left_size + 1)).1\u27e9, toMatching_ok l1, rfl\u27e9,\n    fun m hm => cert_bound hg l1 l3 l4 m hm\u27e9\n\nend MaxMatch\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem max_bipartite_matching_postcond_satisfied (graph : MaxMatchingGraph)\n    (h_precond : max_bipartite_matching_precond graph) :\n    max_bipartite_matching_postcond graph\n      (max_bipartite_matching graph h_precond) h_precond := by\n  -- !benchmark @start proof\n  exact MaxMatch.main_spec h_precond.1\n  -- !benchmark @end proof\n",
+            "comment": "**`./check.sh` prints LEAN VERIFIED** (warnings only: three unused variables).\n\n## What was implemented\n\n**Kuhn's augmenting-path algorithm** (`Solution.lean:76-113`), with a **K\u00f6nig vertex-cover certificate** for optimality:\n\n- `dfs` \u2014 DFS for an augmenting path from a free left vertex `u`, carrying the visited right-vertex set `Z`. At an unvisited neighbour `v`: match `(u,v)` if `v` is free, else recurse from `v`'s partner `w` on `M.erase (w,v)` and re-attach `v` to `u` on success. Recursion budget `fuel = right_size`, with the invariant `right_size \u2264 fuel + Z.card`, which makes the exhausted case vacuous (`Z` then contains every right vertex).\n- `scan` \u2014 one pass over `range left_size`, sharing `Z` across consecutive *failures* and resetting it after each augmentation; reports whether it made progress.\n- `loop` \u2014 rescan while progress; the result is `(matching, visited set)` and the answer is the matching's length.\n\n## How optimality is proved\n\nThe final failed pass yields a certificate on the returned `(M, R)`: every `v \u2208 R` is matched, every free left vertex's neighbourhood lies in `R`, and `R` is closed under alternating steps (`CInv` + `loop_spec`). `cert_bound` then injects the edges of an *arbitrary* matching `m` into `M` \u2014 `e \u21a6 (partR M e.2, e.2)` when `e.2 \u2208 R`, else `e \u21a6 (e.1, partL M e.1)` \u2014 which is well defined by the certificate and injective by `m`'s disjointness. That gives `m.size \u2264 M.length`, i.e. K\u00f6nig's bound, without needing Berge's lemma or the \"a vertex that fails once fails forever\" fact about Kuhn.\n\n## Semantic audit\n\n- The proven statement is the teacher's `is_max_matching_size` unchanged: both the existence of a matching of that size (`\u27e8M\u27e9`, valid/disjoint/nodup from `MOK`) and the upper bound over all matchings.\n- The theorem has no hypotheses beyond the given precondition, so `left_size = 0`, `right_size = 0`, empty/duplicate adjacency lists, and out-of-range `u` (where `adj.getD` returns `#[]`) are all covered; `left_size = 0` returns `0`.\n- No `sorry`/`admit`/axioms/`partial`/`unsafe`, no `Nat.find`, no `Classical.choose` (I also removed a `classical` tactic invocation \u2014 everything is decidable), no `decide` on the target, no enumeration of matchings, no sorting. `MOK`/`CInv`/`DfsOK`/`ScanOK` are genuine invariants, not placeholders \u2014 they are what carries the real postcondition.\n- `max_bipartite_matching` ignores `h_precond`; well-formedness is only needed by the proof.\n\nOne honest caveat, recorded in `AlgorithmPlan.md`: the *proved* worst-case bound is `O(V\u00b2\u00b7E)` because the outer fuel permits up to `V` augmenting scans. The actual behaviour is Kuhn's `O(V\u00b7E)` (one augmenting scan plus one confirming scan) \u2014 I chose the extra confirming scan precisely so the proof need not rely on the \"failed vertex stays failed\" property."
+        },
+        "verifier_response": {
+            "verified": true,
+            "feedback": "Verified successfully.",
+            "raw": {
+                "stdout": "claude_code_max_matching_final_1786216193122.lean:112:13: warning: unused variable `Z'`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_max_matching_final_1786216193122.lean:147:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_max_matching_final_1786216193122.lean:598:20: warning: unused variable `hg`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+                "stderr": "",
+                "returncode": 0
+            }
+        },
+        "history": [
+            {
+                "compiler_pass": 1,
+                "verified": true,
+                "verifier_response": {
+                    "verified": true,
+                    "feedback": "Verified successfully.",
+                    "raw": {
+                        "stdout": "claude_code_max_matching_final_1786216193122.lean:112:13: warning: unused variable `Z'`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_max_matching_final_1786216193122.lean:147:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_max_matching_final_1786216193122.lean:598:20: warning: unused variable `hg`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+                        "stderr": "",
+                        "returncode": 0
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "973a8db7-78f2-4d53-b9d9-0b7347111364",
+                    "subtype": "success",
+                    "provider_subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 5.110512499999998,
+                    "duration_ms": 1251710,
+                    "duration_api_ms": 1209814,
+                    "num_turns": 52,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_current_unlimited_fail9/max_matching/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "prompt_sha256": "d8f9469be573c538ad9ea07a25da6bbd02846c9025f6acc8c27feadd7f960660",
+                    "budget_usd": null,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": false,
+                            "progress_governor": false,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": false,
+                            "rescue_mode": false
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 37400,
+                        "seconds_to_first_progress": 556.209,
+                        "seconds_to_first_check": 563.526,
+                        "pending_tool_recovery": []
+                    }
+                }
+            }
+        ],
+        "tokens": {
+            "input": 3144785,
+            "output": 108911,
+            "reasoning": 0
+        },
+        "agent": {
+            "kind": "claude-code",
+            "cli_version": "2.1.220 (Claude Code)",
+            "model": "claude-opus-5",
+            "effort": "medium",
+            "session_id": "973a8db7-78f2-4d53-b9d9-0b7347111364",
+            "subtype": "success",
+            "provider_subtype": "success",
+            "is_error": false,
+            "total_cost_usd": 5.110512499999998,
+            "duration_ms": 1251710,
+            "duration_api_ms": 1209814,
+            "num_turns": 52,
+            "returncode": 0,
+            "timed_out": false,
+            "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_current_unlimited_fail9/max_matching/agent_events.jsonl",
+            "pass_number": 1,
+            "prompt_kind": "initial",
+            "prompt_sha256": "d8f9469be573c538ad9ea07a25da6bbd02846c9025f6acc8c27feadd7f960660",
+            "budget_usd": null,
+            "lastdance_profile": "robust",
+            "features": {
+                "profile": "robust",
+                "algorithm_plan": true,
+                "lemma_plan": true,
+                "leansearch": true,
+                "semantic_audit": true,
+                "semantic_reminder": true,
+                "early_check": true,
+                "feedback_mode": "structured",
+                "backtracking": true,
+                "stagnation_threshold": 2
+            },
+            "run_control": {
+                "control": {
+                    "recover_pending_tool": false,
+                    "progress_governor": false,
+                    "pre_edit_timeout_seconds": 300,
+                    "pre_edit_thinking_tokens": 12000,
+                    "post_edit_check_timeout_seconds": 180,
+                    "planning_mode": false,
+                    "diagnostic_wrapper": false,
+                    "rescue_mode": false
+                },
+                "governor_stop_reason": null,
+                "max_thinking_tokens_observed": 37400,
+                "seconds_to_first_progress": 556.209,
+                "seconds_to_first_check": 563.526,
+                "pending_tool_recovery": []
+            },
+            "compiler_passes": 1,
+            "total_sessions": 1,
+            "selected_session": 1,
+            "sessions": [
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "973a8db7-78f2-4d53-b9d9-0b7347111364",
+                    "subtype": "success",
+                    "provider_subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 5.110512499999998,
+                    "duration_ms": 1251710,
+                    "duration_api_ms": 1209814,
+                    "num_turns": 52,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_current_unlimited_fail9/max_matching/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "prompt_sha256": "d8f9469be573c538ad9ea07a25da6bbd02846c9025f6acc8c27feadd7f960660",
+                    "budget_usd": null,
+                    "lastdance_profile": "robust",
+                    "features": {
+                        "profile": "robust",
+                        "algorithm_plan": true,
+                        "lemma_plan": true,
+                        "leansearch": true,
+                        "semantic_audit": true,
+                        "semantic_reminder": true,
+                        "early_check": true,
+                        "feedback_mode": "structured",
+                        "backtracking": true,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": false,
+                            "progress_governor": false,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": false,
+                            "rescue_mode": false
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 37400,
+                        "seconds_to_first_progress": 556.209,
+                        "seconds_to_first_check": 563.526,
+                        "pending_tool_recovery": []
+                    }
+                }
+            ]
+        },
+        "provenance": {
+            "schema_version": 1,
+            "ownership": {
+                "model_owned_sections": [
+                    "auxcode",
+                    "code",
+                    "lemma",
+                    "proof"
+                ],
+                "teacher_owned": "all source outside the four marker regions",
+                "teacher_owned_sorry_present": false,
+                "model_section_ranges": {
+                    "auxcode": {
+                        "start_line": 47,
+                        "end_line": 143
+                    },
+                    "code": {
+                        "start_line": 148,
+                        "end_line": 150
+                    },
+                    "lemma": {
+                        "start_line": 160,
+                        "end_line": 686
+                    },
+                    "proof": {
+                        "start_line": 693,
+                        "end_line": 695
+                    }
+                }
+            },
+            "hashes": {
+                "original_sha256": "d6695c97be4acfb0a3118e02756f4c81da3886f49718a112ed1a41226c2f1894",
+                "candidate_sha256": "22f0a9a975592c72a9f35065fdfa3a24a50c54290fd9b66c8795c35949ddd6bc",
+                "merged_sha256": "b03c13ad0f8850b16f7546c204a1880aa970d5bfe341ce35a0a2a9e559dba3f1",
+                "model_sections_sha256": {
+                    "auxcode": "6e3c67b10a046360fe8ede2f20c277c404078676e60f6dd5d1da0e2157895987",
+                    "code": "c3171ac48fd5eeffa890a7bd0c489cfac8191908dc35ae989c67989b7aba83b4",
+                    "lemma": "c6002b0153a161903588aa9aa280bfe8f938785d0ed2449b579b07887b33ecfa",
+                    "proof": "8b348a2f74c24219a79afa24826735e3fa1b900266777ba3a10ab14a6a09e522"
+                }
+            }
+        },
+        "targeted_diagnostics": [],
+        "lastdance_artifacts": {
+            "ledger": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_current_unlimited_fail9/max_matching/.lastdance/run_ledger.jsonl",
+            "algorithm_plan": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_current_unlimited_fail9/max_matching/AlgorithmPlan.md",
+            "proof_state": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_current_unlimited_fail9/max_matching/ProofState.md",
+            "leansearch_queries": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_current_unlimited_fail9/max_matching/.lastdance/leansearch_queries.jsonl",
+            "checkpoints": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_current_unlimited_fail9/max_matching/.lastdance/checkpoints/manifest.jsonl",
+            "prompts": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_current_unlimited_fail9/max_matching/.lastdance/prompts"
+        }
+    },
+    "parsed": true,
+    "verdict": true,
+    "analysis": "The student\u2019s submission does satisfy the semantic requirements.\n\nWhy:\n\n1. **They implemented an actual maximum bipartite matching algorithm**\n   - The core code defines:\n     - `dfs`: a depth-first search for an augmenting path,\n     - `scan`: tries to augment from each free left vertex,\n     - `loop`: repeats passes until no augmentation is found.\n   - This is the standard **Kuhn-style augmenting path algorithm** for bipartite matching, not a fake wrapper or unrelated computation.\n\n2. **The graph representation matches the problem**\n   - The graph uses:\n     - `left_size`, `right_size`,\n     - `adj : Array (Array Nat)` where `adj[u]` lists right neighbors.\n   - This is exactly the required bipartite adjacency-list setup.\n\n3. **The returned result is the matching size**\n   - `max_bipartite_matching` returns\n     - `(MaxMatch.loop graph [] (graph.left_size + 1)).1.length`\n   - Since the internal matching is represented as a list of `(left,right)` edges, `.length` is the number of matched edges, i.e. the matching size.\n\n4. **They did not use a forbidden shortcut**\n   - No built-in maximum matching library is called.\n   - No placeholder body, no empty implementation, no trivial constant result.\n   - Inside the student-owned regions (`auxcode`, `code`, `lemma`, `proof`), there is no `sorry`, `admit`, or similar cheating device.\n\n5. **They addressed the intended verification themes**\n   - They define and prove invariants for:\n     - validity of edges in the matching (`MOK`),\n     - disjointness/injectivity on both sides,\n     - correctness of DFS augmentation,\n     - correctness of repeated scanning,\n     - optimality via a certificate argument (`cert_bound`), which is in the spirit of Berge/K\u0151nig-style maximality reasoning.\n   - This aligns with the natural language requirements about valid pairing, disjointness, and optimality.\n\n6. **Algorithmic faithfulness**\n   - The implementation is not some other algorithm like brute force enumeration.\n   - It is a genuine augmenting-path algorithm for bipartite matching, which is an appropriate and standard solution to the task.\n\nMinor note:\n- The implementation uses a fuel parameter and a visited-right set to ensure termination and structure the proof. That is normal in Lean and does not undermine the algorithm.\n- The proof of optimality is not literally stated as \u201cBerge\u2019s Lemma,\u201d but it establishes the required maximality property through a certificate argument, which is semantically acceptable.\n\nSo overall, the student implemented the required algorithm and did not cheat.",
+    "semantic_judge": {
+        "model": "gpt-5.4",
+        "temperature": 0.0,
+        "reasoning_effort": "medium",
+        "provenance_aware": true
+    }
+}

@@ -78,6 +78,7 @@ def parse_event_log(path: Path) -> dict[str, Any]:
     check_attempts = 0
     lean_failures = 0
     lean_verified = False
+    first_verified_check = None
     denied_tools = 0
     model = None
     session_id = None
@@ -112,6 +113,14 @@ def parse_event_log(path: Path) -> dict[str, Any]:
                 else "Preserved-workspace repair session",
                 timestamp=timestamp,
             )
+        elif event_type == "system" and subtype == "harness_backtrack":
+            add(
+                "system",
+                "Stagnation recovery",
+                f"Fingerprint {event.get('fingerprint', '')}: {event.get('action', '')}",
+                timestamp=timestamp,
+                status="failed",
+            )
         elif event_type == "system" and subtype == "thinking_tokens":
             thinking_tokens = max(thinking_tokens, int(event.get("estimated_tokens") or 0))
         elif event_type == "assistant":
@@ -129,6 +138,8 @@ def parse_event_log(path: Path) -> dict[str, Any]:
                     if tool_name == "Bash" and str(detail).strip() == "./check.sh":
                         title = "Run Lean checker"
                         check_attempts += 1
+                    elif tool_name == "Bash" and str(detail).strip().startswith("./leansearch "):
+                        title = "Search Mathlib with Frenzymath LeanSearch"
                     elif tool_name in {"Read", "Edit", "Write"}:
                         title = f"{tool_name} {short_path(detail)}"
                     else:
@@ -165,6 +176,8 @@ def parse_event_log(path: Path) -> dict[str, Any]:
                     denied_tools += 1
                 if "LEAN VERIFIED" in content:
                     lean_verified = True
+                    if first_verified_check is None:
+                        first_verified_check = check_attempts
                     item["status"] = "verified"
                 if "LEAN VERIFICATION FAILED" in content:
                     lean_failures += 1
@@ -187,6 +200,7 @@ def parse_event_log(path: Path) -> dict[str, Any]:
         "check_attempts": check_attempts,
         "lean_failures": lean_failures,
         "lean_verified": lean_verified,
+        "first_verified_check": first_verified_check,
         "denied_tools": denied_tools,
         "model": model,
         "session_id": session_id,
@@ -218,6 +232,9 @@ def result_details(path: Path) -> dict[str, Any]:
         "comment": (details.get("llm_response") or {}).get("comment", ""),
         "feedback": verifier.get("feedback", ""),
         "tokens": details.get("tokens") or {},
+        "provenance": details.get("provenance") or {},
+        "lastdance_artifacts": details.get("lastdance_artifacts") or {},
+        "agent": agent,
     }
 
 
@@ -430,6 +447,19 @@ class DashboardState:
             stderr = (workspace / "agent_stderr.log").read_text()[-6000:]
         except OSError:
             stderr = ""
+        robust_artifacts: dict[str, Any] = {}
+        for key, filename in (
+            ("algorithm_plan", "AlgorithmPlan.md"),
+            ("proof_state", "ProofState.md"),
+            ("diagnostics", "Diagnostics.md"),
+        ):
+            try:
+                robust_artifacts[key] = (workspace / filename).read_text()[-12000:]
+            except OSError:
+                pass
+        query_path = workspace / ".lastdance" / "leansearch_queries.jsonl"
+        if query_path.is_file():
+            robust_artifacts["leansearch_queries"] = read_events(query_path)[-50:]
         return {
             "summary": summary,
             "timeline": events.get("timeline", []),
@@ -441,4 +471,5 @@ class DashboardState:
             "event_count": events.get("event_count", 0),
             "loc_added": loc_added,
             "loc_removed": loc_removed,
+            "robust_artifacts": robust_artifacts,
         }

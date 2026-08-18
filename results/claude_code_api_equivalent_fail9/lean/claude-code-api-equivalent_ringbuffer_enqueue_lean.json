@@ -1,0 +1,250 @@
+{
+  "verified": true,
+  "details": {
+    "rounds": 6,
+    "llm_response": {
+      "code": "import Mathlib\n\nstructure RingBuffer (T : Type) where\n  capacity : Nat\n  view : List T\n\ndef RingBuffer.is_valid {T} (rb : RingBuffer T) : Prop :=\n  rb.capacity > 0 \u2227 rb.view.length \u2264 rb.capacity\n\n-- Precondition definitions\n@[reducible, simp]\ndef enqueue_precond {T} (rb : RingBuffer T) (v : T) : Prop :=\n  -- !benchmark @start precond\n  rb.is_valid\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef enqueue {T} (rb : RingBuffer T) (v : T)\n    (h_precond : enqueue_precond rb v) : RingBuffer T :=\n  -- !benchmark @start code\n  if rb.view.length < rb.capacity then\n    { capacity := rb.capacity, view := rb.view ++ [v] }\n  else\n    { capacity := rb.capacity, view := rb.view.drop 1 ++ [v] }\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef enqueue_postcond {T} (rb : RingBuffer T) (v : T) (result : RingBuffer T)\n    (_ : enqueue_precond rb v) : Prop :=\n  -- !benchmark @start postcond\n  result.is_valid \u2227\n  result.capacity = rb.capacity \u2227\n  (rb.view.length < rb.capacity \u2192 result.view = rb.view ++ [v]) \u2227\n  (rb.view.length = rb.capacity \u2192 result.view = rb.view.drop 1 ++ [v])\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem enqueue_postcond_satisfied {T} (rb : RingBuffer T) (v : T)\n    (h_precond : enqueue_precond rb v) :\n    enqueue_postcond rb v (enqueue rb v h_precond) h_precond := by\n  -- !benchmark @start proof\n  obtain \u27e8hc, hlen\u27e9 := h_precond\n  unfold enqueue\n  split\n  \u00b7 rename_i h\n    refine \u27e8\u27e8hc, ?_\u27e9, rfl, fun _ => rfl, fun h2 => absurd h2 (Nat.ne_of_lt h)\u27e9\n    simp only [List.length_append, List.length_cons, List.length_nil]\n    omega\n  \u00b7 rename_i h\n    have heq : rb.view.length = rb.capacity := le_antisymm hlen (Nat.not_lt.mp h)\n    refine \u27e8\u27e8hc, ?_\u27e9, rfl, fun h2 => absurd h2 h, fun _ => rfl\u27e9\n    simp only [List.length_append, List.length_drop, List.length_cons, List.length_nil]\n    omega\n  -- !benchmark @end proof\n",
+      "comment": "Verified on the first compiler check (only unused-variable warnings).\n\n**Approach:**\n- `enqueue` (Solution.lean:23\u201328): branch on `rb.view.length < rb.capacity` \u2014 append `v`, else drop the head first, keeping `capacity` unchanged in both branches.\n- Proof (Solution.lean:47\u201360): `split` on the `if`, then discharge each conjunct. Capacity equality and the applicable view equation are `rfl`; the inapplicable one is closed by contradiction (`Nat.ne_of_lt h` / `h`). Validity reduces to length arithmetic via `List.length_append`/`List.length_drop` and `omega` \u2014 in the full branch, `capacity > 0` plus `length = capacity` gives `(length - 1) + 1 = capacity`."
+    },
+    "verifier_response": {
+      "verified": true,
+      "feedback": "Verified successfully.",
+      "raw": {
+        "stdout": "claude_code_ringbuffer_enqueue_final_1786249870502.lean:12:45: warning: unused variable `v`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_ringbuffer_enqueue_final_1786249870502.lean:22:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+        "stderr": "",
+        "returncode": 0
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": true,
+        "verifier_response": {
+          "verified": true,
+          "feedback": "Verified successfully.",
+          "raw": {
+            "stdout": "claude_code_ringbuffer_enqueue_final_1786249870502.lean:12:45: warning: unused variable `v`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_ringbuffer_enqueue_final_1786249870502.lean:22:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+            "stderr": "",
+            "returncode": 0
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "3dac9651-9419-4f52-9c8e-9500f0d0534f",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.15849975000000002,
+          "duration_ms": 41890,
+          "duration_api_ms": 38230,
+          "num_turns": 7,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/ringbuffer_enqueue/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "ed4b1f1a9070d71012090928046d240e80e2a4ea4caad5a974b43e72dbc46052",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 1150,
+            "seconds_to_first_progress": 25.648,
+            "seconds_to_first_check": 36.907,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 73786,
+      "output": 2575,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "3dac9651-9419-4f52-9c8e-9500f0d0534f",
+      "subtype": "success",
+      "provider_subtype": "success",
+      "is_error": false,
+      "total_cost_usd": 0.15849975000000002,
+      "duration_ms": 41890,
+      "duration_api_ms": 38230,
+      "num_turns": 7,
+      "returncode": 0,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/ringbuffer_enqueue/agent_events.jsonl",
+      "pass_number": 1,
+      "prompt_kind": "initial",
+      "prompt_sha256": "ed4b1f1a9070d71012090928046d240e80e2a4ea4caad5a974b43e72dbc46052",
+      "budget_usd": null,
+      "lastdance_profile": "api",
+      "features": {
+        "profile": "api",
+        "algorithm_plan": false,
+        "lemma_plan": false,
+        "leansearch": false,
+        "semantic_audit": false,
+        "semantic_reminder": false,
+        "early_check": false,
+        "feedback_mode": "exact",
+        "backtracking": false,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": false,
+          "progress_governor": false,
+          "pre_edit_timeout_seconds": 300,
+          "pre_edit_thinking_tokens": 12000,
+          "post_edit_check_timeout_seconds": 180,
+          "planning_mode": false,
+          "diagnostic_wrapper": false,
+          "rescue_mode": false
+        },
+        "governor_stop_reason": null,
+        "max_thinking_tokens_observed": 1150,
+        "seconds_to_first_progress": 25.648,
+        "seconds_to_first_check": 36.907,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 1,
+      "total_sessions": 1,
+      "selected_session": 1,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "3dac9651-9419-4f52-9c8e-9500f0d0534f",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.15849975000000002,
+          "duration_ms": 41890,
+          "duration_api_ms": 38230,
+          "num_turns": 7,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/ringbuffer_enqueue/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "ed4b1f1a9070d71012090928046d240e80e2a4ea4caad5a974b43e72dbc46052",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 1150,
+            "seconds_to_first_progress": 25.648,
+            "seconds_to_first_check": 36.907,
+            "pending_tool_recovery": []
+          }
+        }
+      ],
+      "compiler_checks_observed": 1,
+      "max_compiler_checks": 15
+    },
+    "provenance": {
+      "schema_version": 1,
+      "ownership": {
+        "model_owned_sections": [
+          "auxcode",
+          "code",
+          "lemma",
+          "proof"
+        ],
+        "teacher_owned": "all source outside the four marker regions",
+        "teacher_owned_sorry_present": false,
+        "model_section_ranges": {
+          "auxcode": {
+            "start_line": 17,
+            "end_line": 18
+          },
+          "code": {
+            "start_line": 23,
+            "end_line": 28
+          },
+          "lemma": {
+            "start_line": 41,
+            "end_line": 42
+          },
+          "proof": {
+            "start_line": 48,
+            "end_line": 61
+          }
+        }
+      },
+      "hashes": {
+        "original_sha256": "c06b578bd44017cb768e7884badcaacf6cacfbcbc84cd03857fbef7a70ed0ba2",
+        "candidate_sha256": "de7438684d012a11039e391cc4c7e2dd2040b13ecb2a0dc5f5b89e95b84eebd5",
+        "merged_sha256": "de7438684d012a11039e391cc4c7e2dd2040b13ecb2a0dc5f5b89e95b84eebd5",
+        "model_sections_sha256": {
+          "auxcode": "d0f4cdbd7feed725da2af2930e2972df069acc685343c14a4ffcca7a8f88b371",
+          "code": "aa3ea436601e6ade4a229ad58e6d453e819f6699ca4e795f23c87dfcbd629b67",
+          "lemma": "c4a00fdeeaea16ecb54620d7ccdf35c574b7bc40f94254ddd403472aa18f7440",
+          "proof": "dbdc1898944e30da27814a85da0707c15db48ae29baa8bc5233bedcdd0640058"
+        }
+      }
+    },
+    "targeted_diagnostics": [],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/ringbuffer_enqueue/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": null,
+      "proof_state": null,
+      "leansearch_queries": null,
+      "checkpoints": null,
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/ringbuffer_enqueue/.lastdance/prompts"
+    }
+  }
+}

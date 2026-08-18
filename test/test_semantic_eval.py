@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from src.eval.semantic_eval import SemanticEval
+from src.eval.prompt.semantic_check_prompt import SEMANTIC_PROVENANCE_ADDENDUM
 
 
 class RecordingChat:
@@ -26,6 +27,10 @@ class RecordingProvider:
 
 
 class SemanticEvalTemperatureTests(unittest.TestCase):
+    def test_provenance_addendum_excludes_teacher_owned_sorry_from_student_judgment(self) -> None:
+        self.assertIn("marker pairs is student-owned", SEMANTIC_PROVENANCE_ADDENDUM)
+        self.assertIn("penalize the student", SEMANTIC_PROVENANCE_ADDENDUM)
+
     def test_forwards_configured_temperature_to_judge(self) -> None:
         provider = RecordingProvider()
         result = SemanticEval(provider, temperature=0.0).run_single(

@@ -1,0 +1,380 @@
+{
+  "verified": false,
+  "details": {
+    "rounds": 55,
+    "llm_response": {
+      "code": "import Mathlib\n\nstructure WeightedGraph where\n  adj : Array (Array (Nat \u00d7 Int))\n\ndef WeightedGraph.size (g : WeightedGraph) : Nat :=\n  g.adj.size\n\ndef WeightedGraph.has_edge (g : WeightedGraph) (u v : Nat) (w : Int) : Prop :=\n  u < g.size \u2227\n  \u2203 pair, pair \u2208 g.adj.getD u #[] \u2227 pair.1 = v \u2227 pair.2 = w\n\ndef WeightedGraph.well_formed (g : WeightedGraph) : Prop :=\n  \u2200 u, u < g.size \u2192\n    -- Bounds check\n    (\u2200 pair, pair \u2208 g.adj.getD u #[] \u2192 pair.1 < g.size) \u2227\n    -- Simple graph check (matches Dafny)\n    (\u2200 p1 p2, p1 \u2208 g.adj.getD u #[] \u2192 p2 \u2208 g.adj.getD u #[] \u2192 p1.1 = p2.1 \u2192 p1 = p2)\n\nstructure MSTEdge where\n  u : Nat\n  v : Nat\n  w : Int\n\n-- 1. Validity\ndef MSTEdge.is_valid (e : MSTEdge) (g : WeightedGraph) : Prop :=\n  g.has_edge e.u e.v e.w\n\n-- 2. Connectivity for Solution Edges (Undirected View)\n-- Dafny: `edge_in_set` checks (u, v) || (v, u)\ndef edges_contain (edges : List MSTEdge) (u v : Nat) : Prop :=\n  \u2203 e, e \u2208 edges \u2227 ((e.u = u \u2227 e.v = v) \u2228 (e.u = v \u2227 e.v = u))\n\ndef path_follows_edges (edges : List MSTEdge) (p : List Nat) : Prop :=\n  p.length > 0 \u2227\n  \u2200 i, i + 1 < p.length \u2192\n    edges_contain edges (p.getD i 0) (p.getD (i + 1) 0)\n\ndef is_connected_with_edges (g : WeightedGraph) (edges : List MSTEdge) : Prop :=\n  \u2200 u v, u < g.size \u2192 v < g.size \u2192\n    \u2203 p, p.head? = some u \u2227 p.getLast? = some v \u2227 path_follows_edges edges p\n\n-- 3. Spanning Tree Definition\ndef is_spanning_tree (g : WeightedGraph) (edges : List MSTEdge) : Prop :=\n  edges.length = g.size - 1 \u2227\n  (\u2200 e, e \u2208 edges \u2192 e.is_valid g) \u2227\n  is_connected_with_edges g edges\n  -- Note: |V|-1 edges + Connected implies Acyclic (Tree)\n\ndef total_weight (edges : List MSTEdge) : Int :=\n  edges.foldl (\u03bb sum e => sum + e.w) 0\n\n-- 4. Optimality (MST)\ndef is_mst (g : WeightedGraph) (edges : List MSTEdge) : Prop :=\n  is_spanning_tree g edges \u2227\n  \u2200 other, is_spanning_tree g other \u2192 total_weight edges \u2264 total_weight other\n\n-- 5. Graph Connectivity (Precondition)\n-- Dafny uses directed edges for the graph path check: `graph_has_any_edge`\ndef path_follows_graph (g : WeightedGraph) (p : List Nat) : Prop :=\n  p.length > 0 \u2227\n  \u2200 i, i + 1 < p.length \u2192\n    \u2203 w, g.has_edge (p.getD i 0) (p.getD (i + 1) 0) w\n\ndef WeightedGraph.is_connected (g : WeightedGraph) : Prop :=\n  \u2200 u v, u < g.size \u2192 v < g.size \u2192\n    \u2203 p, p.head? = some u \u2227 p.getLast? = some v \u2227 path_follows_graph g p\n\ndef WeightedGraph.weights_bounded (g : WeightedGraph) : Prop :=\n  g.size \u2264 100000 \u2227\n  \u2200 u v w, g.has_edge u v w \u2192 w \u2265 -100000 \u2227 w \u2264 100000\n\n-- Precondition definitions\n@[reducible, simp]\ndef kruskal_mst_precond (graph : WeightedGraph) : Prop :=\n  -- !benchmark @start precond\n  graph.well_formed \u2227\n  graph.size > 0 \u2227\n  graph.is_connected \u2227\n  graph.weights_bounded\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n\n/-- Disjoint-set structure in the \"quick find\" representation: `label[x]` is\n    the representative of the component currently containing `x`. -/\nstructure UF where\n  label : Array Nat\n\n/-- Identity partition on `n` elements: every node is its own representative. -/\ndef UF.mk' (n : Nat) : UF := \u27e8Array.ofFn (n := n) (fun i => i.val)\u27e9\n\n/-- Representative of `x`. -/\ndef UF.find (uf : UF) (x : Nat) : Nat := uf.label.getD x x\n\n/-- Merge the components of `x` and `y`: every member of `x`'s class is\n    relabelled to `y`'s representative. -/\ndef UF.union' (uf : UF) (x y : Nat) : UF :=\n  \u27e8uf.label.map (fun l => if l = uf.find x then uf.find y else l)\u27e9\n\n/-- Every directed adjacency entry of the graph, as an `MSTEdge`. -/\ndef allEdges (g : WeightedGraph) : List MSTEdge :=\n  (List.range g.size).flatMap\n    (fun u => (g.adj.getD u #[]).toList.map (fun p => \u27e8u, p.1, p.2\u27e9))\n\n/-- Step 1 of Kruskal: all edges sorted by non-decreasing weight. -/\ndef sortedEdges (g : WeightedGraph) : List MSTEdge :=\n  (allEdges g).mergeSort (fun a b => decide (a.w \u2264 b.w))\n\n/-- Step 2 of Kruskal: accept an edge iff it joins two distinct components. -/\ndef kruskalStep (st : UF \u00d7 List MSTEdge) (e : MSTEdge) : UF \u00d7 List MSTEdge :=\n  if st.1.find e.u = st.1.find e.v then st\n  else (st.1.union' e.u e.v, st.2 ++ [e])\n\n/-- Kruskal's algorithm. -/\ndef kruskalRun (g : WeightedGraph) : List MSTEdge :=\n  ((sortedEdges g).foldl kruskalStep (UF.mk' g.size, [])).2\n\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef kruskal_mst (graph : WeightedGraph)\n    (h_precond : kruskal_mst_precond graph) : List MSTEdge :=\n  -- !benchmark @start code\n  kruskalRun graph\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef kruskal_mst_postcond (graph : WeightedGraph) (result : List MSTEdge)\n    (_ : kruskal_mst_precond graph) : Prop :=\n  -- !benchmark @start postcond\n  is_mst graph result\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\n\n/-- Every edge produced by `allEdges` really is a directed edge of `g`. -/\ntheorem has_edge_of_mem_allEdges {g : WeightedGraph} {e : MSTEdge}\n    (he : e \u2208 allEdges g) : g.has_edge e.u e.v e.w := by\n  unfold allEdges at he\n  rw [List.mem_flatMap] at he\n  obtain \u27e8u, hu, hmem\u27e9 := he\n  rw [List.mem_map] at hmem\n  obtain \u27e8p, hp, rfl\u27e9 := hmem\n  refine \u27e8List.mem_range.mp hu, p, ?_, rfl, rfl\u27e9\n  simpa using hp\n\n/-- Sorting does not invent edges. -/\ntheorem mem_allEdges_of_mem_sortedEdges {g : WeightedGraph} {e : MSTEdge}\n    (he : e \u2208 sortedEdges g) : e \u2208 allEdges g :=\n  (List.mergeSort_perm _ _).subset he\n\n/-- The Kruskal fold only ever accumulates edges taken from its input list. -/\ntheorem mem_foldl_kruskalStep {l : List MSTEdge} :\n    \u2200 (st : UF \u00d7 List MSTEdge) (e : MSTEdge),\n      e \u2208 (l.foldl kruskalStep st).2 \u2192 e \u2208 st.2 \u2228 e \u2208 l := by\n  induction l with\n  | nil => intro st e he; exact Or.inl he\n  | cons a l ih =>\n      intro st e he\n      rcases ih (kruskalStep st a) e he with h | h\n      \u00b7 unfold kruskalStep at h\n        split at h\n        \u00b7 exact Or.inl h\n        \u00b7 rcases List.mem_append.mp h with h | h\n          \u00b7 exact Or.inl h\n          \u00b7 simp at h; exact Or.inr (by simp [h])\n      \u00b7 exact Or.inr (by simp [h])\n\n/-- `edges_contain` is symmetric: the solution edge list is read undirected. -/\ntheorem edges_contain_symm {edges : List MSTEdge} {u v : Nat}\n    (h : edges_contain edges u v) : edges_contain edges v u := by\n  obtain \u27e8e, he, h\u27e9 := h\n  exact \u27e8e, he, h.symm\u27e9\n\n/-- `IsChain`-based reformulation of `path_follows_edges`. Working with\n    `List.IsChain` instead of the `getD`-indexed predicate makes the standard\n    path constructions (singleton, reverse, append) available from Mathlib. -/\ndef Conn (edges : List MSTEdge) (u v : Nat) : Prop :=\n  \u2203 p : List Nat, p.head? = some u \u2227 p.getLast? = some v \u2227\n    List.IsChain (edges_contain edges) p\n\n/-- Bridge: a nonempty chain is a `path_follows_edges` path. -/\ntheorem path_follows_edges_of_chain {edges : List MSTEdge} :\n    \u2200 (p : List Nat), p \u2260 [] \u2192 List.IsChain (edges_contain edges) p \u2192\n      path_follows_edges edges p := by\n  intro p hne hc\n  refine \u27e8List.length_pos_of_ne_nil hne, ?_\u27e9\n  clear hne\n  induction p with\n  | nil => intro i hi; simp at hi\n  | cons a t ih =>\n      cases t with\n      | nil => intro i hi; simp at hi\n      | cons b t' =>\n          rw [List.isChain_cons_cons] at hc\n          intro i hi\n          cases i with\n          | zero => simpa using hc.1\n          | succ j =>\n              have := ih hc.2 j (by simpa using hi)\n              simpa [List.getD_cons_succ] using this\n\n/-- Every vertex pair being `Conn`-related gives the specification's\n    connectivity predicate. -/\ntheorem is_connected_with_edges_of_conn {g : WeightedGraph} {edges : List MSTEdge}\n    (h : \u2200 u v, u < g.size \u2192 v < g.size \u2192 Conn edges u v) :\n    is_connected_with_edges g edges := by\n  intro u v hu hv\n  obtain \u27e8p, h1, h2, h3\u27e9 := h u v hu hv\n  refine \u27e8p, h1, h2, path_follows_edges_of_chain p ?_ h3\u27e9\n  intro hp; rw [hp] at h1; simp at h1\n\n/-- Converse bridge: a `path_follows_edges` path is a chain. -/\ntheorem chain_of_path_follows_edges {edges : List MSTEdge} :\n    \u2200 (p : List Nat), path_follows_edges edges p \u2192\n      List.IsChain (edges_contain edges) p := by\n  intro p hp\n  obtain \u27e8-, hp\u27e9 := hp\n  induction p with\n  | nil => exact List.isChain_nil\n  | cons a t ih =>\n      cases t with\n      | nil => exact List.isChain_singleton a\n      | cons b t' =>\n          rw [List.isChain_cons_cons]\n          refine \u27e8by simpa using hp 0 (by simp), ih ?_\u27e9\n          intro i hi\n          have := hp (i + 1) (by simpa using hi)\n          simpa [List.getD_cons_succ] using this\n\n/-- The specification's connectivity predicate gives `Conn` for every pair. -/\ntheorem conn_of_is_connected_with_edges {g : WeightedGraph} {edges : List MSTEdge}\n    (h : is_connected_with_edges g edges) :\n    \u2200 u v, u < g.size \u2192 v < g.size \u2192 Conn edges u v := by\n  intro u v hu hv\n  obtain \u27e8p, h1, h2, h3\u27e9 := h u v hu hv\n  exact \u27e8p, h1, h2, chain_of_path_follows_edges p h3\u27e9\n\ntheorem Conn.refl (edges : List MSTEdge) (u : Nat) : Conn edges u u :=\n  \u27e8[u], rfl, rfl, List.isChain_singleton u\u27e9\n\ntheorem Conn.symm {edges : List MSTEdge} {u v : Nat} (h : Conn edges u v) :\n    Conn edges v u := by\n  obtain \u27e8p, h1, h2, h3\u27e9 := h\n  refine \u27e8p.reverse, by simpa using h2, by simpa using h1, ?_\u27e9\n  rw [List.isChain_reverse]\n  exact h3.imp (fun _ _ hab => edges_contain_symm hab)\n\ntheorem Conn.trans {edges : List MSTEdge} {u v w : Nat}\n    (h\u2081 : Conn edges u v) (h\u2082 : Conn edges v w) : Conn edges u w := by\n  obtain \u27e8p, hp1, hp2, hp3\u27e9 := h\u2081\n  obtain \u27e8q, hq1, hq2, hq3\u27e9 := h\u2082\n  cases q with\n  | nil => simp at hq1\n  | cons a q' =>\n      have ha : a = v := by simpa using hq1\n      subst ha\n      cases q' with\n      | nil =>\n          have hw : a = w := by simpa using hq2\n          subst hw\n          exact \u27e8p, hp1, hp2, hp3\u27e9\n      | cons b q'' =>\n          rw [List.isChain_cons_cons] at hq3\n          cases p with\n          | nil => simp at hp1\n          | cons c t =>\n              refine \u27e8(c :: t) ++ (b :: q''), by simpa using hp1, ?_, ?_\u27e9\n              \u00b7 rw [List.getLast?_append_cons]; simpa using hq2\n              refine List.IsChain.append hp3 hq3.2 ?_\n              intro x hx y hy\n              simp only [hp2, Option.mem_def, Option.some.injEq, List.head?_cons] at hx hy\n              subst hx; subst hy\n              exact hq3.1\n\n/-- Monotonicity of the undirected incidence predicate. -/\ntheorem edges_contain_mono {edges edges' : List MSTEdge} {u v : Nat}\n    (hsub : \u2200 x \u2208 edges, x \u2208 edges') (h : edges_contain edges u v) :\n    edges_contain edges' u v := by\n  obtain \u27e8x, hx, h\u27e9 := h\n  exact \u27e8x, hsub x hx, h\u27e9\n\ntheorem Conn.mono {edges edges' : List MSTEdge} {u v : Nat}\n    (hsub : \u2200 x \u2208 edges, x \u2208 edges') (h : Conn edges u v) : Conn edges' u v := by\n  obtain \u27e8p, h1, h2, h3\u27e9 := h\n  exact \u27e8p, h1, h2, h3.imp (fun _ _ hab => edges_contain_mono hsub hab)\u27e9\n\n/-- A single accepted edge adds exactly one undirected incidence. -/\ntheorem edges_contain_append_single {acc : List MSTEdge} {e : MSTEdge} {a b : Nat} :\n    edges_contain (acc ++ [e]) a b \u2194\n      edges_contain acc a b \u2228 (a = e.u \u2227 b = e.v) \u2228 (a = e.v \u2227 b = e.u) := by\n  constructor\n  \u00b7 rintro \u27e8x, hx, h\u27e9\n    rcases List.mem_append.mp hx with hx | hx\n    \u00b7 exact Or.inl \u27e8x, hx, h\u27e9\n    \u00b7 have hx : x = e := by simpa using hx\n      subst hx\n      rcases h with \u27e8h1, h2\u27e9 | \u27e8h1, h2\u27e9\n      \u00b7 exact Or.inr (Or.inl \u27e8h1.symm, h2.symm\u27e9)\n      \u00b7 exact Or.inr (Or.inr \u27e8h2.symm, h1.symm\u27e9)\n  \u00b7 rintro (h | \u27e8rfl, rfl\u27e9 | \u27e8rfl, rfl\u27e9)\n    \u00b7 exact edges_contain_mono (fun x hx => List.mem_append_left _ hx) h\n    \u00b7 exact \u27e8e, by simp, Or.inl \u27e8rfl, rfl\u27e9\u27e9\n    \u00b7 exact \u27e8e, by simp, Or.inr \u27e8rfl, rfl\u27e9\u27e9\n\n/-- Connectivity in `acc ++ [e]`, expressed without the new edge: either the two\n    vertices were already connected, or the path crosses the new edge, which\n    means each endpoint is `acc`-connected to one endpoint of `e`. -/\ndef ConnExt (acc : List MSTEdge) (e : MSTEdge) (u v : Nat) : Prop :=\n  Conn acc u v \u2228\n    (Conn acc u e.u \u2227 Conn acc e.v v) \u2228 (Conn acc u e.v \u2227 Conn acc e.u v)\n\ntheorem ConnExt.refl (acc : List MSTEdge) (e : MSTEdge) (u : Nat) :\n    ConnExt acc e u u := Or.inl (Conn.refl acc u)\n\ntheorem ConnExt.trans {acc : List MSTEdge} {e : MSTEdge} {u v w : Nat}\n    (h1 : ConnExt acc e u v) (h2 : ConnExt acc e v w) : ConnExt acc e u w := by\n  rcases h1 with h1 | \u27e8ha, hb\u27e9 | \u27e8ha, hb\u27e9 <;>\n    rcases h2 with h2 | \u27e8hc, hd\u27e9 | \u27e8hc, hd\u27e9\n  \u00b7 exact Or.inl (h1.trans h2)\n  \u00b7 exact Or.inr (Or.inl \u27e8h1.trans hc, hd\u27e9)\n  \u00b7 exact Or.inr (Or.inr \u27e8h1.trans hc, hd\u27e9)\n  \u00b7 exact Or.inr (Or.inl \u27e8ha, hb.trans h2\u27e9)\n  \u00b7 exact Or.inl (ha.trans (((hb.trans hc).symm).trans hd))\n  \u00b7 exact Or.inl (ha.trans hd)\n  \u00b7 exact Or.inr (Or.inr \u27e8ha, hb.trans h2\u27e9)\n  \u00b7 exact Or.inl (ha.trans hd)\n  \u00b7 exact Or.inl (ha.trans (((hb.trans hc).symm).trans hd))\n\n/-- One step of a path in `acc ++ [e]`. -/\ntheorem ConnExt.of_step {acc : List MSTEdge} {e : MSTEdge} {a b : Nat}\n    (h : edges_contain (acc ++ [e]) a b) : ConnExt acc e a b := by\n  rcases edges_contain_append_single.mp h with h | \u27e8rfl, rfl\u27e9 | \u27e8rfl, rfl\u27e9\n  \u00b7 exact Or.inl \u27e8[a, b], rfl, rfl,\n      List.isChain_cons_cons.mpr \u27e8h, List.isChain_singleton b\u27e9\u27e9\n  \u00b7 exact Or.inr (Or.inl \u27e8Conn.refl _ _, Conn.refl _ _\u27e9)\n  \u00b7 exact Or.inr (Or.inr \u27e8Conn.refl _ _, Conn.refl _ _\u27e9)\n\ntheorem ConnExt.of_chain {acc : List MSTEdge} {e : MSTEdge} :\n    \u2200 (p : List Nat) (u v : Nat), p.head? = some u \u2192 p.getLast? = some v \u2192\n      List.IsChain (edges_contain (acc ++ [e])) p \u2192 ConnExt acc e u v := by\n  intro p\n  induction p with\n  | nil => intro u v h1 _ _; simp at h1\n  | cons a t ih =>\n      intro u v h1 h2 h3\n      have hau : a = u := by simpa using h1\n      subst hau\n      cases t with\n      | nil =>\n          have hv : a = v := by simpa using h2\n          subst hv\n          exact ConnExt.refl _ _ _\n      | cons b t' =>\n          rw [List.isChain_cons_cons] at h3\n          exact (ConnExt.of_step h3.1).trans (ih b v rfl (by simpa using h2) h3.2)\n\n/-- Characterisation of connectivity after accepting one more edge. -/\ntheorem conn_append_single_iff {acc : List MSTEdge} {e : MSTEdge} {u v : Nat} :\n    Conn (acc ++ [e]) u v \u2194 ConnExt acc e u v := by\n  constructor\n  \u00b7 rintro \u27e8p, h1, h2, h3\u27e9\n    exact ConnExt.of_chain p u v h1 h2 h3\n  \u00b7 have hsub : \u2200 x \u2208 acc, x \u2208 acc ++ [e] := fun x hx => List.mem_append_left _ hx\n    have hnew : Conn (acc ++ [e]) e.u e.v :=\n      \u27e8[e.u, e.v], rfl, rfl, List.isChain_cons_cons.mpr\n        \u27e8edges_contain_append_single.mpr (Or.inr (Or.inl \u27e8rfl, rfl\u27e9)),\n          List.isChain_singleton _\u27e9\u27e9\n    rintro (h | \u27e8ha, hb\u27e9 | \u27e8ha, hb\u27e9)\n    \u00b7 exact h.mono hsub\n    \u00b7 exact ((ha.mono hsub).trans hnew).trans (hb.mono hsub)\n    \u00b7 exact ((ha.mono hsub).trans hnew.symm).trans (hb.mono hsub)\n\n/-! ### Union-find (quick find) correctness -/\n\ntheorem UF.size_mk' (n : Nat) : (UF.mk' n).label.size = n := by\n  simp [UF.mk']\n\ntheorem UF.size_union' (uf : UF) (x y : Nat) :\n    (uf.union' x y).label.size = uf.label.size := by\n  simp [UF.union']\n\ntheorem UF.find_mk' {n x : Nat} (h : x < n) : (UF.mk' n).find x = x := by\n  simp [UF.mk', UF.find, Array.getD, h]\n\ntheorem UF.find_union' (uf : UF) (a b x : Nat) (h : x < uf.label.size) :\n    (uf.union' a b).find x =\n      (if uf.find x = uf.find a then uf.find b else uf.find x) := by\n  unfold UF.union' UF.find\n  simp only [Array.size_map, Array.getD, dif_pos h]\n  simp [Array.getElem_map]\n\n/-- The joint invariant of the Kruskal fold: the disjoint-set state has the\n    right size, and its classes are exactly the connected components of the\n    accepted edge list. -/\ndef UFInv (n : Nat) (st : UF \u00d7 List MSTEdge) : Prop :=\n  st.1.label.size = n \u2227\n    \u2200 u v, u < n \u2192 v < n \u2192 (st.1.find u = st.1.find v \u2194 Conn st.2 u v)\n\n/-- L3: the disjoint-set classes track the components of the accepted edges\n    exactly, and that property is preserved by one Kruskal step. -/\ntheorem UFInv.step {n : Nat} {st : UF \u00d7 List MSTEdge} {e : MSTEdge}\n    (hu : e.u < n) (hv : e.v < n) (h : UFInv n st) : UFInv n (kruskalStep st e) := by\n  obtain \u27e8hsize, hiff\u27e9 := h\n  by_cases hne : st.1.find e.u = st.1.find e.v\n  \u00b7 have hstep : kruskalStep st e = st := by simp only [kruskalStep, if_pos hne]\n    rw [hstep]\n    exact \u27e8hsize, hiff\u27e9\n  \u00b7 have hstep : kruskalStep st e = (st.1.union' e.u e.v, st.2 ++ [e]) := by\n      simp only [kruskalStep, if_neg hne]\n    rw [hstep]\n    refine \u27e8by rw [UF.size_union']; exact hsize, ?_\u27e9\n    intro u v hu' hv'\n    have hlu : u < st.1.label.size := hsize \u25b8 hu'\n    have hlv : v < st.1.label.size := hsize \u25b8 hv'\n    rw [UF.find_union' st.1 e.u e.v u hlu, UF.find_union' st.1 e.u e.v v hlv,\n      conn_append_single_iff]\n    constructor\n    \u00b7 intro hEq\n      by_cases hA : st.1.find u = st.1.find e.u <;>\n        by_cases hB : st.1.find v = st.1.find e.u\n      \u00b7 exact Or.inl ((hiff u v hu' hv').mp (hA.trans hB.symm))\n      \u00b7 rw [if_pos hA, if_neg hB] at hEq\n        exact Or.inr (Or.inl \u27e8(hiff u e.u hu' hu).mp hA, (hiff e.v v hv hv').mp hEq\u27e9)\n      \u00b7 rw [if_neg hA, if_pos hB] at hEq\n        exact Or.inr (Or.inr \u27e8(hiff u e.v hu' hv).mp hEq, (hiff e.u v hu hv').mp hB.symm\u27e9)\n      \u00b7 rw [if_neg hA, if_neg hB] at hEq\n        exact Or.inl ((hiff u v hu' hv').mp hEq)\n    \u00b7 rintro (hC | \u27e8h1, h2\u27e9 | \u27e8h1, h2\u27e9)\n      \u00b7 rw [(hiff u v hu' hv').mpr hC]\n      \u00b7 have hA : st.1.find u = st.1.find e.u := (hiff u e.u hu' hu).mpr h1\n        have hB : st.1.find e.v = st.1.find v := (hiff e.v v hv hv').mpr h2\n        rw [if_pos hA]\n        by_cases hB' : st.1.find v = st.1.find e.u\n        \u00b7 rw [if_pos hB']\n        \u00b7 rw [if_neg hB']\n          exact hB\n      \u00b7 have hA : st.1.find u = st.1.find e.v := (hiff u e.v hu' hv).mpr h1\n        have hB : st.1.find v = st.1.find e.u :=\n          ((hiff e.u v hu hv').mpr h2).symm\n        rw [if_pos hB]\n        by_cases hA' : st.1.find u = st.1.find e.u\n        \u00b7 rw [if_pos hA']\n        \u00b7 rw [if_neg hA']\n          exact hA\n\n/-- The initial state satisfies the invariant. -/\ntheorem UFInv.init (n : Nat) : UFInv n (UF.mk' n, []) := by\n  refine \u27e8UF.size_mk' n, ?_\u27e9\n  intro u v hu hv\n  rw [UF.find_mk' hu, UF.find_mk' hv]\n  constructor\n  \u00b7 rintro rfl; exact Conn.refl _ _\n  \u00b7 rintro \u27e8p, h1, h2, h3\u27e9\n    -- with no edges, every chain stays at its first vertex\n    induction p generalizing u with\n    | nil => simp at h1\n    | cons a t ih =>\n        have hau : a = u := by simpa using h1\n        subst hau\n        cases t with\n        | nil => simpa using h2\n        | cons b t' =>\n            rw [List.isChain_cons_cons] at h3\n            obtain \u27e8x, hx, -\u27e9 := h3.1\n            simp at hx\n\n/-- Validity: every returned edge is an edge of the graph. -/\ntheorem kruskalRun_valid (g : WeightedGraph) :\n    \u2200 e \u2208 kruskalRun g, e.is_valid g := by\n  intro e he\n  have := mem_foldl_kruskalStep (l := sortedEdges g) (UF.mk' g.size, []) e he\n  rcases this with h | h\n  \u00b7 simp at h\n  \u00b7 exact has_edge_of_mem_allEdges (mem_allEdges_of_mem_sortedEdges h)\n\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem kruskal_mst_postcond_satisfied (graph : WeightedGraph)\n    (h_precond : kruskal_mst_precond graph) :\n    kruskal_mst_postcond graph (kruskal_mst graph h_precond) h_precond := by\n  -- !benchmark @start proof\n  show is_mst graph (kruskalRun graph)\n  refine \u27e8\u27e8?_, kruskalRun_valid graph, ?_\u27e9, ?_\u27e9\n  -- !benchmark @end proof",
+      "comment": "**Not LEAN VERIFIED.** The file still fails with the same three top-level goals; I ran out of budget with the hardest one untouched. Exact current checker output (last run, matching the file on disk):\n\n```\nwarning: unused variable `h_precond`\nerror: unsolved goals\ncase refine_1 \u22a2 (kruskalRun graph).length = graph.size - 1\ncase refine_2 \u22a2 is_connected_with_edges graph (kruskalRun graph)\ncase refine_3 \u22a2 \u2200 other, is_spanning_tree graph other \u2192 total_weight (kruskalRun graph) \u2264 total_weight other\nLEAN VERIFICATION FAILED\n```\n\nWhat did change this pass \u2014 everything below compiles, with no `sorry`/placeholder and no weakening of the spec:\n\n- **Union-find switched to quick find** (`label : Array Nat`, `find x = label[x]`, `union` relabels a whole class). Still a disjoint-set structure and still Kruskal (sort by weight \u2192 iterate \u2192 accept iff endpoints are in different components). This deleted the fuel/parent-depth obligations that blocked passes 1\u20133.\n- **`ConnExt` theory**: `Conn (acc ++ [e]) u v \u2194 Conn acc u v \u2228 (Conn acc u e.u \u2227 Conn acc e.v v) \u2228 (Conn acc u e.v \u2227 Conn acc e.u v)`, plus monotonicity and the chain-level step/transitivity lemmas.\n- **L3, the lemma every previous pass named as blocking, is proved**: `UFInv.init` and `UFInv.step` establish `find u = find v \u2194 Conn acc u v` and its preservation by `kruskalStep`.\n\nWhat I did not deliver, and why: goals B and C now reduce to routine work on top of L3 (fold lifting, edge saturation, a `Finset.card` component count \u2014 sized in `ProofState.md`), but goal D is full global MST optimality, which needs the cut property plus an exchange argument against an arbitrary spanning tree. That is a research-sized formalisation on this bespoke list-path spec, and I had no budget to start it, so all three goals remain open rather than one. I confirmed again that D is not vacuous \u2014 no degenerate-instance loophole, and `Classical.choose`/argmin routes don't elaborate because the teacher-owned signature can't be `noncomputable`.\n\n`AlgorithmPlan.md` and `ProofState.md` are updated with the amended DSU commitment, the working Array/`getD` simp recipe, and the remaining work in dependency order."
+    },
+    "verifier_response": {
+      "verified": false,
+      "feedback": "Stdout:\nclaude_code_kruskal_final_1786130493181.lean:123:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786130493181.lean:484:74: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskalRun graph).length = graph.size - 1\n\ncase refine_2\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskalRun graph)\n\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge), is_spanning_tree graph other \u2192 total_weight (kruskalRun graph) \u2264 total_weight other\n\n\nStderr:\n",
+      "raw": {
+        "stdout": "claude_code_kruskal_final_1786130493181.lean:123:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786130493181.lean:484:74: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskalRun graph).length = graph.size - 1\n\ncase refine_2\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskalRun graph)\n\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge), is_spanning_tree graph other \u2192 total_weight (kruskalRun graph) \u2264 total_weight other\n",
+        "stderr": "",
+        "returncode": 1
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": false,
+        "verifier_response": {
+          "verified": false,
+          "feedback": "Stdout:\nclaude_code_kruskal_final_1786129974513.lean:132:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786129974513.lean:301:74: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskalRun graph).length = graph.size - 1\n\ncase refine_2\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskalRun graph)\n\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge), is_spanning_tree graph other \u2192 total_weight (kruskalRun graph) \u2264 total_weight other\n\n\nStderr:\n",
+          "raw": {
+            "stdout": "claude_code_kruskal_final_1786129974513.lean:132:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786129974513.lean:301:74: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskalRun graph).length = graph.size - 1\n\ncase refine_2\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskalRun graph)\n\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge), is_spanning_tree graph other \u2192 total_weight (kruskalRun graph) \u2264 total_weight other\n",
+            "stderr": "",
+            "returncode": 1
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "9da675a4-6583-4e9f-af55-5a0050e69f48",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 1.831944,
+          "duration_ms": 523370,
+          "duration_api_ms": 492429,
+          "num_turns": 29,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/kruskal/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "4521e4dcabdbd0d73662fcdd3ee83a6d69f83f238c4d305ca24862d6ee714d0e",
+          "budget_usd": 2.0,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 16200,
+            "seconds_to_first_progress": 292.917,
+            "seconds_to_first_check": 239.721,
+            "pending_tool_recovery": []
+          }
+        }
+      },
+      {
+        "compiler_pass": 2,
+        "verified": false,
+        "verifier_response": {
+          "verified": false,
+          "feedback": "Stdout:\nclaude_code_kruskal_final_1786130493181.lean:123:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786130493181.lean:484:74: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskalRun graph).length = graph.size - 1\n\ncase refine_2\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskalRun graph)\n\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge), is_spanning_tree graph other \u2192 total_weight (kruskalRun graph) \u2264 total_weight other\n\n\nStderr:\n",
+          "raw": {
+            "stdout": "claude_code_kruskal_final_1786130493181.lean:123:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_kruskal_final_1786130493181.lean:484:74: error: unsolved goals\ncase refine_1\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 (kruskalRun graph).length = graph.size - 1\n\ncase refine_2\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 is_connected_with_edges graph (kruskalRun graph)\n\ncase refine_3\ngraph : WeightedGraph\nh_precond : kruskal_mst_precond graph\n\u22a2 \u2200 (other : List MSTEdge), is_spanning_tree graph other \u2192 total_weight (kruskalRun graph) \u2264 total_weight other\n",
+            "stderr": "",
+            "returncode": 1
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "30642d3c-21b0-4c80-adb8-40aeb2a33527",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 1.8606712500000002,
+          "duration_ms": 513358,
+          "duration_api_ms": 484435,
+          "num_turns": 27,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/kruskal/agent_events.jsonl",
+          "pass_number": 2,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "605522413ecd0c16d6c8d3d122a16f9701f3d325a0cc3021713dce6b74d45fc5",
+          "budget_usd": 2.0,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 9900,
+            "seconds_to_first_progress": 237.509,
+            "seconds_to_first_check": 211.654,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 2230810,
+      "output": 74715,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "30642d3c-21b0-4c80-adb8-40aeb2a33527",
+      "subtype": "success",
+      "provider_subtype": "success",
+      "is_error": false,
+      "total_cost_usd": 3.6926152500000002,
+      "duration_ms": 1036728,
+      "duration_api_ms": 976864,
+      "num_turns": 56,
+      "returncode": 0,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/kruskal/agent_events.jsonl",
+      "pass_number": 2,
+      "prompt_kind": "compiler_repair",
+      "prompt_sha256": "605522413ecd0c16d6c8d3d122a16f9701f3d325a0cc3021713dce6b74d45fc5",
+      "budget_usd": 2.0,
+      "lastdance_profile": "robust",
+      "features": {
+        "profile": "robust",
+        "algorithm_plan": true,
+        "lemma_plan": true,
+        "leansearch": true,
+        "semantic_audit": true,
+        "semantic_reminder": true,
+        "early_check": true,
+        "feedback_mode": "structured",
+        "backtracking": true,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": true,
+          "progress_governor": false,
+          "pre_edit_timeout_seconds": 300,
+          "pre_edit_thinking_tokens": 12000,
+          "post_edit_check_timeout_seconds": 180,
+          "planning_mode": false,
+          "diagnostic_wrapper": false,
+          "rescue_mode": false
+        },
+        "governor_stop_reason": null,
+        "max_thinking_tokens_observed": 9900,
+        "seconds_to_first_progress": 237.509,
+        "seconds_to_first_check": 211.654,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 2,
+      "total_sessions": 2,
+      "selected_session": 2,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "9da675a4-6583-4e9f-af55-5a0050e69f48",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 1.831944,
+          "duration_ms": 523370,
+          "duration_api_ms": 492429,
+          "num_turns": 29,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/kruskal/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "4521e4dcabdbd0d73662fcdd3ee83a6d69f83f238c4d305ca24862d6ee714d0e",
+          "budget_usd": 2.0,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 16200,
+            "seconds_to_first_progress": 292.917,
+            "seconds_to_first_check": 239.721,
+            "pending_tool_recovery": []
+          }
+        },
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "30642d3c-21b0-4c80-adb8-40aeb2a33527",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 1.8606712500000002,
+          "duration_ms": 513358,
+          "duration_api_ms": 484435,
+          "num_turns": 27,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/kruskal/agent_events.jsonl",
+          "pass_number": 2,
+          "prompt_kind": "compiler_repair",
+          "prompt_sha256": "605522413ecd0c16d6c8d3d122a16f9701f3d325a0cc3021713dce6b74d45fc5",
+          "budget_usd": 2.0,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 9900,
+            "seconds_to_first_progress": 237.509,
+            "seconds_to_first_check": 211.654,
+            "pending_tool_recovery": []
+          }
+        }
+      ]
+    },
+    "provenance": {
+      "schema_version": 1,
+      "ownership": {
+        "model_owned_sections": [
+          "auxcode",
+          "code",
+          "lemma",
+          "proof"
+        ],
+        "teacher_owned": "all source outside the four marker regions",
+        "teacher_owned_sorry_present": false,
+        "model_section_ranges": {
+          "auxcode": {
+            "start_line": 83,
+            "end_line": 119
+          },
+          "code": {
+            "start_line": 124,
+            "end_line": 126
+          },
+          "lemma": {
+            "start_line": 136,
+            "end_line": 479
+          },
+          "proof": {
+            "start_line": 485,
+            "end_line": 488
+          }
+        }
+      },
+      "hashes": {
+        "original_sha256": "5d113897367eab13dcafd39f60958ee1b9214a9d84ea9e1722486def30fe9a70",
+        "candidate_sha256": "3deda469fcec33fad8ced26e6df739ced4c7427e33be3802c6649171603aa5e7",
+        "merged_sha256": "3deda469fcec33fad8ced26e6df739ced4c7427e33be3802c6649171603aa5e7",
+        "model_sections_sha256": {
+          "auxcode": "99c712d709097ecde29682e66a70277e3663b41ef780ad9de8754f0caad063ff",
+          "code": "e457a4ac46fb52de48ee7f330a28d34ac6ed7921abff0f57f56ea4ab8105fbb2",
+          "lemma": "aa8413693f437a877673415dd7f10ab70ff15d21b60166f34bda17d12038315b",
+          "proof": "468a9034420af42c7cec8ee5c5c730ea3aa5898093d7292dacad1f6dc16c2f32"
+        }
+      }
+    },
+    "targeted_diagnostics": [
+      {
+        "line": 123,
+        "column": 5,
+        "kind": "warning",
+        "message": "unused variable `h_precond`",
+        "section": "teacher-owned-or-generated",
+        "nearest_declaration": "kruskal_mst"
+      },
+      {
+        "line": 484,
+        "column": 74,
+        "kind": "error",
+        "message": "unsolved goals",
+        "section": "teacher-owned-or-generated",
+        "nearest_declaration": "kruskal_mst_postcond_satisfied"
+      }
+    ],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/kruskal/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/kruskal/AlgorithmPlan.md",
+      "proof_state": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/kruskal/ProofState.md",
+      "leansearch_queries": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/kruskal/.lastdance/leansearch_queries.jsonl",
+      "checkpoints": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/kruskal/.lastdance/checkpoints/manifest.jsonl",
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/kruskal/.lastdance/prompts"
+    }
+  }
+}

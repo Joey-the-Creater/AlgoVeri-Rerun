@@ -1,0 +1,250 @@
+{
+  "verified": true,
+  "details": {
+    "rounds": 9,
+    "llm_response": {
+      "code": "import Mathlib\n\n-- Precondition definitions\n@[reducible, simp]\ndef quick_select_precond (v : Array Int) (k : Nat) : Prop :=\n  -- !benchmark @start precond\n  k < v.size\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n/-- A canonical sorted version of a list, used as the specification witness. -/\ndef sortI (l : List Int) : List Int := List.insertionSort (\u00b7 \u2264 \u00b7) l\n\n/-- Quick select on lists: partition around the head pivot and recurse. -/\ndef qsel (l : List Int) (k : Nat) : Int :=\n  match l with\n  | [] => 0\n  | p :: rest =>\n    if k < (rest.filter (fun x => decide (x < p))).length then\n      qsel (rest.filter (fun x => decide (x < p))) k\n    else if k = (rest.filter (fun x => decide (x < p))).length then\n      p\n    else\n      qsel (rest.filter (fun x => !decide (x < p)))\n        (k - (rest.filter (fun x => decide (x < p))).length - 1)\ntermination_by l.length\ndecreasing_by\n  all_goals simp only [List.length_cons, List.length_unattach]\n  all_goals refine Nat.lt_succ_of_le (le_trans (List.length_filter_le _ _) ?_)\n  all_goals simp\n-- !benchmark @end auxcode\n\n-- Main function definitions\ndef quick_select (v : Array Int) (k : Nat) (h_precond : quick_select_precond v k) : Int :=\n  -- !benchmark @start code\n  qsel v.toList k\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef quick_select_postcond (v : Array Int) (k : Nat) (result : Int) (h_precond : quick_select_precond v k) : Prop :=\n  -- !benchmark @start postcond\n  \u2203 sorted : List Int,\n    sorted.length = v.size \u2227\n    List.Sorted (\u00b7 \u2264 \u00b7) sorted \u2227\n    sorted.getD k 0 = result \u2227\n    sorted.Perm v.toList\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\ntheorem sortI_perm (l : List Int) : (sortI l).Perm l :=\n  List.perm_insertionSort _ _\n\ntheorem sortI_sorted (l : List Int) : List.Sorted (\u00b7 \u2264 \u00b7) (sortI l) :=\n  List.sorted_insertionSort _ _\n\ntheorem sortI_length (l : List Int) : (sortI l).length = l.length :=\n  (sortI_perm l).length_eq\n\ntheorem mem_sortI_lo {p x : Int} {rest : List Int}\n    (h : x \u2208 sortI (rest.filter (fun x => decide (x < p)))) : x < p := by\n  have h' := (sortI_perm _).mem_iff.mp h\n  rw [List.mem_filter] at h'\n  exact of_decide_eq_true h'.2\n\ntheorem mem_sortI_hi {p y : Int} {rest : List Int}\n    (h : y \u2208 sortI (rest.filter (fun x => !decide (x < p)))) : p \u2264 y := by\n  have h' := (sortI_perm _).mem_iff.mp h\n  rw [List.mem_filter] at h'\n  have h2 := h'.2\n  simp only [Bool.not_eq_true', decide_eq_false_iff_not, not_lt] at h2\n  exact h2\n\ntheorem sortI_cons (p : Int) (rest : List Int) :\n    sortI (p :: rest) =\n      sortI (rest.filter (fun x => decide (x < p))) ++\n        p :: sortI (rest.filter (fun x => !decide (x < p))) := by\n  refine List.eq_of_perm_of_sorted ?_ (sortI_sorted _) ?_\n  \u00b7 have e1 : (sortI (p :: rest)).Perm (p :: rest) := sortI_perm _\n    have e2 : (p :: rest).Perm (p :: (rest.filter (fun x => decide (x < p)) ++\n        rest.filter (fun x => !decide (x < p)))) :=\n      List.Perm.cons p (List.filter_append_perm (fun x => decide (x < p)) rest).symm\n    have e3 : (p :: (rest.filter (fun x => decide (x < p)) ++\n        rest.filter (fun x => !decide (x < p)))).Perm\n        (rest.filter (fun x => decide (x < p)) ++\n          p :: rest.filter (fun x => !decide (x < p))) := List.perm_middle.symm\n    have e4 : (rest.filter (fun x => decide (x < p)) ++\n        p :: rest.filter (fun x => !decide (x < p))).Perm\n        (sortI (rest.filter (fun x => decide (x < p))) ++\n          p :: sortI (rest.filter (fun x => !decide (x < p)))) :=\n      List.Perm.append (sortI_perm _).symm (List.Perm.cons p (sortI_perm _).symm)\n    exact ((e1.trans e2).trans e3).trans e4\n  \u00b7 refine List.pairwise_append.mpr \u27e8sortI_sorted _, ?_, ?_\u27e9\n    \u00b7 refine List.pairwise_cons.mpr \u27e8fun b hb => mem_sortI_hi hb, sortI_sorted _\u27e9\n    \u00b7 intro x hx y hy\n      rcases List.mem_cons.mp hy with hy | hy\n      \u00b7 exact le_of_lt (hy \u25b8 mem_sortI_lo hx)\n      \u00b7 exact le_of_lt (lt_of_lt_of_le (mem_sortI_lo hx) (mem_sortI_hi hy))\n\ntheorem qsel_eq : \u2200 (n : Nat) (l : List Int) (k : Nat), l.length \u2264 n \u2192 k < l.length \u2192\n    qsel l k = (sortI l).getD k 0 := by\n  intro n\n  induction n with\n  | zero => intro l k h1 h2; omega\n  | succ n ih =>\n    intro l k h1 h2\n    cases l with\n    | nil => simp at h2\n    | cons p rest =>\n      rw [qsel, sortI_cons p rest]\n      set lo := rest.filter (fun x => decide (x < p)) with hlodef\n      set hi := rest.filter (fun x => !decide (x < p)) with hhidef\n      have hlen : lo.length + hi.length = rest.length := by\n        have h := (List.filter_append_perm (fun x => decide (x < p)) rest).length_eq\n        rw [List.length_append] at h\n        exact h\n      have hslo : (sortI lo).length = lo.length := sortI_length _\n      have hshi : (sortI hi).length = hi.length := sortI_length _\n      have hrest : k < rest.length + 1 := by simpa using h2\n      have hn : rest.length \u2264 n := by simpa using h1\n      split_ifs with hc1 hc2\n      \u00b7 rw [ih lo k (by omega) hc1]\n        rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD,\n          List.getElem?_append_left (by omega)]\n      \u00b7 rw [List.getD_eq_getElem?_getD,\n          List.getElem?_append_right (by omega)]\n        have : k - (sortI lo).length = 0 := by omega\n        rw [this]\n        simp\n      \u00b7 rw [ih hi (k - lo.length - 1) (by omega) (by omega)]\n        rw [List.getD_eq_getElem?_getD, List.getD_eq_getElem?_getD,\n          List.getElem?_append_right (by omega)]\n        have : k - (sortI lo).length = (k - lo.length - 1) + 1 := by omega\n        rw [this, List.getElem?_cons_succ]\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem quick_select_postcond_satisfied (v : Array Int) (k : Nat) (h_precond : quick_select_precond v k) :\n    quick_select_postcond v k (quick_select v k h_precond) h_precond := by\n  -- !benchmark @start proof\n  refine \u27e8sortI v.toList, ?_, sortI_sorted _, ?_, sortI_perm _\u27e9\n  \u00b7 rw [sortI_length]; simp\n  \u00b7 exact (qsel_eq v.toList.length v.toList k le_rfl (by simpa using h_precond)).symm\n  -- !benchmark @end proof\n",
+      "comment": "`LEAN VERIFIED` \u2014 the file compiles with no errors or `sorry` (only the two pre-existing `unused variable h_precond` warnings from the given signatures).\n\n## What I did\n\n**Implementation** (`code` section): `quick_select v k _ = qsel v.toList k`, where `qsel` (in `auxcode`) is a genuine recursive partition-based quick select:\n\n```lean\ndef qsel (l : List Int) (k : Nat) : Int :=\n  match l with\n  | [] => 0\n  | p :: rest =>\n    if k < lo.length then qsel lo k\n    else if k = lo.length then p\n    else qsel hi (k - lo.length - 1)\n```\n\nwith `lo = rest.filter (\u00b7 < p)`, `hi = rest.filter (\u00ac \u00b7 < p)`. Termination is by `l.length`; the `decreasing_by` goals need `List.length_unattach` because Lean's WF preprocessing rewrites `filter` over `attach`.\n\n**Proof strategy** (`lemma`/`proof` sections):\n- `sortI l := List.insertionSort (\u00b7 \u2264 \u00b7) l` is the canonical sorted witness, with `sortI_perm`, `sortI_sorted`, `sortI_length`.\n- `sortI_cons`: `sortI (p :: rest) = sortI lo ++ p :: sortI hi`. Proved by uniqueness of sorted permutations (`List.eq_of_perm_of_sorted`): the RHS is a permutation of `p :: rest` (via `List.filter_append_perm` and `List.perm_middle`) and is sorted (`List.pairwise_append` plus the facts that every element of `lo` is `< p` and every element of `hi` is `\u2265 p`).\n- `qsel_eq`: by induction on a length bound, `qsel l k = (sortI l).getD k 0` for `k < l.length`. The three branches of `qsel` line up with indexing into `sortI lo ++ p :: sortI hi` on the left part, at the pivot, and on the right part, using `List.getElem?_append_left/right`.\n- The postcondition then follows with `sortI v.toList` as the existential witness."
+    },
+    "verifier_response": {
+      "verified": true,
+      "feedback": "Verified successfully.",
+      "raw": {
+        "stdout": "claude_code_k_smallest_final_1786244891544.lean:34:44: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_k_smallest_final_1786244891544.lean:41:68: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+        "stderr": "",
+        "returncode": 0
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": true,
+        "verifier_response": {
+          "verified": true,
+          "feedback": "Verified successfully.",
+          "raw": {
+            "stdout": "claude_code_k_smallest_final_1786244891544.lean:34:44: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_k_smallest_final_1786244891544.lean:41:68: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+            "stderr": "",
+            "returncode": 0
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "e8ff56de-c064-405e-ae7b-6198afa3b449",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.6878067500000001,
+          "duration_ms": 211266,
+          "duration_api_ms": 197562,
+          "num_turns": 10,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/k_smallest/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "857f719ce1d8dd7602debe2b960098b876ebbe485eaf2a45c4aad0a7be3197eb",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 10250,
+            "seconds_to_first_progress": 140.375,
+            "seconds_to_first_check": 150.202,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 176159,
+      "output": 18046,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "e8ff56de-c064-405e-ae7b-6198afa3b449",
+      "subtype": "success",
+      "provider_subtype": "success",
+      "is_error": false,
+      "total_cost_usd": 0.6878067500000001,
+      "duration_ms": 211266,
+      "duration_api_ms": 197562,
+      "num_turns": 10,
+      "returncode": 0,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/k_smallest/agent_events.jsonl",
+      "pass_number": 1,
+      "prompt_kind": "initial",
+      "prompt_sha256": "857f719ce1d8dd7602debe2b960098b876ebbe485eaf2a45c4aad0a7be3197eb",
+      "budget_usd": null,
+      "lastdance_profile": "api",
+      "features": {
+        "profile": "api",
+        "algorithm_plan": false,
+        "lemma_plan": false,
+        "leansearch": false,
+        "semantic_audit": false,
+        "semantic_reminder": false,
+        "early_check": false,
+        "feedback_mode": "exact",
+        "backtracking": false,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": false,
+          "progress_governor": false,
+          "pre_edit_timeout_seconds": 300,
+          "pre_edit_thinking_tokens": 12000,
+          "post_edit_check_timeout_seconds": 180,
+          "planning_mode": false,
+          "diagnostic_wrapper": false,
+          "rescue_mode": false
+        },
+        "governor_stop_reason": null,
+        "max_thinking_tokens_observed": 10250,
+        "seconds_to_first_progress": 140.375,
+        "seconds_to_first_check": 150.202,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 1,
+      "total_sessions": 1,
+      "selected_session": 1,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "e8ff56de-c064-405e-ae7b-6198afa3b449",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.6878067500000001,
+          "duration_ms": 211266,
+          "duration_api_ms": 197562,
+          "num_turns": 10,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/k_smallest/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "857f719ce1d8dd7602debe2b960098b876ebbe485eaf2a45c4aad0a7be3197eb",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 10250,
+            "seconds_to_first_progress": 140.375,
+            "seconds_to_first_check": 150.202,
+            "pending_tool_recovery": []
+          }
+        }
+      ],
+      "compiler_checks_observed": 3,
+      "max_compiler_checks": 15
+    },
+    "provenance": {
+      "schema_version": 1,
+      "ownership": {
+        "model_owned_sections": [
+          "auxcode",
+          "code",
+          "lemma",
+          "proof"
+        ],
+        "teacher_owned": "all source outside the four marker regions",
+        "teacher_owned_sorry_present": false,
+        "model_section_ranges": {
+          "auxcode": {
+            "start_line": 10,
+            "end_line": 31
+          },
+          "code": {
+            "start_line": 35,
+            "end_line": 37
+          },
+          "lemma": {
+            "start_line": 50,
+            "end_line": 135
+          },
+          "proof": {
+            "start_line": 140,
+            "end_line": 144
+          }
+        }
+      },
+      "hashes": {
+        "original_sha256": "225594783a6a4b02a7fbfb478f39bd590a2302d96f75d3d11c9d83b097afe7b6",
+        "candidate_sha256": "ab3752f583a2afd60a863a2d717fdd38850c2b351a2be2a052acd02006e2cff5",
+        "merged_sha256": "ab3752f583a2afd60a863a2d717fdd38850c2b351a2be2a052acd02006e2cff5",
+        "model_sections_sha256": {
+          "auxcode": "c940cccd0caceb0dccf739ad68285dfb59b762980bc5b57cd05b074d9e9fb4fc",
+          "code": "6515da1072d8a1bd1df0e1d2401d6d81fdc04f3d222c56d23c214b4b33bd651e",
+          "lemma": "35fc4c978194c0a0a7103526a60f35b5e25c2783c232c16bf5eedb147932c07b",
+          "proof": "715d4ee82773abfba489270c826f419fb6730ad8142bc0da98be405288e34acf"
+        }
+      }
+    },
+    "targeted_diagnostics": [],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/k_smallest/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": null,
+      "proof_state": null,
+      "leansearch_queries": null,
+      "checkpoints": null,
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/k_smallest/.lastdance/prompts"
+    }
+  }
+}

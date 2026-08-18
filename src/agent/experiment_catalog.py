@@ -57,6 +57,9 @@ class Experiment:
     def model(self) -> str:
         return str(self.config["model"])
 
+    def model_for(self, config: dict[str, Any]) -> str:
+        return str(config.get("model") or self.model)
+
     @property
     def source_configs(self) -> list[dict[str, Any]]:
         configured = self.config.get("sources")
@@ -68,10 +71,29 @@ class Experiment:
         excluded = {str(item) for item in config.get("exclude_tasks", [])}
         return [task for task in tasks if task not in excluded]
 
+    def result_path_from(
+        self,
+        config: dict[str, Any],
+        task: str,
+        semantic: bool = False,
+    ) -> Path | None:
+        key = "semantic_root" if semantic else "results_root"
+        root = self.resolve_from(config, key)
+        if root is None:
+            return None
+        return root / "lean" / f"{self.model_for(config)}_{task}_lean.json"
+
     def source_for(self, task: str) -> dict[str, Any]:
-        for source in self.source_configs:
-            if task in self.tasks_for(source):
-                return source
+        candidates = [
+            source for source in self.source_configs if task in self.tasks_for(source)
+        ]
+        if self.config.get("prefer_existing_sources"):
+            for source in candidates:
+                path = self.result_path_from(source, task)
+                if path is not None and path.is_file():
+                    return source
+        if candidates:
+            return candidates[0]
         return self.config
 
     def resolve_from(self, config: dict[str, Any], key: str) -> Path | None:
@@ -86,13 +108,25 @@ class Experiment:
 
     @property
     def task_names(self) -> list[str]:
-        return list(
+        tasks = list(
             dict.fromkeys(
                 task
                 for source in self.source_configs
                 for task in self.tasks_for(source)
             )
         )
+        if not self.config.get("completed_only"):
+            return tasks
+        return [
+            task
+            for task in tasks
+            if any(
+                (path := self.result_path_from(source, task)) is not None
+                and path.is_file()
+                for source in self.source_configs
+                if task in self.tasks_for(source)
+            )
+        ]
 
     @property
     def results_root(self) -> Path:
@@ -116,11 +150,12 @@ class Experiment:
         return self.resolve_from(self.source_for(task), "work_root")
 
     def result_path(self, task: str, semantic: bool = False) -> Path:
-        root = self.semantic_root_for(task) if semantic else self.results_root_for(task)
-        assert root is not None
-        return root / "lean" / f"{self.model}_{task}_lean.json"
+        path = self.result_path_from(self.source_for(task), task, semantic=semantic)
+        assert path is not None
+        return path
 
     def task_result(self, task: str) -> dict[str, Any]:
+        source = self.source_for(task)
         generation_path = self.result_path(task)
         semantic_root = self.semantic_root_for(task)
         semantic_path = self.result_path(task, semantic=True) if semantic_root else None
@@ -148,7 +183,7 @@ class Experiment:
             event_stats = parse_event_log(event_path)
             observed_checks = int(event_stats.get("check_attempts", 0))
             if compile_success and observed_checks:
-                success_try = int(observed_checks)
+                success_try = int(event_stats.get("first_verified_check") or observed_checks)
 
         chosen = next((item for item in generation_attempts if item.get("verified") is True), None)
         chosen = chosen or (generation_attempts[-1] if generation_attempts else {})
@@ -173,6 +208,9 @@ class Experiment:
                 pass
         return {
             "task": task,
+            "source_label": source.get("label", source.get("id", self.id)),
+            "source_model": self.model_for(source),
+            "source_results_root": str(self.resolve_from(source, "results_root") or ""),
             "output_present": output_present,
             "attempt_count": len(generation_attempts),
             "compile_success": compile_success,
@@ -198,9 +236,35 @@ class Experiment:
             "event_stats": event_stats,
         }
 
-    def summary(self, scope: list[str] | None = None) -> dict[str, Any]:
+    def metadata(self) -> dict[str, Any]:
+        """Return the fields needed to build dashboard controls without reading results."""
+        return {
+            "id": self.id,
+            "label": self.config.get("label", self.id),
+            "group": self.config.get("group", "Experiments"),
+            "comparison_default": bool(self.config.get("comparison_default", True)),
+            "condition": self.config.get("condition", ""),
+            "provider": self.config.get("provider", ""),
+            "model": self.model,
+            "judge_model": self.config.get("judge_model"),
+            "judge_temperature": self.config.get("judge_temperature"),
+            "judge_reasoning_effort": self.config.get("judge_reasoning_effort"),
+            "color": self.config.get("color", "#67e8b1"),
+            "live": bool(self.config.get("live")),
+        }
+
+    def summary(
+        self,
+        scope: list[str] | None = None,
+        result_cache: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         task_names = scope if scope is not None else self.task_names
-        results = [self.task_result(task) for task in task_names]
+        cache = result_cache if result_cache is not None else {}
+        results = []
+        for task in task_names:
+            if task not in cache:
+                cache[task] = self.task_result(task)
+            results.append(cache[task])
         total = len(task_names)
         outputs = sum(item["output_present"] for item in results)
         compile_success = sum(item["compile_success"] for item in results)
@@ -246,18 +310,7 @@ class Experiment:
         known_costs = [item["cost_usd"] for item in results if isinstance(item.get("cost_usd"), (int, float))]
         known_loc = [item["loc_added"] for item in results if isinstance(item.get("loc_added"), int)]
         return {
-            "id": self.id,
-            "label": self.config.get("label", self.id),
-            "group": self.config.get("group", "Experiments"),
-            "comparison_default": bool(self.config.get("comparison_default", True)),
-            "condition": self.config.get("condition", ""),
-            "provider": self.config.get("provider", ""),
-            "model": self.model,
-            "judge_model": self.config.get("judge_model"),
-            "judge_temperature": self.config.get("judge_temperature"),
-            "judge_reasoning_effort": self.config.get("judge_reasoning_effort"),
-            "color": self.config.get("color", "#67e8b1"),
-            "live": bool(self.config.get("live")),
+            **self.metadata(),
             "total": total,
             "outputs": outputs,
             "missing": total - outputs,
@@ -421,6 +474,17 @@ class Experiment:
                 detail["summary"] = task_summary
                 detail["experiment"] = item
                 detail["code"] = item["code"]
+                if len(self.source_configs) > 1:
+                    detail["timeline"] = [
+                        {
+                            "kind": "system",
+                            "title": "Combined architecture source",
+                            "body": str(item["source_label"]),
+                            "status": "done",
+                        },
+                        *(detail.get("timeline") or []),
+                    ]
+                    detail["event_count"] = int(detail.get("event_count") or 0) + 1
                 if item["compile_success"] and item["semantic_evaluated"]:
                     detail["timeline"] = [
                         *(detail.get("timeline") or []),
@@ -437,7 +501,10 @@ class Experiment:
 
         timeline = []
         if item["output_present"]:
-            timeline.append({"kind": "system", "title": "Model output saved", "body": f"{item['attempt_count']} independent pass(es) recorded.", "status": "done"})
+            source_copy = (
+                f" Source: {item['source_label']}." if len(self.source_configs) > 1 else ""
+            )
+            timeline.append({"kind": "system", "title": "Model output saved", "body": f"{item['attempt_count']} independent pass(es) recorded.{source_copy}", "status": "done"})
             timeline.append(
                 {
                     "kind": "result",
@@ -473,18 +540,80 @@ class ExperimentCatalog:
         configured = load_json(catalog_path)
         if not isinstance(configured, dict) or not isinstance(configured.get("experiments"), list):
             raise ValueError(f"Invalid experiment catalog: {catalog_path}")
+        configured_experiments = configured["experiments"]
+        known_ids = {str(item["id"]) for item in configured_experiments}
+        dashboard_groups = configured.get("dashboard_groups", [])
+        group_for: dict[str, str] = {}
+        display_order: dict[str, int] = {}
+        next_order = 0
+        for group in dashboard_groups:
+            if not isinstance(group, dict) or not isinstance(group.get("experiments"), list):
+                raise ValueError("dashboard_groups entries require a label and experiments list")
+            label = str(group.get("label") or "Experiments")
+            for experiment_id in group["experiments"]:
+                experiment_id = str(experiment_id)
+                if experiment_id not in known_ids:
+                    raise ValueError(
+                        f"Unknown experiment {experiment_id!r} in dashboard group {label!r}"
+                    )
+                if experiment_id in group_for:
+                    raise ValueError(f"Experiment {experiment_id!r} appears in two dashboard groups")
+                group_for[experiment_id] = label
+                display_order[experiment_id] = next_order
+                next_order += 1
+        default_comparison = configured.get("default_comparison")
+        default_ids = (
+            {str(item) for item in default_comparison}
+            if isinstance(default_comparison, list)
+            else None
+        )
+        if default_ids is not None:
+            unknown_defaults = default_ids - known_ids
+            if unknown_defaults:
+                raise ValueError(
+                    "Unknown default comparison experiment(s): "
+                    + ", ".join(sorted(unknown_defaults))
+                )
         all_tasks = sorted(path.parent.name for path in data_root.glob("*/lean_spec.lean"))
+        normalized: list[dict[str, Any]] = []
+        for raw in configured_experiments:
+            item = dict(raw)
+            experiment_id = str(item["id"])
+            if experiment_id in group_for:
+                item["group"] = group_for[experiment_id]
+            if default_ids is not None:
+                item["comparison_default"] = experiment_id in default_ids
+            normalized.append(item)
+        self._display_order = display_order
         self.experiments = {
             str(item["id"]): Experiment(self.repo_root, item, all_tasks)
-            for item in configured["experiments"]
+            for item in normalized
         }
 
     def list(self) -> list[dict[str, Any]]:
-        return [
+        visible = [
             experiment.summary()
             for experiment in self.experiments.values()
             if not experiment.config.get("hidden")
         ]
+        fallback = len(self._display_order)
+        return sorted(
+            visible,
+            key=lambda item: self._display_order.get(str(item["id"]), fallback),
+        )
+
+    def list_metadata(self) -> list[dict[str, Any]]:
+        """List visible runs without scanning result or event files."""
+        visible = [
+            experiment.metadata()
+            for experiment in self.experiments.values()
+            if not experiment.config.get("hidden")
+        ]
+        fallback = len(self._display_order)
+        return sorted(
+            visible,
+            key=lambda item: self._display_order.get(str(item["id"]), fallback),
+        )
 
     def get(self, experiment_id: str) -> Experiment | None:
         return self.experiments.get(experiment_id)
@@ -497,15 +626,24 @@ class ExperimentCatalog:
                 for experiment in self.experiments.values()
                 if not experiment.config.get("hidden")
             ]
+        result_caches: dict[str, dict[str, dict[str, Any]]] = {
+            experiment.id: {} for experiment in selected
+        }
         if scope_mode == "common":
             common = set(selected[0].task_names)
             for experiment in selected[1:]:
                 common.intersection_update(experiment.task_names)
             common_tasks = sorted(common)
-            summaries = [experiment.summary(common_tasks) for experiment in selected]
+            summaries = [
+                experiment.summary(common_tasks, result_caches[experiment.id])
+                for experiment in selected
+            ]
         else:
             common_tasks = []
-            summaries = [experiment.summary() for experiment in selected]
+            summaries = [
+                experiment.summary(result_cache=result_caches[experiment.id])
+                for experiment in selected
+            ]
 
         task_union = (
             common_tasks
@@ -522,7 +660,10 @@ class ExperimentCatalog:
                         "out_of_scope": True,
                     }
                     continue
-                item = experiment.task_result(task)
+                cache = result_caches[experiment.id]
+                if task not in cache:
+                    cache[task] = experiment.task_result(task)
+                item = cache[task]
                 if not item["output_present"]:
                     state = "missing"
                 elif not item["compile_success"]:
@@ -537,6 +678,7 @@ class ExperimentCatalog:
                     "semantic_evaluated": item["semantic_evaluated"],
                     "out_of_scope": False,
                     "loc_added": item["loc_added"],
+                    "source_label": item["source_label"],
                 }
             matrix.append(row)
         return {

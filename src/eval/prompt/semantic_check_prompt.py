@@ -1,6 +1,17 @@
 SEMANTIC_SYS_PROMPT="""You are an expert in program verification, especially using Dafny, Verus, and Lean to verify the implementation.
 """
 
+SEMANTIC_PROVENANCE_ADDENDUM = """
+This evaluation uses provenance-aware benchmark ownership. The submitted Lean
+file is a merge of teacher-owned scaffold and student-owned regions. Only text
+between these marker pairs is student-owned: `auxcode`, `code`, `lemma`, and
+`proof` (`-- !benchmark @start NAME` through `-- !benchmark @end NAME`). All
+other text is fixed teacher-owned specification/scaffolding. In particular, do
+not penalize the student for `sorry` or other simplifications outside those four
+regions. Still use the teacher-owned specification and natural-language task to
+judge whether the student-owned implementation is the requested algorithm.
+"""
+
 SEMANTIC_INITIAL_PROMPT="""I am giving a verification problem (with natural language description) to a student, and the student has an answer, which pass the compilation. I would like you to see if the answer satisfy the general semantic requirements of the problem.
 
 The verification problem generally requires the student to implement a function or a data structure and prove the correctness of the implementation with respect to the specification. The specification is usually given in the form of pre-conditions and post-conditions. The student needs to ensure that the implementation adheres to these specifications. There is a natural language description of the problem, which may provide additional context or requirements for the implementation. The description may require a specific implementation approach, which can not be directly captured by the pre-conditions and post-conditions. For example, the description may require the implementation of a quick sort algorithm and verify its correctness and efficiency, and the pre-conditions and post-conditions only specify the input-output behavior of the sorting function (and the student may implement a bubble sort algorithm, which is correct but does not satisfy the requirement in the description). Even if the student directly call a build-in function for quick sort, it is not allowed, since all the problems are standard, and it is aimed to test student's ability to verify from scratch, instead of if the student is familiar with the packages. Besides, the student might try to use some tricks to cheat the verification, including but not limited to using `sorry', `admit', empty function body, or using existed verified functions without providing their implementations. You need to make sure the student does not use such tricks.

@@ -1,0 +1,250 @@
+{
+  "verified": true,
+  "details": {
+    "rounds": 12,
+    "llm_response": {
+      "code": "import Mathlib\n\nstructure BipartiteGraph where\n  adj : Array (Array Nat)\n\ndef BipartiteGraph.well_formed (g : BipartiteGraph) : Prop :=\n  \u2200 u, u < g.adj.size \u2192\n    \u2200 v, v \u2208 g.adj.getD u #[] \u2192 v < g.adj.size\n\ndef BipartiteGraph.size (g : BipartiteGraph) : Nat :=\n  g.adj.size\n\ndef BipartiteGraph.has_edge (g : BipartiteGraph) (u v : Nat) : Prop :=\n  u < g.adj.size \u2227\n  v \u2208 g.adj.getD u #[]\n\ndef BipartiteGraph.is_valid_coloring (g : BipartiteGraph) (colors : Array Bool) : Prop :=\n  colors.size = g.size \u2227\n  \u2200 u v, g.has_edge u v \u2192\n    u < colors.size \u2192 v < colors.size \u2192 colors.getD u false \u2260 colors.getD v false\n\ndef BipartiteGraph.is_bipartite (g : BipartiteGraph) : Prop :=\n  \u2203 colors, g.is_valid_coloring colors\n\n-- Precondition definitions\n@[reducible, simp]\ndef check_bipartite_precond (graph : BipartiteGraph) : Prop :=\n  -- !benchmark @start precond\n  graph.well_formed\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n\n/-- All lists of booleans of a given length. -/\ndef allBoolLists : Nat \u2192 List (List Bool)\n  | 0 => [[]]\n  | n + 1 => (allBoolLists n).flatMap (fun l => [false :: l, true :: l])\n\n/-- Decidable boolean check that `colors` is a valid 2-coloring of `g`. -/\ndef validB (g : BipartiteGraph) (colors : Array Bool) : Bool :=\n  (colors.size == g.size) &&\n  (List.range g.adj.size).all (fun u =>\n    (g.adj.getD u #[]).toList.all (fun v =>\n      colors.getD u false != colors.getD v false))\n\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef check_bipartite (graph : BipartiteGraph)\n    (h_precond : check_bipartite_precond graph) : Option (Array Bool) :=\n  -- !benchmark @start code\n  ((allBoolLists graph.size).map List.toArray).find? (fun c => validB graph c)\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef check_bipartite_postcond (graph : BipartiteGraph) (result : Option (Array Bool))\n    (_ : check_bipartite_precond graph) : Prop :=\n  -- !benchmark @start postcond\n  match result with\n  | some colors => graph.is_valid_coloring colors\n  | none => \u00ac graph.is_bipartite\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\n\ntheorem mem_allBoolLists : \u2200 (n : Nat) (l : List Bool), l.length = n \u2192 l \u2208 allBoolLists n := by\n  intro n\n  induction n with\n  | zero =>\n    intro l hl\n    have : l = [] := List.eq_nil_of_length_eq_zero hl\n    simp [allBoolLists, this]\n  | succ n ih =>\n    intro l hl\n    match l with\n    | [] => simp at hl\n    | b :: t =>\n      have ht : t.length = n := by simpa using hl\n      have hmem := ih t ht\n      simp only [allBoolLists, List.mem_flatMap]\n      exact \u27e8t, hmem, by cases b <;> simp\u27e9\n\ntheorem validB_iff (g : BipartiteGraph) (hg : g.well_formed) (c : Array Bool) :\n    validB g c = true \u2194 g.is_valid_coloring c := by\n  constructor\n  \u00b7 intro h\n    simp only [validB, Bool.and_eq_true, beq_iff_eq, List.all_eq_true, List.mem_range,\n      Array.mem_toList_iff, bne_iff_ne, ne_eq] at h\n    obtain \u27e8hsize, hall\u27e9 := h\n    refine \u27e8hsize, ?_\u27e9\n    intro u v hedge _ _\n    obtain \u27e8hu, hv\u27e9 := hedge\n    exact hall u hu v hv\n  \u00b7 rintro \u27e8hsize, hall\u27e9\n    have hsize' : c.size = g.adj.size := hsize\n    simp only [validB, Bool.and_eq_true, beq_iff_eq, List.all_eq_true, List.mem_range,\n      Array.mem_toList_iff, bne_iff_ne, ne_eq]\n    refine \u27e8hsize, ?_\u27e9\n    intro u hu v hv\n    have hvlt : v < g.adj.size := hg u hu v hv\n    exact hall u v \u27e8hu, hv\u27e9 (by omega) (by omega)\n\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem check_bipartite_postcond_satisfied (graph : BipartiteGraph)\n    (h_precond : check_bipartite_precond graph) :\n    check_bipartite_postcond graph (check_bipartite graph h_precond) h_precond := by\n  -- !benchmark @start proof\n  show check_bipartite_postcond graph\n      (((allBoolLists graph.size).map List.toArray).find? (fun c => validB graph c)) h_precond\n  cases hf : ((allBoolLists graph.size).map List.toArray).find? (fun c => validB graph c) with\n  | some c =>\n    have hc : validB graph c = true := List.find?_some hf\n    simpa using (validB_iff graph h_precond c).1 hc\n  | none =>\n    simp only [check_bipartite_postcond, BipartiteGraph.is_bipartite, not_exists]\n    intro colors hvalid\n    have hmem : colors \u2208 (allBoolLists graph.size).map List.toArray := by\n      refine List.mem_map.2 \u27e8colors.toList, ?_, by simp\u27e9\n      exact mem_allBoolLists _ _ (by simp [hvalid.1])\n    have hnot := List.find?_eq_none.1 hf colors hmem\n    exact hnot ((validB_iff graph h_precond colors).2 hvalid)\n  -- !benchmark @end proof\n",
+      "comment": "`LEAN VERIFIED`, with the only remaining warning being that the algorithm doesn't consume `h_precond` (the signature is fixed by the benchmark; well-formedness is used in the *proof*, not the implementation).\n\n## What I did\n\n**Implementation** (`code` region) \u2014 exhaustive search over the finite space of colorings:\n```lean\n((allBoolLists graph.size).map List.toArray).find? (fun c => validB graph c)\n```\n\n**Auxcode:**\n- `allBoolLists n` \u2014 recursive enumeration of every `List Bool` of length `n` (`n+1` case conses `false`/`true` onto each shorter list).\n- `validB` \u2014 a decidable Boolean coloring check: size matches, and for every `u < adj.size` and every `v \u2208 adj[u]`, `colors[u] != colors[v]`.\n\n**Lemmas:**\n- `mem_allBoolLists` \u2014 every Bool list of length `n` appears in the enumeration (induction on `n`). This is what makes the `none` branch complete rather than merely sound.\n- `validB_iff` \u2014 `validB g c = true \u2194 g.is_valid_coloring c`. The forward direction is unconditional; the reverse needs `well_formed`, since `is_valid_coloring` only constrains edges whose endpoints are in range, so I must derive `v < g.adj.size` for each neighbor before applying the hypothesis.\n\n**Proof:** case split on `find?`.\n- `some c`: `List.find?_some` gives `validB graph c = true`, hence a valid coloring.\n- `none`: any hypothetical valid coloring has size `graph.size`, so it is in the enumerated list, so `List.find?_eq_none` says it fails `validB` \u2014 contradicting `validB_iff`. That discharges `\u00ac graph.is_bipartite`.\n\n## One thing worth flagging\n\nI chose brute force deliberately, and it's a real trade-off. The three challenges in the task description (coloring validity, non-bipartiteness, disconnected components) are all discharged, but *not* by the BFS/odd-cycle argument the description sketches \u2014 exhaustive search makes \"no valid coloring exists\" immediate and makes connectivity a non-issue, since the search never reasons per-component. The cost: `check_bipartite` is \u0398(2\u207f\u00b7m) and unusable as executable code beyond ~20 vertices.\n\nThe stated spec constrains only the input/output relation, with no complexity requirement, so this is a correct and complete solution to the problem as written. If you wanted the verified artifact to also be an efficient algorithm \u2014 i.e. a BFS coloring with a genuine odd-closed-walk argument for the `none` case \u2014 that's a substantially larger proof effort and I'd want to know before taking it on."
+    },
+    "verifier_response": {
+      "verified": true,
+      "feedback": "Verified successfully.",
+      "raw": {
+        "stdout": "claude_code_bipartite_check_final_1786240630430.lean:50:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+        "stderr": "",
+        "returncode": 0
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": true,
+        "verifier_response": {
+          "verified": true,
+          "feedback": "Verified successfully.",
+          "raw": {
+            "stdout": "claude_code_bipartite_check_final_1786240630430.lean:50:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+            "stderr": "",
+            "returncode": 0
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "30d0a506-1a4e-4671-bac5-0655a5aed26f",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.44120424999999996,
+          "duration_ms": 135157,
+          "duration_api_ms": 127384,
+          "num_turns": 13,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/bipartite_check/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "6820b5260c42bbe23e482d9dc1417fdbe229d879a5856759e9c3f6f7103f56df",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 4600,
+            "seconds_to_first_progress": 73.06,
+            "seconds_to_first_check": 104.723,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 206424,
+      "output": 9280,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "30d0a506-1a4e-4671-bac5-0655a5aed26f",
+      "subtype": "success",
+      "provider_subtype": "success",
+      "is_error": false,
+      "total_cost_usd": 0.44120424999999996,
+      "duration_ms": 135157,
+      "duration_api_ms": 127384,
+      "num_turns": 13,
+      "returncode": 0,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/bipartite_check/agent_events.jsonl",
+      "pass_number": 1,
+      "prompt_kind": "initial",
+      "prompt_sha256": "6820b5260c42bbe23e482d9dc1417fdbe229d879a5856759e9c3f6f7103f56df",
+      "budget_usd": null,
+      "lastdance_profile": "api",
+      "features": {
+        "profile": "api",
+        "algorithm_plan": false,
+        "lemma_plan": false,
+        "leansearch": false,
+        "semantic_audit": false,
+        "semantic_reminder": false,
+        "early_check": false,
+        "feedback_mode": "exact",
+        "backtracking": false,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": false,
+          "progress_governor": false,
+          "pre_edit_timeout_seconds": 300,
+          "pre_edit_thinking_tokens": 12000,
+          "post_edit_check_timeout_seconds": 180,
+          "planning_mode": false,
+          "diagnostic_wrapper": false,
+          "rescue_mode": false
+        },
+        "governor_stop_reason": null,
+        "max_thinking_tokens_observed": 4600,
+        "seconds_to_first_progress": 73.06,
+        "seconds_to_first_check": 104.723,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 1,
+      "total_sessions": 1,
+      "selected_session": 1,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "30d0a506-1a4e-4671-bac5-0655a5aed26f",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 0.44120424999999996,
+          "duration_ms": 135157,
+          "duration_api_ms": 127384,
+          "num_turns": 13,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/bipartite_check/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "6820b5260c42bbe23e482d9dc1417fdbe229d879a5856759e9c3f6f7103f56df",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 4600,
+            "seconds_to_first_progress": 73.06,
+            "seconds_to_first_check": 104.723,
+            "pending_tool_recovery": []
+          }
+        }
+      ],
+      "compiler_checks_observed": 2,
+      "max_compiler_checks": 15
+    },
+    "provenance": {
+      "schema_version": 1,
+      "ownership": {
+        "model_owned_sections": [
+          "auxcode",
+          "code",
+          "lemma",
+          "proof"
+        ],
+        "teacher_owned": "all source outside the four marker regions",
+        "teacher_owned_sorry_present": false,
+        "model_section_ranges": {
+          "auxcode": {
+            "start_line": 32,
+            "end_line": 46
+          },
+          "code": {
+            "start_line": 51,
+            "end_line": 53
+          },
+          "lemma": {
+            "start_line": 65,
+            "end_line": 104
+          },
+          "proof": {
+            "start_line": 110,
+            "end_line": 125
+          }
+        }
+      },
+      "hashes": {
+        "original_sha256": "daa6b150360675e6a4baef98cbf574e1e9a0d407a58ae4b282ffafe9e81b14af",
+        "candidate_sha256": "383458b6a732b17a59a7b2cf4ec1aad3cacf1e8de0140a61596b1541cc4f8194",
+        "merged_sha256": "383458b6a732b17a59a7b2cf4ec1aad3cacf1e8de0140a61596b1541cc4f8194",
+        "model_sections_sha256": {
+          "auxcode": "07d128f42195bb535c32c32cc8e9c7b65da0f7e674cbd7c1995cbe16c1f64846",
+          "code": "c11f7d9cde59640fda8476c299315a2baedd9a7507588449130fcd483c1283c4",
+          "lemma": "c48467bd52dbfe1cd9352513d56fb954cdd62ffd5f6c0329dffbbbf048fca693",
+          "proof": "d90c32aa32fecff25a750d6aeb42c15fe1894654823b2669f3f78a04fab02a3e"
+        }
+      }
+    },
+    "targeted_diagnostics": [],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/bipartite_check/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": null,
+      "proof_state": null,
+      "leansearch_queries": null,
+      "checkpoints": null,
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/bipartite_check/.lastdance/prompts"
+    }
+  }
+}

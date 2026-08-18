@@ -1,0 +1,41 @@
+Repair the existing AlgoVeri Lean 4 solution for <TASK_NAME>.
+This is compiler-repair pass 2. The previous session's Solution.lean
+has been preserved; improve it in place rather than restarting from the original
+scaffold.
+
+The harness independently merged the editable sections and rejected the final
+candidate with this exact feedback:
+
+--- BEGIN INDEPENDENT VERIFIER FEEDBACK ---
+<EXACT_INDEPENDENT_VERIFIER_FEEDBACK>
+--- END INDEPENDENT VERIFIER FEEDBACK ---
+
+--- BEGIN SOURCE-MAPPED REPAIR TARGETS ---
+<SOURCE_MAPPED_REPAIR_TARGETS>
+--- END SOURCE-MAPPED REPAIR TARGETS ---
+
+
+
+Read TASK.md and the current Solution.lean. Remove every editable prohibited
+placeholder, address the reported Lean errors, and run ./check.sh early. Continue
+until LEAN VERIFIED. Edit only the auxcode, code, lemma, and proof marker regions
+of Solution.lean; planning files may also be maintained when present. Do not edit
+any harness or teacher-owned file.
+
+Before implementation, complete AlgorithmPlan.md. Commit to the named algorithm, its data structures, invariants, edge cases, and expected complexity. Revisit the commitment before final success.
+
+Maintain ProofState.md as a hierarchical lemma manager: decompose the main theorem, record each supporting lemma and the current blocking goal, and record failed approaches so they are not repeated.
+
+For Mathlib premise discovery, use the Frenzymath LeanSearch v2 API only through `./leansearch "one natural-language theorem query"`. Search for lemmas, not complete benchmark solutions; verify every retrieved declaration with ./check.sh because the hosted index may use a newer Mathlib revision. Do not guess declaration names repeatedly.
+
+Before declaring success, perform a semantic audit against every requirement in
+TASK.md. In particular, verify that all named preconditions and edge cases are
+implemented, that you did not weaken the requested problem or allow an easier
+variant, and that every mathematical helper/specification is genuine rather than
+a placeholder such as an unjustified `:= 0` or `:= True`. For nonempty-input
+problems, explicitly consider adversarial inputs such as all-negative values.
+After any audit-driven edit, run ./check.sh again.
+
+Do not use network access, Git, package installation, or shell commands other
+than ./check.sh, the guarded ./leansearch command when present, and safe workspace
+inspection (`pwd`, `ls`, or `ls -la`).

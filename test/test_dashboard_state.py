@@ -19,6 +19,8 @@ class DashboardStateTests(unittest.TestCase):
         self.task.mkdir(parents=True)
         (self.task / "Original.lean").write_text("def value := by\n  sorry\n")
         (self.task / "Solution.lean").write_text("def value := by\n  rfl\n")
+        (self.task / "AlgorithmPlan.md").write_text("# Algorithm plan\n\nUse a direct construction.\n")
+        (self.task / "ProofState.md").write_text("# Proof state\n\nCurrent goal: equality.\n")
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()
@@ -76,6 +78,7 @@ class DashboardStateTests(unittest.TestCase):
         self.assertEqual(parsed["thinking_tokens"], 1250)
         self.assertEqual(parsed["check_attempts"], 1)
         self.assertTrue(parsed["lean_verified"])
+        self.assertEqual(parsed["first_verified_check"], 1)
         self.assertTrue(
             any(
                 item["title"] == "Compiler pass 1 started"
@@ -89,6 +92,11 @@ class DashboardStateTests(unittest.TestCase):
     def test_counts_added_and_removed_lines(self) -> None:
         changes = line_change_counts("one\ntwo\n", "one\nchanged\nthree\n")
         self.assertEqual(changes, {"added": 2, "removed": 1})
+
+    def test_task_detail_includes_plan_and_proof_state(self) -> None:
+        detail = DashboardState(self.work, self.results, tasks=["demo"]).task_detail("demo")
+        self.assertIn("Use a direct construction", detail["robust_artifacts"]["algorithm_plan"])
+        self.assertIn("Current goal: equality", detail["robust_artifacts"]["proof_state"])
 
     def test_marks_orphaned_event_stream_interrupted(self) -> None:
         self.write_events()

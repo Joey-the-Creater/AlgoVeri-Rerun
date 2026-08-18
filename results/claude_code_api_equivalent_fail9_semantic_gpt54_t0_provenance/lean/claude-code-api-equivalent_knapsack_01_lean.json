@@ -1,0 +1,259 @@
+{
+    "verified": true,
+    "details": {
+        "rounds": 8,
+        "llm_response": {
+            "code": "import Mathlib\n\ndef total_weight (selected : List Bool) (weights : List Nat) : Nat :=\n  match selected, weights with\n  | [], _ => 0\n  | _, [] => 0\n  | b :: bs, w :: ws => (if b then w else 0) + total_weight bs ws\n\ndef total_value (selected : List Bool) (values : List Nat) : Nat :=\n  match selected, values with\n  | [], _ => 0\n  | _, [] => 0\n  | b :: bs, v :: vs => (if b then v else 0) + total_value bs vs\n\ndef is_valid_strategy (selected : List Bool) (weights : List Nat) (capacity : Nat) : Prop :=\n  selected.length = weights.length \u2227\n  total_weight selected weights \u2264 capacity\n\n-- Precondition definitions\n@[reducible, simp]\ndef knapsack_01_precond (weights values : List Nat) (capacity : Nat) : Prop :=\n  -- !benchmark @start precond\n  weights.length = values.length\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\ndef knap : List Nat \u2192 List Nat \u2192 Nat \u2192 Nat\n  | [], _, _ => 0\n  | _ :: _, [], _ => 0\n  | w :: ws, v :: vs, cap =>\n      max (knap ws vs cap) (if w \u2264 cap then v + knap ws vs (cap - w) else 0)\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef knapsack_01 (weights values : List Nat) (capacity : Nat)\n    (h_precond : knapsack_01_precond weights values capacity) : Nat :=\n  -- !benchmark @start code\n  knap weights values capacity\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef knapsack_01_postcond (weights values : List Nat) (capacity : Nat) (result : Nat)\n    (_ : knapsack_01_precond weights values capacity) : Prop :=\n  -- !benchmark @start postcond\n  (\u2200 selected, is_valid_strategy selected weights capacity \u2192 total_value selected values \u2264 result) \u2227\n  (\u2203 selected, is_valid_strategy selected weights capacity \u2227 total_value selected values = result)\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\ntheorem knap_ub (ws : List Nat) : \u2200 (vs : List Nat) (cap : Nat) (sel : List Bool),\n    sel.length = ws.length \u2192 ws.length = vs.length \u2192\n    total_weight sel ws \u2264 cap \u2192 total_value sel vs \u2264 knap ws vs cap := by\n  induction ws with\n  | nil =>\n    intro vs cap sel hl _ _\n    match sel with\n    | [] => simp [total_value, knap]\n    | b :: s => simp at hl\n  | cons w ws ih =>\n    intro vs cap sel hl hlen hw\n    match vs, sel with\n    | [], _ => simp at hlen\n    | v :: vs, [] => simp at hl\n    | v :: vs, b :: sel =>\n      have hl' : sel.length = ws.length := by simpa using hl\n      have hlen' : ws.length = vs.length := by simpa using hlen\n      cases b with\n      | false =>\n        have hw' : total_weight sel ws \u2264 cap := by simpa [total_weight] using hw\n        have := ih vs cap sel hl' hlen' hw'\n        simp only [total_value, knap, Bool.false_eq_true, if_false, Nat.zero_add]\n        exact le_trans this (le_max_left _ _)\n      | true =>\n        have hw' : w + total_weight sel ws \u2264 cap := by simpa [total_weight] using hw\n        have hc : w \u2264 cap := by omega\n        have hw2 : total_weight sel ws \u2264 cap - w := by omega\n        have := ih vs (cap - w) sel hl' hlen' hw2\n        simp only [total_value, knap, if_true, hc]\n        have : v + total_value sel vs \u2264 v + knap ws vs (cap - w) := by omega\n        exact le_trans this (le_max_right _ _)\n\ntheorem knap_ex (ws : List Nat) : \u2200 (vs : List Nat) (cap : Nat),\n    ws.length = vs.length \u2192\n    \u2203 sel : List Bool, sel.length = ws.length \u2227 total_weight sel ws \u2264 cap \u2227\n      total_value sel vs = knap ws vs cap := by\n  induction ws with\n  | nil =>\n    intro vs cap _\n    exact \u27e8[], by simp, by simp [total_weight], by simp [total_value, knap]\u27e9\n  | cons w ws ih =>\n    intro vs cap hlen\n    match vs with\n    | [] => simp at hlen\n    | v :: vs =>\n      have hlen' : ws.length = vs.length := by simpa using hlen\n      obtain \u27e8s1, h1l, h1w, h1v\u27e9 := ih vs cap hlen'\n      by_cases hc : w \u2264 cap\n      \u00b7 obtain \u27e8s2, h2l, h2w, h2v\u27e9 := ih vs (cap - w) hlen'\n        rcases le_total (v + knap ws vs (cap - w)) (knap ws vs cap) with h | h\n        \u00b7 refine \u27e8false :: s1, by simp [h1l], ?_, ?_\u27e9\n          \u00b7 simpa [total_weight] using h1w\n          \u00b7 simp only [total_value, knap, Bool.false_eq_true, if_false, Nat.zero_add, hc, if_true]\n            omega\n        \u00b7 refine \u27e8true :: s2, by simp [h2l], ?_, ?_\u27e9\n          \u00b7 simp only [total_weight, if_true]\n            omega\n          \u00b7 simp only [total_value, knap, if_true, hc]\n            omega\n      \u00b7 refine \u27e8false :: s1, by simp [h1l], ?_, ?_\u27e9\n        \u00b7 simpa [total_weight] using h1w\n        \u00b7 simp only [total_value, knap, Bool.false_eq_true, if_false, Nat.zero_add, hc, if_false]\n          omega\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem knapsack_01_postcond_satisfied (weights values : List Nat) (capacity : Nat)\n    (h_precond : knapsack_01_precond weights values capacity) :\n    knapsack_01_postcond weights values capacity (knapsack_01 weights values capacity h_precond) h_precond := by\n  -- !benchmark @start proof\n  constructor\n  \u00b7 intro sel hsel\n    exact knap_ub weights values capacity sel hsel.1 h_precond hsel.2\n  \u00b7 obtain \u27e8sel, hl, hw, hv\u27e9 := knap_ex weights values capacity h_precond\n    exact \u27e8sel, \u27e8hl, hw\u27e9, hv\u27e9\n  -- !benchmark @end proof\n",
+            "comment": "Compiles clean on the first check \u2014 `LEAN VERIFIED` (only two unused-variable linter warnings, both from the pre-existing signatures).\n\n**Approach:**\n\n- **auxcode** \u2014 `knap`, the standard recursive 0/1 knapsack:\n  ```\n  knap (w::ws) (v::vs) cap = max (knap ws vs cap) (if w \u2264 cap then v + knap ws vs (cap-w) else 0)\n  ```\n  Structural recursion on the lists, so no termination obligation.\n\n- **code** \u2014 `knapsack_01 = knap weights values capacity`.\n\n- **lemma** \u2014 two inductions on `weights`, generalizing over values, capacity (essential, since the \"take\" branch recurses at `cap - w`) and the selection:\n  - `knap_ub`: any selection of matching length with weight \u2264 cap has value \u2264 `knap`. Split on the head bit: `false` bounds via `le_max_left`; `true` gives `w \u2264 cap` and `total_weight sel ws \u2264 cap - w` by `omega`, then `le_max_right`.\n  - `knap_ex`: builds a witness achieving `knap` exactly. Case on `w \u2264 cap` and on which side of the `max` wins, prefixing `false` (reuse the cap-witness) or `true` (reuse the `cap - w` witness).\n\n- **proof** \u2014 the postcondition is exactly these two lemmas; `is_valid_strategy` destructs into the length and weight hypotheses, and the precondition supplies `weights.length = values.length`.\n\nNo `sorry`, `axiom`, `partial`, or other escape hatches; only the four marker regions were edited."
+        },
+        "verifier_response": {
+            "verified": true,
+            "feedback": "Verified successfully.",
+            "raw": {
+                "stdout": "claude_code_knapsack_01_final_1786245914379.lean:21:53: warning: unused variable `capacity`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_knapsack_01_final_1786245914379.lean:36:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+                "stderr": "",
+                "returncode": 0
+            }
+        },
+        "history": [
+            {
+                "compiler_pass": 1,
+                "verified": true,
+                "verifier_response": {
+                    "verified": true,
+                    "feedback": "Verified successfully.",
+                    "raw": {
+                        "stdout": "claude_code_knapsack_01_final_1786245914379.lean:21:53: warning: unused variable `capacity`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_knapsack_01_final_1786245914379.lean:36:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+                        "stderr": "",
+                        "returncode": 0
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "f4556592-d3b4-4353-b55c-581eb081a52c",
+                    "subtype": "success",
+                    "provider_subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.32857575,
+                    "duration_ms": 85520,
+                    "duration_api_ms": 81498,
+                    "num_turns": 9,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/knapsack_01/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "prompt_sha256": "5300f2d275b7bcfbaf8c7ae60e627e8dbe76351bbac07e3127266c00487cf0c1",
+                    "budget_usd": null,
+                    "lastdance_profile": "api",
+                    "features": {
+                        "profile": "api",
+                        "algorithm_plan": false,
+                        "lemma_plan": false,
+                        "leansearch": false,
+                        "semantic_audit": false,
+                        "semantic_reminder": false,
+                        "early_check": false,
+                        "feedback_mode": "exact",
+                        "backtracking": false,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": false,
+                            "progress_governor": false,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": false,
+                            "rescue_mode": false
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 3600,
+                        "seconds_to_first_progress": 50.057,
+                        "seconds_to_first_check": 76.519,
+                        "pending_tool_recovery": []
+                    }
+                }
+            }
+        ],
+        "tokens": {
+            "input": 124991,
+            "output": 7162,
+            "reasoning": 0
+        },
+        "agent": {
+            "kind": "claude-code",
+            "cli_version": "2.1.220 (Claude Code)",
+            "model": "claude-opus-5",
+            "effort": "medium",
+            "session_id": "f4556592-d3b4-4353-b55c-581eb081a52c",
+            "subtype": "success",
+            "provider_subtype": "success",
+            "is_error": false,
+            "total_cost_usd": 0.32857575,
+            "duration_ms": 85520,
+            "duration_api_ms": 81498,
+            "num_turns": 9,
+            "returncode": 0,
+            "timed_out": false,
+            "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/knapsack_01/agent_events.jsonl",
+            "pass_number": 1,
+            "prompt_kind": "initial",
+            "prompt_sha256": "5300f2d275b7bcfbaf8c7ae60e627e8dbe76351bbac07e3127266c00487cf0c1",
+            "budget_usd": null,
+            "lastdance_profile": "api",
+            "features": {
+                "profile": "api",
+                "algorithm_plan": false,
+                "lemma_plan": false,
+                "leansearch": false,
+                "semantic_audit": false,
+                "semantic_reminder": false,
+                "early_check": false,
+                "feedback_mode": "exact",
+                "backtracking": false,
+                "stagnation_threshold": 2
+            },
+            "run_control": {
+                "control": {
+                    "recover_pending_tool": false,
+                    "progress_governor": false,
+                    "pre_edit_timeout_seconds": 300,
+                    "pre_edit_thinking_tokens": 12000,
+                    "post_edit_check_timeout_seconds": 180,
+                    "planning_mode": false,
+                    "diagnostic_wrapper": false,
+                    "rescue_mode": false
+                },
+                "governor_stop_reason": null,
+                "max_thinking_tokens_observed": 3600,
+                "seconds_to_first_progress": 50.057,
+                "seconds_to_first_check": 76.519,
+                "pending_tool_recovery": []
+            },
+            "compiler_passes": 1,
+            "total_sessions": 1,
+            "selected_session": 1,
+            "sessions": [
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "f4556592-d3b4-4353-b55c-581eb081a52c",
+                    "subtype": "success",
+                    "provider_subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.32857575,
+                    "duration_ms": 85520,
+                    "duration_api_ms": 81498,
+                    "num_turns": 9,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/knapsack_01/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "prompt_sha256": "5300f2d275b7bcfbaf8c7ae60e627e8dbe76351bbac07e3127266c00487cf0c1",
+                    "budget_usd": null,
+                    "lastdance_profile": "api",
+                    "features": {
+                        "profile": "api",
+                        "algorithm_plan": false,
+                        "lemma_plan": false,
+                        "leansearch": false,
+                        "semantic_audit": false,
+                        "semantic_reminder": false,
+                        "early_check": false,
+                        "feedback_mode": "exact",
+                        "backtracking": false,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": false,
+                            "progress_governor": false,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": false,
+                            "rescue_mode": false
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 3600,
+                        "seconds_to_first_progress": 50.057,
+                        "seconds_to_first_check": 76.519,
+                        "pending_tool_recovery": []
+                    }
+                }
+            ],
+            "compiler_checks_observed": 1,
+            "max_compiler_checks": 15
+        },
+        "provenance": {
+            "schema_version": 1,
+            "ownership": {
+                "model_owned_sections": [
+                    "auxcode",
+                    "code",
+                    "lemma",
+                    "proof"
+                ],
+                "teacher_owned": "all source outside the four marker regions",
+                "teacher_owned_sorry_present": false,
+                "model_section_ranges": {
+                    "auxcode": {
+                        "start_line": 26,
+                        "end_line": 32
+                    },
+                    "code": {
+                        "start_line": 37,
+                        "end_line": 39
+                    },
+                    "lemma": {
+                        "start_line": 50,
+                        "end_line": 114
+                    },
+                    "proof": {
+                        "start_line": 120,
+                        "end_line": 126
+                    }
+                }
+            },
+            "hashes": {
+                "original_sha256": "f2ac42412ef29fec035b895b49b74cbeb05a7b9b2cfd9bb428a864839f88da79",
+                "candidate_sha256": "be810b116ff6f8d2d5e3dc322985749fee41c05ecda77a12ecaf55b2fa49466c",
+                "merged_sha256": "be810b116ff6f8d2d5e3dc322985749fee41c05ecda77a12ecaf55b2fa49466c",
+                "model_sections_sha256": {
+                    "auxcode": "425d7bf767868e1629a7a0d4a6546a7fde6e2336e9f10fddfb72ed949d949700",
+                    "code": "f705d504ca27ca7463b557e17b5bc368f0c75b8fa8a2001cb6a78c1be5aa0dff",
+                    "lemma": "f1064aba58f84059f4c7d82d02c7319dcc8aa3a73cf77f199e502387cbc1b1cf",
+                    "proof": "3a95b548d74c38f1c57555ae2b9e2fea92949160796376fdec8ce015dbc22dba"
+                }
+            }
+        },
+        "targeted_diagnostics": [],
+        "lastdance_artifacts": {
+            "ledger": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/knapsack_01/.lastdance/run_ledger.jsonl",
+            "algorithm_plan": null,
+            "proof_state": null,
+            "leansearch_queries": null,
+            "checkpoints": null,
+            "prompts": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/knapsack_01/.lastdance/prompts"
+        }
+    },
+    "parsed": true,
+    "verdict": true,
+    "analysis": "The student\u2019s implementation does match the required 0/1 knapsack algorithm, and I do not see evidence of cheating in the student-owned regions.\n\nKey points:\n\n1. Algorithm implemented\n- The student defines\n  `knap : List Nat \u2192 List Nat \u2192 Nat \u2192 Nat`\n  recursively.\n- For each item `(w, v)`, it computes:\n  - excluding the item: `knap ws vs cap`\n  - including the item if `w \u2264 cap`: `v + knap ws vs (cap - w)`\n- Then it takes the `max` of these two choices.\n- This is exactly the standard recursive 0/1 knapsack algorithm.\n\n2. 0/1 nature is respected\n- Each recursive step moves from `w :: ws, v :: vs` to `ws, vs`, so each item is considered at most once.\n- This is not an unbounded knapsack or some other variant.\n\n3. No forbidden shortcut / built-in solver for knapsack\n- The student does not call any library knapsack function or other pre-verified optimization routine.\n- The implementation is written from scratch as a recursive function.\n\n4. Proof structure aligns with the intended semantics\n- `knap_ub` proves the result is an upper bound on any valid selection.\n- `knap_ex` proves existence of a selection achieving the computed result.\n- These correspond directly to the required postconditions in the natural language description.\n\n5. No cheating in student-owned regions\n- In the benchmark-marked student regions (`auxcode`, `code`, `lemma`, `proof`), there is no `sorry`, `admit`, empty body, or fake implementation.\n- The code is substantive and actually implements the algorithm.\n\nMinor note:\n- The recursion is the straightforward exponential recursive knapsack, not a dynamic-programming table implementation. But the natural language only says \u201cimplement the 0/1 Knapsack algorithm,\u201d and this recursive include/exclude formulation is a standard correct 0/1 knapsack algorithm. There is no stated requirement for a specific DP optimization approach.\n\nSo semantically, the student implemented the correct algorithm and did not use disallowed tricks.",
+    "semantic_judge": {
+        "model": "gpt-5.4",
+        "temperature": 0.0,
+        "reasoning_effort": "medium",
+        "provenance_aware": true
+    }
+}

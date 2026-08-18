@@ -114,6 +114,8 @@
           <button class="tab active" data-tab="activity">Live activity</button>
           <button class="tab" data-tab="diff">Code / diff</button>
           <button class="tab" data-tab="diagnostics">Diagnostics</button>
+          <button class="tab" data-tab="algorithm-plan">Algorithm plan</button>
+          <button class="tab" data-tab="proof-state">Proof state</button>
           <label class="follow-toggle"><input id="auto-follow" type="checkbox" checked> Follow latest</label>
         </nav>
 
@@ -130,6 +132,14 @@
             <article><h3>Judge / verifier feedback</h3><pre id="feedback-content">No saved verifier feedback.</pre></article>
             <article><h3>Claude stderr</h3><pre id="stderr-content">No stderr output.</pre></article>
           </div>
+        </div>
+        <div id="algorithm-plan-view" class="tab-view">
+          <div class="artifact-heading"><h3>AlgorithmPlan.md</h3><span>Durable algorithm commitment and invariant plan</span></div>
+          <pre id="algorithm-plan-content" class="code-panel artifact-panel">AlgorithmPlan.md is not available for this run.</pre>
+        </div>
+        <div id="proof-state-view" class="tab-view">
+          <div class="artifact-heading"><h3>ProofState.md</h3><span>Hierarchical proof state and current blocking goals</span></div>
+          <pre id="proof-state-content" class="code-panel artifact-panel">ProofState.md is not available for this run.</pre>
         </div>
       </section>
     </div>

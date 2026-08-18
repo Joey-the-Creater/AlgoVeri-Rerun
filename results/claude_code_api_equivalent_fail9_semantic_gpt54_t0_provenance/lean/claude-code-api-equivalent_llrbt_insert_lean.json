@@ -1,0 +1,259 @@
+{
+    "verified": true,
+    "details": {
+        "rounds": 13,
+        "llm_response": {
+            "code": "import Mathlib\n\ninductive Color\n| Red\n| Black\nderiving Inhabited, BEq\n\ninductive Node\n| Empty : Node\n| Tree  (color : Color) (val : Int) (left : Node) (right : Node) : Node\nderiving Inhabited\n\ndef view (t : Node) : Set Int :=\n  match t with\n  | Node.Empty => \u2205\n  | Node.Tree _ v l r => view l \u222a view r \u222a {v}\n\ndef is_red (t : Node) : Bool :=\n  match t with\n  | Node.Tree Color.Red _ _ _ => true\n  | _ => false\n\ndef is_bst (t : Node) : Prop :=\n  match t with\n  | Node.Empty => True\n  | Node.Tree _ v l r =>\n    (\u2200 x \u2208 view l, x < v) \u2227\n    is_bst l \u2227\n    (\u2200 x \u2208 view r, x > v) \u2227\n    is_bst r\n\n-- Black Height: Returns -1 if invalid\ndef black_height (t : Node) : Int :=\n  match t with\n  | Node.Empty => 1\n  | Node.Tree c _ l r =>\n    let lh := black_height l\n    let rh := black_height r\n    if lh \u2260 -1 \u2227 rh \u2260 -1 \u2227 lh = rh then\n      if c == Color.Black then lh + 1 else lh\n    else\n      -1\n\ndef satisfies_red_props (t : Node) : Prop :=\n  match t with\n  | Node.Empty => True\n  | Node.Tree c _ l r =>\n    satisfies_red_props l \u2227\n    satisfies_red_props r \u2227\n    -- Rule 1: No Right-Leaning Red (Matches Dafny)\n    (if is_red r then False else True) \u2227\n    -- Rule 2: No Double Red on Left (Matches Dafny)\n    -- Check: If Left is Red, then Left.Left must NOT be Red.\n    -- This applies regardless of 'c' (current color).\n    (match l with\n     | Node.Tree Color.Red _ ll _ => \n       (match ll with | Node.Tree Color.Red _ _ _ => False | _ => True)\n     | _ => True)\n\n-- This definition is tricky because LLRBT insert allows the root to be red temporarily or permanently if it's the root of the whole tree (though usually root is black).\n-- However, the recursive step needs a weaker invariant.\n-- Dafny spec says: \"This allows the root to be Red or Black\"\ndef is_llrbt (t : Node) : Prop :=\n  is_bst t \u2227\n  black_height t \u2260 -1 \u2227\n  -- We need to check red properties. Dafny's satisfies_red_props handles recursive checks.\n  -- But wait, Dafny's `satisfies_red_props` seems to strictly forbid right-leaning reds everywhere?\n  -- Let's re-read Dafny carefully.\n  -- satisfy_red_props:\n  --   left_ok && right_ok && right_is_black && no_double_red\n  --   Right is black: if right is red -> false.\n  --   No double red on left: if left is red, left.left cannot be red? No, `l.is_red` then `l.left` check?\n  --   Dafny: `match this.left { case Some(l) => if l.is_red then match l.left { case Some(ll) => !ll.is_red ...`\n  --   This means: If I am any node, my right child cannot be red. And if my left child is red, IT'S left child cannot be red (no consecutive reds on left edge).\n  --   What about Me being Red and Left being Red? Dafny spec doesn't explicitly ban `this.is_red && this.left.is_red` in `satisfies_red_props` itself?\n  --   Ah, `no_double_red` checks `this.left` (l) and `l.left` (ll).\n  --   So it prevents `Red -> Red` on the left edge.\n  satisfies_red_props t\n\n\n\n-- Precondition definitions\n@[reducible, simp]\ndef insert_precond (t : Node) : Prop :=\n  -- !benchmark @start precond\n  is_llrbt t\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n\n/-- Recolour the root of a tree black. -/\ndef blacken (t : Node) : Node :=\n  match t with\n  | Node.Empty => Node.Empty\n  | Node.Tree _ v l r => Node.Tree Color.Black v l r\n\n/-- The root is not a Red node whose left child is Red.\n    This is exactly the extra condition (beyond `satisfies_red_props`) that a\n    parent's rebalancing step is responsible for repairing. -/\ndef no_rr (t : Node) : Prop :=\n  match t with\n  | Node.Tree Color.Red _ (Node.Tree Color.Red _ _ _) _ => False\n  | _ => True\n\n/-- Rebalance after inserting into the left subtree.\n    `r` is never red, so the only possible violation is a red-red left spine,\n    which is fixed by a right rotation followed by a colour flip. -/\ndef balL (c : Color) (x : Int) (l r : Node) : Node :=\n  match l with\n  | Node.Tree Color.Red y (Node.Tree Color.Red w a b) cc =>\n      Node.Tree Color.Red y (Node.Tree Color.Black w a b) (Node.Tree Color.Black x cc r)\n  | _ => Node.Tree c x l r\n\n/-- Rebalance after inserting into the right subtree.\n    A red right child is rotated left; if the left child is also red the\n    rotation degenerates into a colour flip. -/\ndef balR (c : Color) (x : Int) (l r : Node) : Node :=\n  match r with\n  | Node.Tree Color.Red y b d =>\n      match l with\n      | Node.Tree Color.Red z p q =>\n          Node.Tree Color.Red x (Node.Tree Color.Black z p q) (Node.Tree Color.Black y b d)\n      | Node.Tree Color.Black z p q =>\n          Node.Tree c y (Node.Tree Color.Red x (Node.Tree Color.Black z p q) b) d\n      | Node.Empty =>\n          Node.Tree c y (Node.Tree Color.Red x Node.Empty b) d\n  | _ => Node.Tree c x l r\n\n/-- The recursive insertion; it preserves the black height exactly and may\n    leave a red root with a red left child, repaired by the caller. -/\ndef ins (t : Node) (v : Int) : Node :=\n  match t with\n  | Node.Empty => Node.Tree Color.Red v Node.Empty Node.Empty\n  | Node.Tree c x l r =>\n      if v < x then balL c x (ins l v) r\n      else if x < v then balR c x l (ins r v)\n      else Node.Tree c x l r\n\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef insert (t : Node) (v : Int)\n    (h_precond : insert_precond t) : Node :=\n  -- !benchmark @start code\n  blacken (ins (blacken t) v)\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef insert_postcond (t : Node) (v : Int) (result : Node)\n    (_ : insert_precond t) : Prop :=\n  -- !benchmark @start postcond\n  is_llrbt result \u2227\n  view result = view t \u222a {v}\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\n\n/-! ### Basic bookkeeping lemmas -/\n\nlemma ite_prop_iff {b : Bool} : (if b then False else True) \u2194 b = false := by\n  cases b <;> simp\n\nlemma rule2_iff (l : Node) :\n    (match l with\n     | Node.Tree Color.Red _ ll _ =>\n       (match ll with | Node.Tree Color.Red _ _ _ => False | _ => True)\n     | _ => True) \u2194 no_rr l := by\n  cases l with\n  | Empty => exact Iff.rfl\n  | Tree cl y ll cc =>\n    cases cl with\n    | Black => exact Iff.rfl\n    | Red =>\n      cases ll with\n      | Empty => exact Iff.rfl\n      | Tree cll w a b =>\n        cases cll with\n        | Black => exact Iff.rfl\n        | Red => exact Iff.rfl\n\nlemma srp_tree_iff (c : Color) (x : Int) (l r : Node) :\n    satisfies_red_props (Node.Tree c x l r) \u2194\n      (satisfies_red_props l \u2227 satisfies_red_props r \u2227 is_red r = false \u2227 no_rr l) := by\n  simp only [satisfies_red_props]\n  constructor\n  \u00b7 rintro \u27e8h1, h2, h3, h4\u27e9\n    exact \u27e8h1, h2, ite_prop_iff.mp h3, (rule2_iff l).mp h4\u27e9\n  \u00b7 rintro \u27e8h1, h2, h3, h4\u27e9\n    exact \u27e8h1, h2, ite_prop_iff.mpr h3, (rule2_iff l).mpr h4\u27e9\n\nlemma no_rr_of_not_red {t : Node} (h : is_red t = false) : no_rr t := by\n  cases t with\n  | Empty => trivial\n  | Tree ct y a b =>\n    cases ct with\n    | Black => trivial\n    | Red => simp [is_red] at h\n\nlemma no_rr_red_of (x : Int) (l b : Node) (h : is_red l = false) :\n    no_rr (Node.Tree Color.Red x l b) := by\n  cases l with\n  | Empty => trivial\n  | Tree cl y p q =>\n    cases cl with\n    | Black => trivial\n    | Red => simp [is_red] at h\n\nlemma not_red_left_of_no_rr {x : Int} {l r : Node}\n    (h : no_rr (Node.Tree Color.Red x l r)) : is_red l = false := by\n  cases l with\n  | Empty => rfl\n  | Tree cl y p q =>\n    cases cl with\n    | Black => rfl\n    | Red => exact (h : False).elim\n\nlemma color_black_of {c : Color} {x : Int} {l r : Node}\n    (h : is_red (Node.Tree c x l r) = false) : c = Color.Black := by\n  cases c with\n  | Black => rfl\n  | Red => simp [is_red] at h\n\n/-! ### Black height -/\n\nlemma bh_black_eq (x : Int) (l r : Node) (h1 : black_height l \u2260 -1)\n    (h2 : black_height l = black_height r) :\n    black_height (Node.Tree Color.Black x l r) = black_height l + 1 := by\n  have h1' : black_height r \u2260 -1 := by rw [\u2190 h2]; exact h1\n  simp only [black_height]\n  rw [if_pos \u27e8h1, h1', h2\u27e9]\n  rfl\n\nlemma bh_red_eq (x : Int) (l r : Node) (h1 : black_height l \u2260 -1)\n    (h2 : black_height l = black_height r) :\n    black_height (Node.Tree Color.Red x l r) = black_height l := by\n  have h1' : black_height r \u2260 -1 := by rw [\u2190 h2]; exact h1\n  simp only [black_height]\n  rw [if_pos \u27e8h1, h1', h2\u27e9]\n  rfl\n\nlemma bh_inv (c : Color) (x : Int) (l r : Node)\n    (h : black_height (Node.Tree c x l r) \u2260 -1) :\n    black_height l \u2260 -1 \u2227 black_height l = black_height r := by\n  by_cases hc : black_height l \u2260 -1 \u2227 black_height r \u2260 -1 \u2227 black_height l = black_height r\n  \u00b7 exact \u27e8hc.1, hc.2.2\u27e9\n  \u00b7 exfalso\n    apply h\n    simp only [black_height]\n    rw [if_neg hc]\n\nlemma bh_pos (t : Node) : black_height t = -1 \u2228 1 \u2264 black_height t := by\n  induction t with\n  | Empty => right; norm_num [black_height]\n  | Tree c x l r ihl ihr =>\n    by_cases hc : black_height l \u2260 -1 \u2227 black_height r \u2260 -1 \u2227 black_height l = black_height r\n    \u00b7 right\n      rcases ihl with h | h\n      \u00b7 exact absurd h hc.1\n      \u00b7 cases c with\n        | Black => rw [bh_black_eq x l r hc.1 hc.2.2]; omega\n        | Red => rw [bh_red_eq x l r hc.1 hc.2.2]; exact h\n    \u00b7 left\n      simp only [black_height]\n      rw [if_neg hc]\n\nlemma bh_ge_one {t : Node} (h : black_height t \u2260 -1) : 1 \u2264 black_height t := by\n  rcases bh_pos t with h' | h'\n  \u00b7 exact absurd h' h\n  \u00b7 exact h'\n\nlemma bh_congr_left (c : Color) (x : Int) (l l' r : Node)\n    (h : black_height l = black_height l') :\n    black_height (Node.Tree c x l r) = black_height (Node.Tree c x l' r) := by\n  simp only [black_height, h]\n\nlemma bh_congr_right (c : Color) (x : Int) (l r r' : Node)\n    (h : black_height r = black_height r') :\n    black_height (Node.Tree c x l r) = black_height (Node.Tree c x l r') := by\n  simp only [black_height, h]\n\n/-! ### Blackening the root -/\n\nlemma view_blacken (t : Node) : view (blacken t) = view t := by\n  cases t <;> rfl\n\nlemma bst_blacken (t : Node) (h : is_bst t) : is_bst (blacken t) := by\n  cases t <;> exact h\n\nlemma srp_blacken (t : Node) (h : satisfies_red_props t) :\n    satisfies_red_props (blacken t) := by\n  cases t <;> exact h\n\nlemma no_rr_blacken (t : Node) : no_rr (blacken t) := by\n  cases t <;> trivial\n\nlemma is_red_blacken (t : Node) : is_red (blacken t) = false := by\n  cases t <;> rfl\n\nlemma bh_blacken (t : Node) (h : black_height t \u2260 -1) :\n    black_height (blacken t) \u2260 -1 := by\n  cases t with\n  | Empty => exact h\n  | Tree c x l r =>\n    obtain \u27e8h1, h2\u27e9 := bh_inv c x l r h\n    have := bh_ge_one h1\n    show black_height (Node.Tree Color.Black x l r) \u2260 -1\n    rw [bh_black_eq x l r h1 h2]\n    omega\n\nlemma bh_blacken_red (l : Node) (h : is_red l = true) (h2 : black_height l \u2260 -1) :\n    black_height (blacken l) = black_height l + 1 := by\n  cases l with\n  | Empty => simp [is_red] at h\n  | Tree cl z p q =>\n    cases cl with\n    | Black => simp [is_red] at h\n    | Red =>\n      obtain \u27e8h3, h4\u27e9 := bh_inv Color.Red z p q h2\n      show black_height (Node.Tree Color.Black z p q) = _\n      rw [bh_black_eq z p q h3 h4, bh_red_eq z p q h3 h4]\n\n/-! ### Equations for the rebalancing helpers -/\n\nlemma balL_of_no_rr (c : Color) (x : Int) (l r : Node) (h : no_rr l) :\n    balL c x l r = Node.Tree c x l r := by\n  cases l with\n  | Empty => rfl\n  | Tree cl y ll cc =>\n    cases cl with\n    | Black => rfl\n    | Red =>\n      cases ll with\n      | Empty => rfl\n      | Tree cll w a b =>\n        cases cll with\n        | Black => rfl\n        | Red => exact (h : False).elim\n\nlemma balR_of_not_red (c : Color) (x : Int) (l r : Node) (h : is_red r = false) :\n    balR c x l r = Node.Tree c x l r := by\n  cases r with\n  | Empty => rfl\n  | Tree cr y b d =>\n    cases cr with\n    | Black => rfl\n    | Red => simp [is_red] at h\n\nlemma balR_eq_redl (c : Color) (x : Int) (l : Node) (y : Int) (b d : Node)\n    (h : is_red l = true) :\n    balR c x l (Node.Tree Color.Red y b d)\n      = Node.Tree Color.Red x (blacken l) (Node.Tree Color.Black y b d) := by\n  cases l with\n  | Empty => simp [is_red] at h\n  | Tree cl z p q =>\n    cases cl with\n    | Black => simp [is_red] at h\n    | Red => rfl\n\nlemma balR_eq_notredl (c : Color) (x : Int) (l : Node) (y : Int) (b d : Node)\n    (h : is_red l = false) :\n    balR c x l (Node.Tree Color.Red y b d)\n      = Node.Tree c y (Node.Tree Color.Red x l b) d := by\n  cases l with\n  | Empty => rfl\n  | Tree cl z p q =>\n    cases cl with\n    | Black => rfl\n    | Red => simp [is_red] at h\n\n/-! ### Correctness of the rebalancing helpers -/\n\nlemma balL_spec (c : Color) (x : Int) (l r : Node)\n    (hlbst : is_bst l) (hrbst : is_bst r)\n    (hlx : \u2200 y \u2208 view l, y < x) (hrx : \u2200 y \u2208 view r, y > x)\n    (hlrp : satisfies_red_props l) (hrrp : satisfies_red_props r)\n    (hrred : is_red r = false)\n    (hbhl : black_height l \u2260 -1) (hbheq : black_height l = black_height r)\n    (hcase : c = Color.Black \u2228 no_rr l) :\n    view (balL c x l r) = view l \u222a view r \u222a {x} \u2227\n    is_bst (balL c x l r) \u2227\n    black_height (balL c x l r) = black_height (Node.Tree c x l r) \u2227\n    satisfies_red_props (balL c x l r) \u2227\n    (c = Color.Black \u2192 no_rr (balL c x l r)) := by\n  by_cases hnr : no_rr l\n  \u00b7 rw [balL_of_no_rr c x l r hnr]\n    refine \u27e8rfl, \u27e8hlx, hlbst, hrx, hrbst\u27e9, rfl,\n      (srp_tree_iff c x l r).mpr \u27e8hlrp, hrrp, hrred, hnr\u27e9, ?_\u27e9\n    intro hc\n    subst hc\n    trivial\n  \u00b7 have hc : c = Color.Black := by\n      rcases hcase with h | h\n      \u00b7 exact h\n      \u00b7 exact absurd h hnr\n    subst hc\n    cases l with\n    | Empty => exact absurd trivial hnr\n    | Tree cl y ll cc =>\n      cases cl with\n      | Black => exact absurd trivial hnr\n      | Red =>\n        cases ll with\n        | Empty => exact absurd trivial hnr\n        | Tree cll w a b =>\n          cases cll with\n          | Black => exact absurd trivial hnr\n          | Red =>\n            rw [show balL Color.Black x (Node.Tree Color.Red y (Node.Tree Color.Red w a b) cc) r\n                  = Node.Tree Color.Red y (Node.Tree Color.Black w a b)\n                      (Node.Tree Color.Black x cc r) from rfl]\n            have hxy : y < x := by\n              refine hlx y ?_\n              simp only [view, Set.mem_union, Set.mem_singleton_iff]\n              tauto\n            have h1 : \u2200 z \u2208 view (Node.Tree Color.Red w a b), z < y := hlbst.1\n            have h2 : is_bst (Node.Tree Color.Red w a b) := hlbst.2.1\n            have h3 : \u2200 z \u2208 view cc, z > y := hlbst.2.2.1\n            have h4 : is_bst cc := hlbst.2.2.2\n            obtain \u27e8s1, s2, s3, s4\u27e9 := (srp_tree_iff _ _ _ _).mp hlrp\n            have hared : is_red a = false := not_red_left_of_no_rr s4\n            obtain \u27e8t1, t2, t3, t4\u27e9 := (srp_tree_iff _ _ _ _).mp s1\n            obtain \u27e8hb1, hb2\u27e9 := bh_inv Color.Red y (Node.Tree Color.Red w a b) cc hbhl\n            obtain \u27e8hb3, hb4\u27e9 := bh_inv Color.Red w a b hb1\n            have hbL : black_height (Node.Tree Color.Red w a b) = black_height a :=\n              bh_red_eq w a b hb3 hb4\n            have hcc : black_height cc = black_height a := by rw [\u2190 hb2, hbL]\n            have hbl : black_height (Node.Tree Color.Red y (Node.Tree Color.Red w a b) cc)\n                = black_height a := by rw [bh_red_eq y _ cc hb1 hb2, hbL]\n            have hbr : black_height r = black_height a := by rw [\u2190 hbheq, hbl]\n            have hane : 1 \u2264 black_height a := bh_ge_one hb3\n            have e1 : black_height (Node.Tree Color.Black w a b) = black_height a + 1 :=\n              bh_black_eq w a b hb3 hb4\n            have e2 : black_height (Node.Tree Color.Black x cc r) = black_height a + 1 := by\n              rw [bh_black_eq x cc r (by rw [hcc]; exact hb3) (by rw [hcc, hbr]), hcc]\n            refine \u27e8?_, ?_, ?_, ?_, ?_\u27e9\n            \u00b7 ext z\n              simp only [view, Set.mem_union, Set.mem_singleton_iff]\n              tauto\n            \u00b7 refine \u27e8h1, h2, ?_, ?_\u27e9\n              \u00b7 intro z hz\n                simp only [view, Set.mem_union, Set.mem_singleton_iff] at hz\n                rcases hz with (hz | hz) | hz\n                \u00b7 exact h3 z hz\n                \u00b7 have := hrx z hz; omega\n                \u00b7 omega\n              \u00b7 refine \u27e8?_, h4, hrx, hrbst\u27e9\n                intro z hz\n                refine hlx z ?_\n                simp only [view, Set.mem_union, Set.mem_singleton_iff]\n                tauto\n            \u00b7 rw [bh_red_eq y (Node.Tree Color.Black w a b) (Node.Tree Color.Black x cc r)\n                    (by rw [e1]; omega) (by rw [e1, e2]), e1,\n                  bh_black_eq x (Node.Tree Color.Red y (Node.Tree Color.Red w a b) cc) r\n                    hbhl hbheq, hbl]\n            \u00b7 refine (srp_tree_iff _ _ _ _).mpr \u27e8?_, ?_, rfl, trivial\u27e9\n              \u00b7 exact (srp_tree_iff _ _ _ _).mpr \u27e8t1, t2, t3, no_rr_of_not_red hared\u27e9\n              \u00b7 exact (srp_tree_iff _ _ _ _).mpr \u27e8s2, hrrp, hrred, no_rr_of_not_red s3\u27e9\n            \u00b7 intro _; trivial\n\nlemma balR_spec (c : Color) (x : Int) (l r : Node)\n    (hlbst : is_bst l) (hrbst : is_bst r)\n    (hlx : \u2200 y \u2208 view l, y < x) (hrx : \u2200 y \u2208 view r, y > x)\n    (hlrp : satisfies_red_props l) (hrrp : satisfies_red_props r)\n    (hlnrr : no_rr l) (hrnrr : no_rr r)\n    (hcase : c = Color.Black \u2228 is_red l = false)\n    (hbhl : black_height l \u2260 -1) (hbheq : black_height l = black_height r) :\n    view (balR c x l r) = view l \u222a view r \u222a {x} \u2227\n    is_bst (balR c x l r) \u2227\n    black_height (balR c x l r) = black_height (Node.Tree c x l r) \u2227\n    satisfies_red_props (balR c x l r) \u2227\n    (c = Color.Black \u2192 no_rr (balR c x l r)) := by\n  by_cases hrr : is_red r = true\n  \u00b7 cases r with\n    | Empty => simp [is_red] at hrr\n    | Tree cr y b d =>\n      cases cr with\n      | Black => simp [is_red] at hrr\n      | Red =>\n        obtain \u27e8sb, sd, hdred, _\u27e9 := (srp_tree_iff _ _ _ _).mp hrrp\n        have hbred : is_red b = false := not_red_left_of_no_rr hrnrr\n        have hby : \u2200 z \u2208 view b, z < y := hrbst.1\n        have hbbst : is_bst b := hrbst.2.1\n        have hdy : \u2200 z \u2208 view d, z > y := hrbst.2.2.1\n        have hdbst : is_bst d := hrbst.2.2.2\n        have hxy : x < y := by\n          refine hrx y ?_\n          simp only [view, Set.mem_union, Set.mem_singleton_iff]\n          tauto\n        obtain \u27e8hb1, hb2\u27e9 := bh_inv Color.Red y b d (by rw [\u2190 hbheq]; exact hbhl)\n        have hbr : black_height (Node.Tree Color.Red y b d) = black_height b :=\n          bh_red_eq y b d hb1 hb2\n        have hlb : black_height l = black_height b := by rw [hbheq, hbr]\n        have hbge : 1 \u2264 black_height b := bh_ge_one hb1\n        have e1 : black_height (Node.Tree Color.Black y b d) = black_height b + 1 :=\n          bh_black_eq y b d hb1 hb2\n        by_cases hlred : is_red l = true\n        \u00b7 have hcB : c = Color.Black := by\n            rcases hcase with h | h\n            \u00b7 exact h\n            \u00b7 rw [h] at hlred; exact absurd hlred (by simp)\n          subst hcB\n          rw [balR_eq_redl Color.Black x l y b d hlred]\n          have hbl1 : black_height (blacken l) = black_height l + 1 :=\n            bh_blacken_red l hlred hbhl\n          refine \u27e8?_, ?_, ?_, ?_, ?_\u27e9\n          \u00b7 show view (blacken l) \u222a view (Node.Tree Color.Black y b d) \u222a {x} = _\n            rw [view_blacken]\n            rfl\n          \u00b7 exact \u27e8by rw [view_blacken]; exact hlx, bst_blacken l hlbst, hrx, hrbst\u27e9\n          \u00b7 rw [bh_red_eq x (blacken l) (Node.Tree Color.Black y b d)\n                  (by rw [hbl1, hlb]; omega) (by rw [hbl1, e1, hlb]), hbl1,\n                bh_black_eq x l (Node.Tree Color.Red y b d) hbhl hbheq]\n          \u00b7 exact (srp_tree_iff _ _ _ _).mpr\n              \u27e8srp_blacken l hlrp, hrrp, rfl, no_rr_blacken l\u27e9\n          \u00b7 intro _\n            exact no_rr_red_of x (blacken l) _ (is_red_blacken l)\n        \u00b7 have hlf : is_red l = false := by simpa using hlred\n          rw [balR_eq_notredl c x l y b d hlf]\n          have e2 : black_height (Node.Tree Color.Red x l b) = black_height l :=\n            bh_red_eq x l b hbhl hlb\n          refine \u27e8?_, ?_, ?_, ?_, ?_\u27e9\n          \u00b7 ext z\n            simp only [view, Set.mem_union, Set.mem_singleton_iff]\n            tauto\n          \u00b7 refine \u27e8?_, \u27e8hlx, hlbst, ?_, hbbst\u27e9, hdy, hdbst\u27e9\n            \u00b7 intro z hz\n              simp only [view, Set.mem_union, Set.mem_singleton_iff] at hz\n              rcases hz with (hz | hz) | hz\n              \u00b7 have := hlx z hz; omega\n              \u00b7 exact hby z hz\n              \u00b7 omega\n            \u00b7 intro z hz\n              refine hrx z ?_\n              simp only [view, Set.mem_union, Set.mem_singleton_iff]\n              tauto\n          \u00b7 cases c with\n            | Black =>\n              rw [bh_black_eq y (Node.Tree Color.Red x l b) d\n                    (by rw [e2]; exact hbhl) (by rw [e2, hlb, hb2]), e2,\n                  bh_black_eq x l (Node.Tree Color.Red y b d) hbhl hbheq]\n            | Red =>\n              rw [bh_red_eq y (Node.Tree Color.Red x l b) d\n                    (by rw [e2]; exact hbhl) (by rw [e2, hlb, hb2]), e2,\n                  bh_red_eq x l (Node.Tree Color.Red y b d) hbhl hbheq]\n          \u00b7 exact (srp_tree_iff _ _ _ _).mpr\n              \u27e8(srp_tree_iff _ _ _ _).mpr \u27e8hlrp, sb, hbred, hlnrr\u27e9, sd, hdred,\n                no_rr_red_of x l b hlf\u27e9\n          \u00b7 intro hc; subst hc; trivial\n  \u00b7 have hrf : is_red r = false := by simpa using hrr\n    rw [balR_of_not_red c x l r hrf]\n    refine \u27e8rfl, \u27e8hlx, hlbst, hrx, hrbst\u27e9, rfl,\n      (srp_tree_iff c x l r).mpr \u27e8hlrp, hrrp, hrf, hlnrr\u27e9, ?_\u27e9\n    intro hc; subst hc; trivial\n\n/-! ### Equations for `ins` -/\n\nlemma ins_lt (c : Color) (x : Int) (l r : Node) (v : Int) (h : v < x) :\n    ins (Node.Tree c x l r) v = balL c x (ins l v) r := by\n  simp only [ins]\n  rw [if_pos h]\n\nlemma ins_gt (c : Color) (x : Int) (l r : Node) (v : Int) (h : x < v) :\n    ins (Node.Tree c x l r) v = balR c x l (ins r v) := by\n  simp only [ins]\n  rw [if_neg (by omega), if_pos h]\n\nlemma ins_eq (c : Color) (x : Int) (l r : Node) (v : Int) (h : v = x) :\n    ins (Node.Tree c x l r) v = Node.Tree c x l r := by\n  simp only [ins]\n  rw [if_neg (by omega), if_neg (by omega)]\n\n/-! ### Main invariant of `ins` -/\n\nset_option maxHeartbeats 2000000 in\nlemma ins_spec (t : Node) (v : Int) :\n    is_bst t \u2192 black_height t \u2260 -1 \u2192 satisfies_red_props t \u2192 no_rr t \u2192\n    (view (ins t v) = view t \u222a {v} \u2227\n     is_bst (ins t v) \u2227\n     black_height (ins t v) = black_height t \u2227\n     satisfies_red_props (ins t v) \u2227\n     (is_red t = false \u2192 no_rr (ins t v))) := by\n  induction t with\n  | Empty =>\n    intro _ _ _ _\n    refine \u27e8?_, ?_, ?_, ?_, ?_\u27e9\n    \u00b7 show view (Node.Tree Color.Red v Node.Empty Node.Empty) = view Node.Empty \u222a {v}\n      ext z\n      simp only [view, Set.mem_union, Set.mem_singleton_iff, Set.mem_empty_iff_false]\n      tauto\n    \u00b7 show is_bst (Node.Tree Color.Red v Node.Empty Node.Empty)\n      refine \u27e8?_, trivial, ?_, trivial\u27e9 <;>\n        (intro z hz; simp only [view, Set.mem_empty_iff_false] at hz)\n    \u00b7 show black_height (Node.Tree Color.Red v Node.Empty Node.Empty) = black_height Node.Empty\n      rw [bh_red_eq v Node.Empty Node.Empty (by norm_num [black_height]) rfl]\n    \u00b7 show satisfies_red_props (Node.Tree Color.Red v Node.Empty Node.Empty)\n      exact \u27e8trivial, trivial, trivial, trivial\u27e9\n    \u00b7 intro _\n      show no_rr (Node.Tree Color.Red v Node.Empty Node.Empty)\n      trivial\n  | Tree c x l r ihl ihr =>\n    intro hbst hbh hrp hnrr\n    have hlx : \u2200 z \u2208 view l, z < x := hbst.1\n    have hlbst : is_bst l := hbst.2.1\n    have hrx : \u2200 z \u2208 view r, z > x := hbst.2.2.1\n    have hrbst : is_bst r := hbst.2.2.2\n    obtain \u27e8hbhl, hbheq\u27e9 := bh_inv c x l r hbh\n    obtain \u27e8hlrp, hrrp, hrred, hlnrr\u27e9 := (srp_tree_iff c x l r).mp hrp\n    have hrnrr : no_rr r := no_rr_of_not_red hrred\n    rcases lt_trichotomy v x with hlt | heq | hgt\n    \u00b7 rw [ins_lt c x l r v hlt]\n      obtain \u27e8iv, ib, ihh, isp, inr\u27e9 := ihl hlbst hbhl hlrp hlnrr\n      have hlx' : \u2200 z \u2208 view (ins l v), z < x := by\n        intro z hz\n        rw [iv] at hz\n        simp only [Set.mem_union, Set.mem_singleton_iff] at hz\n        rcases hz with hz | hz\n        \u00b7 exact hlx z hz\n        \u00b7 omega\n      have hcase : c = Color.Black \u2228 no_rr (ins l v) := by\n        cases c with\n        | Black => exact Or.inl rfl\n        | Red => exact Or.inr (inr (not_red_left_of_no_rr hnrr))\n      obtain \u27e8bv, bb, bhh, bs, bnr\u27e9 :=\n        balL_spec c x (ins l v) r ib hrbst hlx' hrx isp hrrp hrred\n          (by rw [ihh]; exact hbhl) (by rw [ihh]; exact hbheq) hcase\n      refine \u27e8?_, bb, ?_, bs, ?_\u27e9\n      \u00b7 rw [bv, iv]\n        ext z\n        simp only [view, Set.mem_union, Set.mem_singleton_iff]\n        tauto\n      \u00b7 rw [bhh]\n        exact bh_congr_left c x (ins l v) l r ihh\n      \u00b7 intro hc\n        exact bnr (color_black_of hc)\n    \u00b7 rw [ins_eq c x l r v heq]\n      refine \u27e8?_, hbst, rfl, hrp, fun _ => hnrr\u27e9\n      subst heq\n      ext z\n      simp only [view, Set.mem_union, Set.mem_singleton_iff]\n      tauto\n    \u00b7 rw [ins_gt c x l r v hgt]\n      obtain \u27e8iv, ib, ihh, isp, inr\u27e9 :=\n        ihr hrbst (by rw [\u2190 hbheq]; exact hbhl) hrrp hrnrr\n      have hrx' : \u2200 z \u2208 view (ins r v), z > x := by\n        intro z hz\n        rw [iv] at hz\n        simp only [Set.mem_union, Set.mem_singleton_iff] at hz\n        rcases hz with hz | hz\n        \u00b7 exact hrx z hz\n        \u00b7 omega\n      have hcase : c = Color.Black \u2228 is_red l = false := by\n        cases c with\n        | Black => exact Or.inl rfl\n        | Red => exact Or.inr (not_red_left_of_no_rr hnrr)\n      obtain \u27e8bv, bb, bhh, bs, bnr\u27e9 :=\n        balR_spec c x l (ins r v) hlbst ib hlx hrx' hlrp isp hlnrr (inr hrred) hcase\n          hbhl (by rw [ihh]; exact hbheq)\n      refine \u27e8?_, bb, ?_, bs, ?_\u27e9\n      \u00b7 rw [bv, iv]\n        ext z\n        simp only [view, Set.mem_union, Set.mem_singleton_iff]\n        tauto\n      \u00b7 rw [bhh]\n        exact bh_congr_right c x l (ins r v) r ihh\n      \u00b7 intro hc\n        exact bnr (color_black_of hc)\n\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem insert_postcond_satisfied (t : Node) (v : Int)\n    (h_precond : insert_precond t) :\n    insert_postcond t v (insert t v h_precond) h_precond := by\n  -- !benchmark @start proof\n  have hbst : is_bst t := h_precond.1\n  have hbh : black_height t \u2260 -1 := h_precond.2.1\n  have hrp : satisfies_red_props t := h_precond.2.2\n  obtain \u27e8iv, ib, ihh, isp, _\u27e9 :=\n    ins_spec (blacken t) v (bst_blacken t hbst) (bh_blacken t hbh)\n      (srp_blacken t hrp) (no_rr_blacken t)\n  show is_llrbt (blacken (ins (blacken t) v)) \u2227\n    view (blacken (ins (blacken t) v)) = view t \u222a {v}\n  refine \u27e8\u27e8bst_blacken _ ib, ?_, srp_blacken _ isp\u27e9, ?_\u27e9\n  \u00b7 exact bh_blacken _ (by rw [ihh]; exact bh_blacken t hbh)\n  \u00b7 rw [view_blacken, iv, view_blacken]\n  -- !benchmark @end proof\n",
+            "comment": "`LEAN VERIFIED` on check 2/15. Two warnings only (`c` unused in the given `satisfies_red_props`, `h_precond` unused in `insert`), both benign and coming from the unmodified spec.\n\n## What I implemented\n\n**`insert t v = blacken (ins (blacken t) v)`** \u2014 standard Sedgewick left-leaning red-black insertion, split into two rebalancers so each has few cases:\n\n- `balL` (after inserting left): the right child is never red in an LLRBT, so the only possible violation is a red-red left spine \u2192 right-rotate + colour flip.\n- `balR` (after inserting right): a red right child is rotated left; when the left child is also red the rotation degenerates into a pure colour flip.\n\n## The key observation for the invariant\n\n`satisfies_red_props` bans a red *right* child anywhere, and a red left child that itself has a red left child \u2014 but it does **not** ban a node being red with a red left child. That gap is exactly the weaker invariant the recursion needs: `ins` can return such a root, and the parent's rebalancing step is what repairs it.\n\nSo I introduced `no_rr t` (\"t is not red with a red left child\") and proved `ins_spec` by structural induction with five conclusions: the view equation, BST order, *exact* black-height preservation, `satisfies_red_props`, and `is_red t = false \u2192 no_rr (ins t v)`. That last clause is what makes the whole thing go through \u2014 it supplies precisely the hypothesis each rebalancer needs to rule out its bad case.\n\nOne subtlety worth flagging: the precondition permits a red root with a red left child (legal only at the root), and inserting into that configuration would push the colour flip into a black-height-changing state. Hence `blacken` on the way in; blackening only raises black height by one and preserves every other property, and `blacken` on the way out is likewise harmless.\n\nSupporting lemmas cover black-height algebra (`bh_black_eq`, `bh_red_eq`, `bh_inv`, `bh_pos`, congruence under child replacement) and `blacken`. `ins_spec` needed `set_option maxHeartbeats 2000000` \u2014 it's a long single declaration, not a sign of anything pathological."
+        },
+        "verifier_response": {
+            "verified": true,
+            "feedback": "Verified successfully.",
+            "raw": {
+                "stdout": "claude_code_llrbt_insert_final_1786231922804.lean:47:14: warning: unused variable `c`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_insert_final_1786231922804.lean:143:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+                "stderr": "",
+                "returncode": 0
+            }
+        },
+        "history": [
+            {
+                "compiler_pass": 1,
+                "verified": true,
+                "verifier_response": {
+                    "verified": true,
+                    "feedback": "Verified successfully.",
+                    "raw": {
+                        "stdout": "claude_code_llrbt_insert_final_1786231922804.lean:47:14: warning: unused variable `c`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_llrbt_insert_final_1786231922804.lean:143:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+                        "stderr": "",
+                        "returncode": 0
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "ef94c5cb-4065-425f-98da-67211ec00d5f",
+                    "subtype": "success",
+                    "provider_subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 3.06341725,
+                    "duration_ms": 914771,
+                    "duration_api_ms": 868807,
+                    "num_turns": 14,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/llrbt_insert/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "prompt_sha256": "20083347cc2a4ac42c7448c33069d61e9eff11aec16930cc825e2d2a867d21cc",
+                    "budget_usd": null,
+                    "lastdance_profile": "api",
+                    "features": {
+                        "profile": "api",
+                        "algorithm_plan": false,
+                        "lemma_plan": false,
+                        "leansearch": false,
+                        "semantic_audit": false,
+                        "semantic_reminder": false,
+                        "early_check": false,
+                        "feedback_mode": "exact",
+                        "backtracking": false,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": false,
+                            "progress_governor": false,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": false,
+                            "rescue_mode": false
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 62250,
+                        "seconds_to_first_progress": 795.908,
+                        "seconds_to_first_check": 812.221,
+                        "pending_tool_recovery": []
+                    }
+                }
+            }
+        ],
+        "tokens": {
+            "input": 849100,
+            "output": 81285,
+            "reasoning": 0
+        },
+        "agent": {
+            "kind": "claude-code",
+            "cli_version": "2.1.220 (Claude Code)",
+            "model": "claude-opus-5",
+            "effort": "medium",
+            "session_id": "ef94c5cb-4065-425f-98da-67211ec00d5f",
+            "subtype": "success",
+            "provider_subtype": "success",
+            "is_error": false,
+            "total_cost_usd": 3.06341725,
+            "duration_ms": 914771,
+            "duration_api_ms": 868807,
+            "num_turns": 14,
+            "returncode": 0,
+            "timed_out": false,
+            "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/llrbt_insert/agent_events.jsonl",
+            "pass_number": 1,
+            "prompt_kind": "initial",
+            "prompt_sha256": "20083347cc2a4ac42c7448c33069d61e9eff11aec16930cc825e2d2a867d21cc",
+            "budget_usd": null,
+            "lastdance_profile": "api",
+            "features": {
+                "profile": "api",
+                "algorithm_plan": false,
+                "lemma_plan": false,
+                "leansearch": false,
+                "semantic_audit": false,
+                "semantic_reminder": false,
+                "early_check": false,
+                "feedback_mode": "exact",
+                "backtracking": false,
+                "stagnation_threshold": 2
+            },
+            "run_control": {
+                "control": {
+                    "recover_pending_tool": false,
+                    "progress_governor": false,
+                    "pre_edit_timeout_seconds": 300,
+                    "pre_edit_thinking_tokens": 12000,
+                    "post_edit_check_timeout_seconds": 180,
+                    "planning_mode": false,
+                    "diagnostic_wrapper": false,
+                    "rescue_mode": false
+                },
+                "governor_stop_reason": null,
+                "max_thinking_tokens_observed": 62250,
+                "seconds_to_first_progress": 795.908,
+                "seconds_to_first_check": 812.221,
+                "pending_tool_recovery": []
+            },
+            "compiler_passes": 1,
+            "total_sessions": 1,
+            "selected_session": 1,
+            "sessions": [
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "ef94c5cb-4065-425f-98da-67211ec00d5f",
+                    "subtype": "success",
+                    "provider_subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 3.06341725,
+                    "duration_ms": 914771,
+                    "duration_api_ms": 868807,
+                    "num_turns": 14,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/llrbt_insert/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "prompt_sha256": "20083347cc2a4ac42c7448c33069d61e9eff11aec16930cc825e2d2a867d21cc",
+                    "budget_usd": null,
+                    "lastdance_profile": "api",
+                    "features": {
+                        "profile": "api",
+                        "algorithm_plan": false,
+                        "lemma_plan": false,
+                        "leansearch": false,
+                        "semantic_audit": false,
+                        "semantic_reminder": false,
+                        "early_check": false,
+                        "feedback_mode": "exact",
+                        "backtracking": false,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": false,
+                            "progress_governor": false,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": false,
+                            "rescue_mode": false
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 62250,
+                        "seconds_to_first_progress": 795.908,
+                        "seconds_to_first_check": 812.221,
+                        "pending_tool_recovery": []
+                    }
+                }
+            ],
+            "compiler_checks_observed": 2,
+            "max_compiler_checks": 15
+        },
+        "provenance": {
+            "schema_version": 1,
+            "ownership": {
+                "model_owned_sections": [
+                    "auxcode",
+                    "code",
+                    "lemma",
+                    "proof"
+                ],
+                "teacher_owned": "all source outside the four marker regions",
+                "teacher_owned_sorry_present": false,
+                "model_section_ranges": {
+                    "auxcode": {
+                        "start_line": 89,
+                        "end_line": 139
+                    },
+                    "code": {
+                        "start_line": 144,
+                        "end_line": 146
+                    },
+                    "lemma": {
+                        "start_line": 157,
+                        "end_line": 669
+                    },
+                    "proof": {
+                        "start_line": 675,
+                        "end_line": 687
+                    }
+                }
+            },
+            "hashes": {
+                "original_sha256": "f10a8963ffa2188b25fde5dd97262970734fcec7cbd2f41ec4df705065efbd83",
+                "candidate_sha256": "0f3ccb5aa963b2b3f68c5b0960d09f4aff45c7050af7f7c64c68c0569dc58ade",
+                "merged_sha256": "0810b1bb35e35f3fda1cf1c8bcdeb957c32f13e657008fc61519ab3d5b091982",
+                "model_sections_sha256": {
+                    "auxcode": "d9ed78ad8a960641290642016cabac6b8294d517329f1a1badb75d40e4daa7f8",
+                    "code": "b969ef4ec955e55faffd2e293f1c9238a5c699524c18fb9354f35f5260085786",
+                    "lemma": "c2800bd80df7c25345d621767281a644627226fd1f5062dc9a7515c7bca9448e",
+                    "proof": "93aeb400c40cf87261b4df22bb93c9a677c851fc3f389fbe997545104222d862"
+                }
+            }
+        },
+        "targeted_diagnostics": [],
+        "lastdance_artifacts": {
+            "ledger": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/llrbt_insert/.lastdance/run_ledger.jsonl",
+            "algorithm_plan": null,
+            "proof_state": null,
+            "leansearch_queries": null,
+            "checkpoints": null,
+            "prompts": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/llrbt_insert/.lastdance/prompts"
+        }
+    },
+    "parsed": true,
+    "verdict": true,
+    "analysis": "The student\u2019s submission does implement an insertion algorithm for a Left-Leaning Red-Black Tree rather than using a library function or an obviously vacuous/trivial implementation.\n\nKey points:\n\n1. **Actual algorithm present**\n   - The student defines a tree type with colors (`Red`, `Black`) and nodes.\n   - They implement recursive insertion via `ins`.\n   - They implement explicit balancing helpers `balL` and `balR`.\n   - The top-level `insert` is `blacken (ins (blacken t) v)`, which is a standard-style approach for red-black insertion where recursive insertion may temporarily produce a red root and the final root is blackened.\n\n2. **Matches the required LLRBT-style insertion approach**\n   - The natural language asks specifically for insertion for a Left-Leaning Red-Black Tree, preserving:\n     - BST ordering,\n     - black-height validity,\n     - no red right child,\n     - no red node with red child / left-leaning red discipline.\n   - The student\u2019s balancing logic is clearly aimed at LLRBT invariants:\n     - `balL` repairs a red-red left spine.\n     - `balR` repairs a red right child by rotating/transforming.\n   - Their predicates `satisfies_red_props` and `is_llrbt` encode the intended left-leaning/no-right-red discipline used by the scaffold.\n\n3. **No cheating**\n   - No `sorry`, `admit`, or placeholder bodies appear in the student-owned regions.\n   - They do not call a built-in balanced-tree insertion routine.\n   - The implementation is not empty or degenerate.\n   - The proof is substantial and tied to the implementation.\n\n4. **Semantic fit to the problem**\n   - The algorithm is not some other set-insertion implementation disguised as a tree.\n   - It is genuinely a red-black-tree insertion with local rebalancing.\n   - The final theorem proves the required postcondition shape: resulting tree satisfies `is_llrbt` and its `view` is the original set union `{v}`.\n\n5. **Minor note**\n   - The natural language says the root of the resulting subtree may be red. The student\u2019s final `insert` blackens the root, which is stronger than necessary, not weaker. That does not violate the requested algorithm; it is a standard acceptable choice for top-level insertion.\n\nOverall, the student appears to have implemented the requested LLRBT insertion algorithm from scratch and verified it, without cheating.",
+    "semantic_judge": {
+        "model": "gpt-5.4",
+        "temperature": 0.0,
+        "reasoning_effort": "medium",
+        "provenance_aware": true
+    }
+}

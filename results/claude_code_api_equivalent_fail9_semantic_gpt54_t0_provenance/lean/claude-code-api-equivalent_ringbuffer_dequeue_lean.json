@@ -1,0 +1,259 @@
+{
+    "verified": true,
+    "details": {
+        "rounds": 8,
+        "llm_response": {
+            "code": "import Mathlib\n\nstructure RingBuffer (T : Type) where\n  capacity : Nat\n  view : List T\n\ndef RingBuffer.is_valid {T} (rb : RingBuffer T) : Prop :=\n  rb.capacity > 0 \u2227 rb.view.length \u2264 rb.capacity\n\n-- Precondition definitions\n@[reducible, simp]\ndef dequeue_precond {T} (rb : RingBuffer T) : Prop :=\n  -- !benchmark @start precond\n  rb.is_valid \u2227 rb.view.length > 0\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n-- !benchmark @end auxcode\n\n-- Main function definition\n-- Returns (value, new_ringbuffer)\ndef dequeue {T} (rb : RingBuffer T)\n    (h_precond : dequeue_precond rb) : T \u00d7 RingBuffer T :=\n  -- !benchmark @start code\n  (rb.view.head (List.ne_nil_of_length_pos h_precond.2),\n   { capacity := rb.capacity, view := rb.view.tail })\n  -- !benchmark @end code\n\n-- Postcondition definitions\n@[reducible, simp]\ndef dequeue_postcond {T} (rb : RingBuffer T) (result : T \u00d7 RingBuffer T)\n    (_ : dequeue_precond rb) : Prop :=\n  -- !benchmark @start postcond\n  let (val, new_rb) := result\n  new_rb.is_valid \u2227\n  new_rb.capacity = rb.capacity \u2227\n  -- Concise & Proof-Free: Old view is (val :: new_view)\n  rb.view = val :: new_rb.view\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem dequeue_postcond_satisfied {T} (rb : RingBuffer T)\n    (h_precond : dequeue_precond rb) :\n    dequeue_postcond rb (dequeue rb h_precond) h_precond := by\n  -- !benchmark @start proof\n  obtain \u27e8\u27e8hcap, hlen\u27e9, hpos\u27e9 := h_precond\n  have hne : rb.view \u2260 [] := List.ne_nil_of_length_pos hpos\n  refine \u27e8\u27e8hcap, ?_\u27e9, rfl, ?_\u27e9\n  \u00b7 exact le_trans (by simp [List.length_tail]) hlen\n  \u00b7 exact (List.cons_head_tail hne).symm\n  -- !benchmark @end proof\n",
+            "comment": "`Solution.lean` compiles cleanly with no warnings, no `sorry`.\n\n**Approach**\n\n- **Implementation** (`code` region): the front element is `rb.view.head`, whose non-emptiness proof comes straight from the precondition `rb.view.length > 0` via `List.ne_nil_of_length_pos`. The new buffer keeps `capacity` and takes `rb.view.tail` as its view \u2014 no dependent pattern match needed, which keeps the definition transparent to the proof.\n\n- **Proof** (`proof` region): destructure the precondition into `capacity > 0`, `length \u2264 capacity`, and `length > 0`, then discharge the three conjuncts:\n  - validity: capacity is unchanged, and `(tail).length \u2264 view.length \u2264 capacity`;\n  - capacity preservation: `rfl`, since the field is copied verbatim;\n  - view structure: `List.cons_head_tail`, i.e. `head :: tail = view`, reversed.\n\nThe `auxcode` and `lemma` regions stayed empty; everything outside the four marker regions is untouched."
+        },
+        "verifier_response": {
+            "verified": true,
+            "feedback": "Verified successfully.",
+            "raw": {
+                "stdout": "",
+                "stderr": "",
+                "returncode": 0
+            }
+        },
+        "history": [
+            {
+                "compiler_pass": 1,
+                "verified": true,
+                "verifier_response": {
+                    "verified": true,
+                    "feedback": "Verified successfully.",
+                    "raw": {
+                        "stdout": "",
+                        "stderr": "",
+                        "returncode": 0
+                    }
+                },
+                "agent": {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "39cbcb85-4198-45e1-b590-0abbf37fd301",
+                    "subtype": "success",
+                    "provider_subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.16222900000000004,
+                    "duration_ms": 42426,
+                    "duration_api_ms": 33713,
+                    "num_turns": 9,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/ringbuffer_dequeue/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "prompt_sha256": "d940f6bd5f8747ce9968e7a844bdfe8c7f2b40a006e6e84bb2b3f2c3681d7e3e",
+                    "budget_usd": null,
+                    "lastdance_profile": "api",
+                    "features": {
+                        "profile": "api",
+                        "algorithm_plan": false,
+                        "lemma_plan": false,
+                        "leansearch": false,
+                        "semantic_audit": false,
+                        "semantic_reminder": false,
+                        "early_check": false,
+                        "feedback_mode": "exact",
+                        "backtracking": false,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": false,
+                            "progress_governor": false,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": false,
+                            "rescue_mode": false
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 350,
+                        "seconds_to_first_progress": 12.959,
+                        "seconds_to_first_check": 26.409,
+                        "pending_tool_recovery": []
+                    }
+                }
+            }
+        ],
+        "tokens": {
+            "input": 91864,
+            "output": 2298,
+            "reasoning": 0
+        },
+        "agent": {
+            "kind": "claude-code",
+            "cli_version": "2.1.220 (Claude Code)",
+            "model": "claude-opus-5",
+            "effort": "medium",
+            "session_id": "39cbcb85-4198-45e1-b590-0abbf37fd301",
+            "subtype": "success",
+            "provider_subtype": "success",
+            "is_error": false,
+            "total_cost_usd": 0.16222900000000004,
+            "duration_ms": 42426,
+            "duration_api_ms": 33713,
+            "num_turns": 9,
+            "returncode": 0,
+            "timed_out": false,
+            "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/ringbuffer_dequeue/agent_events.jsonl",
+            "pass_number": 1,
+            "prompt_kind": "initial",
+            "prompt_sha256": "d940f6bd5f8747ce9968e7a844bdfe8c7f2b40a006e6e84bb2b3f2c3681d7e3e",
+            "budget_usd": null,
+            "lastdance_profile": "api",
+            "features": {
+                "profile": "api",
+                "algorithm_plan": false,
+                "lemma_plan": false,
+                "leansearch": false,
+                "semantic_audit": false,
+                "semantic_reminder": false,
+                "early_check": false,
+                "feedback_mode": "exact",
+                "backtracking": false,
+                "stagnation_threshold": 2
+            },
+            "run_control": {
+                "control": {
+                    "recover_pending_tool": false,
+                    "progress_governor": false,
+                    "pre_edit_timeout_seconds": 300,
+                    "pre_edit_thinking_tokens": 12000,
+                    "post_edit_check_timeout_seconds": 180,
+                    "planning_mode": false,
+                    "diagnostic_wrapper": false,
+                    "rescue_mode": false
+                },
+                "governor_stop_reason": null,
+                "max_thinking_tokens_observed": 350,
+                "seconds_to_first_progress": 12.959,
+                "seconds_to_first_check": 26.409,
+                "pending_tool_recovery": []
+            },
+            "compiler_passes": 1,
+            "total_sessions": 1,
+            "selected_session": 1,
+            "sessions": [
+                {
+                    "kind": "claude-code",
+                    "cli_version": "2.1.220 (Claude Code)",
+                    "model": "claude-opus-5",
+                    "effort": "medium",
+                    "session_id": "39cbcb85-4198-45e1-b590-0abbf37fd301",
+                    "subtype": "success",
+                    "provider_subtype": "success",
+                    "is_error": false,
+                    "total_cost_usd": 0.16222900000000004,
+                    "duration_ms": 42426,
+                    "duration_api_ms": 33713,
+                    "num_turns": 9,
+                    "returncode": 0,
+                    "timed_out": false,
+                    "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/ringbuffer_dequeue/agent_events.jsonl",
+                    "pass_number": 1,
+                    "prompt_kind": "initial",
+                    "prompt_sha256": "d940f6bd5f8747ce9968e7a844bdfe8c7f2b40a006e6e84bb2b3f2c3681d7e3e",
+                    "budget_usd": null,
+                    "lastdance_profile": "api",
+                    "features": {
+                        "profile": "api",
+                        "algorithm_plan": false,
+                        "lemma_plan": false,
+                        "leansearch": false,
+                        "semantic_audit": false,
+                        "semantic_reminder": false,
+                        "early_check": false,
+                        "feedback_mode": "exact",
+                        "backtracking": false,
+                        "stagnation_threshold": 2
+                    },
+                    "run_control": {
+                        "control": {
+                            "recover_pending_tool": false,
+                            "progress_governor": false,
+                            "pre_edit_timeout_seconds": 300,
+                            "pre_edit_thinking_tokens": 12000,
+                            "post_edit_check_timeout_seconds": 180,
+                            "planning_mode": false,
+                            "diagnostic_wrapper": false,
+                            "rescue_mode": false
+                        },
+                        "governor_stop_reason": null,
+                        "max_thinking_tokens_observed": 350,
+                        "seconds_to_first_progress": 12.959,
+                        "seconds_to_first_check": 26.409,
+                        "pending_tool_recovery": []
+                    }
+                }
+            ],
+            "compiler_checks_observed": 2,
+            "max_compiler_checks": 15
+        },
+        "provenance": {
+            "schema_version": 1,
+            "ownership": {
+                "model_owned_sections": [
+                    "auxcode",
+                    "code",
+                    "lemma",
+                    "proof"
+                ],
+                "teacher_owned": "all source outside the four marker regions",
+                "teacher_owned_sorry_present": false,
+                "model_section_ranges": {
+                    "auxcode": {
+                        "start_line": 17,
+                        "end_line": 18
+                    },
+                    "code": {
+                        "start_line": 24,
+                        "end_line": 27
+                    },
+                    "lemma": {
+                        "start_line": 41,
+                        "end_line": 42
+                    },
+                    "proof": {
+                        "start_line": 48,
+                        "end_line": 54
+                    }
+                }
+            },
+            "hashes": {
+                "original_sha256": "ec9f8d1b08e30f5fd16f71c6de945f9c628e70c20922de46aae9738d06f45352",
+                "candidate_sha256": "27a8ff1210e3f37a394f17dea94efe727a73e5234e98b748bf3d6edcceb5bcca",
+                "merged_sha256": "27a8ff1210e3f37a394f17dea94efe727a73e5234e98b748bf3d6edcceb5bcca",
+                "model_sections_sha256": {
+                    "auxcode": "d0f4cdbd7feed725da2af2930e2972df069acc685343c14a4ffcca7a8f88b371",
+                    "code": "57b12a76460727d43a7de9f5271dc9f22685614d4b7b39dd02aa0a3ba4829817",
+                    "lemma": "c4a00fdeeaea16ecb54620d7ccdf35c574b7bc40f94254ddd403472aa18f7440",
+                    "proof": "379df9b9e1b847cbcc4b0414221694552bf011ba0fd8ce0ac9b264c598f596d4"
+                }
+            }
+        },
+        "targeted_diagnostics": [],
+        "lastdance_artifacts": {
+            "ledger": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/ringbuffer_dequeue/.lastdance/run_ledger.jsonl",
+            "algorithm_plan": null,
+            "proof_state": null,
+            "leansearch_queries": null,
+            "checkpoints": null,
+            "prompts": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/ringbuffer_dequeue/.lastdance/prompts"
+        }
+    },
+    "parsed": true,
+    "verdict": true,
+    "analysis": "The student\u2019s implementation does satisfy the semantic requirements of the natural language task.\n\nWhat the task requires:\n1. Implement dequeue for a ring buffer.\n2. Return the element at the logical front (index 0 of the model view).\n3. Update the structure so the new model view is the old tail, preserving order.\n4. Keep capacity unchanged.\n5. No cheating tricks like `sorry`, empty implementation, or delegating to an unrelated built-in queue operation.\n\nWhat the student implemented:\n- `dequeue_precond` requires the buffer to be valid and nonempty.\n- `dequeue` returns:\n  - the head of `rb.view`\n  - a new ring buffer with:\n    - same `capacity`\n    - `view := rb.view.tail`\n\nThis matches the intended logical dequeue behavior exactly:\n- returned element = front of logical sequence (`head`)\n- remaining sequence = old sequence without first element (`tail`)\n- relative order of remaining elements is preserved by `List.tail`\n- capacity is unchanged\n\nAbout the ring-buffer aspect:\n- The teacher scaffold models the ring buffer only with `capacity` and `view`; there is no explicit underlying array or head pointer in the provided structure.\n- So the student cannot be expected to implement physical pointer movement. Relative to the provided model/specification, using `view.head` and `view.tail` is the correct logical dequeue operation.\n\nAbout cheating:\n- No `sorry`, `admit`, or placeholder body appears in the student-owned regions.\n- The function body is nontrivial and directly implements dequeue.\n- It does not call some external queue library operation to avoid the task.\n- The proof also appears genuine and aligned with the implementation.\n\nSo semantically, the student implemented the required dequeue behavior on the provided ring-buffer model.",
+    "semantic_judge": {
+        "model": "gpt-5.4",
+        "temperature": 0.0,
+        "reasoning_effort": "medium",
+        "provenance_aware": true
+    }
+}

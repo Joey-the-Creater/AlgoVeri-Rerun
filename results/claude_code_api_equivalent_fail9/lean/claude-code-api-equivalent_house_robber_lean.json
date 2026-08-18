@@ -1,0 +1,250 @@
+{
+  "verified": true,
+  "details": {
+    "rounds": 10,
+    "llm_response": {
+      "code": "import Mathlib\n\ndef seq_u64_to_int (xs : List Nat) : List Nat := xs\n\ndef is_valid_robbery (houses : List Nat) (len : Nat) : Prop :=\n  (\u2200 i, i < houses.length \u2192 houses.getD i 0 < len) \u2227\n  (\u2200 i, i < houses.length - 1 \u2192 houses.getD (i+1) 0 \u2265 houses.getD i 0 + 2)\n\ndef total_loot (houses : List Nat) (values : List Nat) : Nat :=\n  houses.foldl (fun acc i => acc + values.getD i 0) 0\n\n-- Precondition definition\n@[simp, reducible]\ndef rob_precond (nums : List Nat) : Prop :=\n  -- !benchmark @start precond\n  nums.length \u2264 100 \u2227\n  \u2200 i, i < nums.length \u2192 nums.getD i 0 \u2264 10000\n  -- !benchmark @end precond\n\n-- !benchmark @start auxcode\n/-- `(robPair l).1` : best loot on `l` when index `0` **is** robbed.\n    `(robPair l).2` : best loot on `l` when index `0` is **not** robbed. -/\ndef robPair : List Nat \u2192 Nat \u00d7 Nat\n  | [] => (0, 0)\n  | a :: rest => (a + (robPair rest).2, max (robPair rest).1 (robPair rest).2)\n\ndef robAux (l : List Nat) : Nat := max (robPair l).1 (robPair l).2\n-- !benchmark @end auxcode\n\n-- Main function (dynamic programming solution)\ndef rob (nums : List Nat) (h_precond : rob_precond nums) : Nat :=\n  -- !benchmark @start code\n  robAux nums\n  -- !benchmark @end code\n\n-- Postcondition definition\n@[simp, reducible]\ndef rob_postcond (nums : List Nat) (result : Nat) (h_precond : rob_precond nums) : Prop :=\n  -- !benchmark @start postcond\n  (\u2200 houses : List Nat,\n      is_valid_robbery houses nums.length \u2192\n        total_loot houses (seq_u64_to_int nums) \u2264 result) \u2227\n    (\u2203 houses : List Nat,\n        is_valid_robbery houses nums.length \u2227\n          total_loot houses (seq_u64_to_int nums) = result)\n  -- !benchmark @end postcond\n\n-- !benchmark @start lemma\n\n/-! ### `total_loot` as a sum of a map -/\n\nlemma foldl_loot (l : List Nat) (v : List Nat) (a : Nat) :\n    l.foldl (fun acc i => acc + v.getD i 0) a = a + (l.map (fun i => v.getD i 0)).sum := by\n  induction l generalizing a with\n  | nil => simp\n  | cons x xs ih => simp only [List.foldl_cons, List.map_cons, List.sum_cons, ih]; omega\n\nlemma total_loot_eq (l v : List Nat) :\n    total_loot l v = (l.map (fun i => v.getD i 0)).sum := by\n  unfold total_loot\n  rw [foldl_loot, Nat.zero_add]\n\n/-! ### `is_valid_robbery` in structural form -/\n\nlemma mem_iff_getD (l : List Nat) (n : Nat) :\n    (\u2200 i, i < l.length \u2192 l.getD i 0 < n) \u2194 \u2200 x \u2208 l, x < n := by\n  constructor\n  \u00b7 intro H x hx\n    obtain \u27e8i, hi, rfl\u27e9 := List.mem_iff_getElem.mp hx\n    have := H i hi\n    rwa [List.getD_eq_getElem _ _ hi] at this\n  \u00b7 intro H i hi\n    rw [List.getD_eq_getElem _ _ hi]\n    exact H _ (List.getElem_mem hi)\n\nlemma pairwise_head_le {c : Nat} {cs : List Nat}\n    (hp : (c :: cs).Pairwise (fun x y => x + 2 \u2264 y)) : \u2200 y \u2208 c :: cs, c \u2264 y := by\n  intro y hy\n  rcases List.mem_cons.mp hy with h | h\n  \u00b7 omega\n  \u00b7 have := (List.pairwise_cons.mp hp).1 y h; omega\n\nlemma adj_iff (l : List Nat) :\n    (\u2200 i, i < l.length - 1 \u2192 l.getD (i+1) 0 \u2265 l.getD i 0 + 2) \u2194\n      l.Pairwise (fun x y => x + 2 \u2264 y) := by\n  induction l with\n  | nil => simp\n  | cons x xs ih =>\n    constructor\n    \u00b7 intro H\n      have hxs : xs.Pairwise (fun x y => x + 2 \u2264 y) := by\n        apply ih.mp\n        intro i hi\n        have h := H (i + 1) (by simp; omega)\n        simpa using h\n      refine List.pairwise_cons.mpr \u27e8?_, hxs\u27e9\n      cases xs with\n      | nil => simp\n      | cons c cs =>\n        have h0 := H 0 (by simp)\n        simp only [List.getD_cons_zero, List.getD_cons_succ] at h0\n        intro y hy\n        have := pairwise_head_le hxs y hy\n        omega\n    \u00b7 intro H\n      obtain \u27e8h1, h2\u27e9 := List.pairwise_cons.mp H\n      have hxs := ih.mpr h2\n      intro i hi\n      simp only [List.length_cons, Nat.add_sub_cancel] at hi\n      cases i with\n      | zero =>\n        cases xs with\n        | nil => simp at hi\n        | cons c cs =>\n          have := h1 c (by simp)\n          simpa using this\n      | succ j =>\n        have := hxs j (by omega)\n        simpa using this\n\nlemma valid_iff (l : List Nat) (n : Nat) :\n    is_valid_robbery l n \u2194 ((\u2200 x \u2208 l, x < n) \u2227 l.Pairwise (fun x y => x + 2 \u2264 y)) := by\n  simp only [is_valid_robbery, mem_iff_getD, adj_iff]\n\n/-! ### Index shifting -/\n\nlemma getD_drop (k : Nat) : \u2200 (l : List Nat) (i : Nat),\n    (l.drop k).getD i 0 = l.getD (i + k) 0 := by\n  induction k with\n  | zero => intro l i; simp\n  | succ k ih =>\n    intro l i\n    cases l with\n    | nil => simp\n    | cons x xs =>\n      rw [List.drop_succ_cons, ih xs i]\n      have h : i + (k + 1) = (i + k) + 1 := by omega\n      rw [h, List.getD_cons_succ]\n\nlemma sum_shift (l : List Nat) (k : Nat) (nums : List Nat) :\n    ((l.map (fun x => x + k)).map (fun i => nums.getD i 0)).sum\n      = (l.map (fun i => (nums.drop k).getD i 0)).sum := by\n  induction l with\n  | nil => simp\n  | cons x xs ih => simp only [List.map_cons, List.sum_cons, ih, getD_drop]\n\nlemma map_sub_add (k : Nat) (l : List Nat) (hk : \u2200 x \u2208 l, k \u2264 x) :\n    (l.map (fun x => x - k)).map (fun x => x + k) = l := by\n  induction l with\n  | nil => simp\n  | cons x xs ih =>\n    simp only [List.map_cons]\n    rw [ih (fun y hy => hk y (by simp [hy]))]\n    have := hk x (by simp)\n    congr 1\n    omega\n\nlemma shift_up (nums : List Nat) (k : Nat) (l : List Nat)\n    (hlt : \u2200 x \u2208 l, x < (nums.drop k).length)\n    (hp : l.Pairwise (fun x y => x + 2 \u2264 y)) :\n    (\u2200 x \u2208 l.map (fun x => x + k), x < nums.length) \u2227\n    (l.map (fun x => x + k)).Pairwise (fun x y => x + 2 \u2264 y) \u2227\n    ((l.map (fun x => x + k)).map (fun i => nums.getD i 0)).sum\n      = (l.map (fun i => (nums.drop k).getD i 0)).sum := by\n  refine \u27e8?_, ?_, sum_shift l k nums\u27e9\n  \u00b7 intro x hx\n    simp only [List.mem_map] at hx\n    obtain \u27e8y, hy, rfl\u27e9 := hx\n    have h := hlt y hy\n    simp only [List.length_drop] at h\n    omega\n  \u00b7 rw [List.pairwise_map]\n    exact hp.imp (by intro a b h; omega)\n\nlemma shift_down (nums : List Nat) (k : Nat) (l : List Nat)\n    (hk : \u2200 x \u2208 l, k \u2264 x)\n    (hlt : \u2200 x \u2208 l, x < nums.length)\n    (hp : l.Pairwise (fun x y => x + 2 \u2264 y)) :\n    \u2203 l' : List Nat, (\u2200 x \u2208 l', x < (nums.drop k).length) \u2227\n      l'.Pairwise (fun x y => x + 2 \u2264 y) \u2227\n      (l.map (fun i => nums.getD i 0)).sum\n        = (l'.map (fun i => (nums.drop k).getD i 0)).sum := by\n  refine \u27e8l.map (fun x => x - k), ?_, ?_, ?_\u27e9\n  \u00b7 intro x hx\n    simp only [List.mem_map] at hx\n    obtain \u27e8y, hy, rfl\u27e9 := hx\n    have h1 := hk y hy\n    have h2 := hlt y hy\n    simp only [List.length_drop]\n    omega\n  \u00b7 rw [List.pairwise_map]\n    refine hp.imp_of_mem ?_\n    intro a b ha hb h\n    have := hk a ha\n    have := hk b hb\n    omega\n  \u00b7 have hl := map_sub_add k l hk\n    calc (l.map (fun i => nums.getD i 0)).sum\n        = (((l.map (fun x => x - k)).map (fun x => x + k)).map\n            (fun i => nums.getD i 0)).sum := by rw [hl]\n      _ = _ := sum_shift _ k nums\n\n/-! ### Unfolding the DP -/\n\nlemma robPair_snd (l : List Nat) : (robPair l).2 = robAux (l.drop 1) := by\n  cases l with\n  | nil => simp [robPair, robAux]\n  | cons a rest => simp [robPair, robAux]\n\nlemma robAux_cons (a : Nat) (rest : List Nat) :\n    robAux (a :: rest) = max (a + robAux (rest.drop 1)) (robAux rest) := by\n  have h : (robPair rest).2 = robAux (rest.drop 1) := robPair_snd rest\n  simp only [robAux, robPair, h]\n\nlemma robAux_nil : robAux [] = 0 := by simp [robAux, robPair]\n\n/-! ### Optimality and achievability -/\n\nlemma nil_of_lt_zero (l : List Nat) (h : \u2200 x \u2208 l, x < 0) : l = [] := by\n  cases l with\n  | nil => rfl\n  | cons x xs => exact absurd (h x (by simp)) (by omega)\n\nlemma robAux_ge : \u2200 (n : Nat) (nums : List Nat), nums.length \u2264 n \u2192 \u2200 (l : List Nat),\n    (\u2200 x \u2208 l, x < nums.length) \u2192 l.Pairwise (fun x y => x + 2 \u2264 y) \u2192\n    (l.map (fun i => nums.getD i 0)).sum \u2264 robAux nums := by\n  intro n\n  induction n with\n  | zero =>\n    intro nums hn l hlt hp\n    cases nums with\n    | nil =>\n      rw [nil_of_lt_zero l (by simpa using hlt)]\n      simp [robAux_nil]\n    | cons a r => simp at hn\n  | succ n ih =>\n    intro nums hn l hlt hp\n    cases nums with\n    | nil =>\n      rw [nil_of_lt_zero l (by simpa using hlt)]\n      simp [robAux_nil]\n    | cons a rest =>\n      cases l with\n      | nil => simp\n      | cons h t =>\n        obtain \u27e8hht, hpt\u27e9 := List.pairwise_cons.mp hp\n        rw [robAux_cons]\n        by_cases h0 : h = 0\n        \u00b7 subst h0\n          have hk : \u2200 x \u2208 t, 2 \u2264 x := by\n            intro x hx; have := hht x hx; omega\n          have hlt' : \u2200 x \u2208 t, x < (a :: rest).length :=\n            fun x hx => hlt x (by simp [hx])\n          obtain \u27e8t', hb, hpp, hsum\u27e9 := shift_down (a :: rest) 2 t hk hlt' hpt\n          have hdrop : (a :: rest).drop 2 = rest.drop 1 := by\n            rw [List.drop_succ_cons]\n          rw [hdrop] at hb hsum\n          have hlen : (rest.drop 1).length \u2264 n := by\n            simp only [List.length_drop]\n            simp only [List.length_cons] at hn\n            omega\n          have := ih (rest.drop 1) hlen t' hb hpp\n          simp only [List.map_cons, List.sum_cons, List.getD_cons_zero]\n          rw [hsum]\n          omega\n        \u00b7 have hk : \u2200 x \u2208 (h :: t), 1 \u2264 x := by\n            intro x hx\n            rcases List.mem_cons.mp hx with rfl | hx\n            \u00b7 omega\n            \u00b7 have := hht x hx; omega\n          obtain \u27e8l', hb, hpp, hsum\u27e9 := shift_down (a :: rest) 1 (h :: t) hk hlt hp\n          have hdrop : (a :: rest).drop 1 = rest := by\n            rw [List.drop_succ_cons, List.drop_zero]\n          rw [hdrop] at hb hsum\n          have hlen : rest.length \u2264 n := by\n            simp only [List.length_cons] at hn; omega\n          have := ih rest hlen l' hb hpp\n          rw [hsum]\n          omega\n\nlemma robAux_ex : \u2200 (n : Nat) (nums : List Nat), nums.length \u2264 n \u2192\n    \u2203 l : List Nat, (\u2200 x \u2208 l, x < nums.length) \u2227\n      l.Pairwise (fun x y => x + 2 \u2264 y) \u2227\n      (l.map (fun i => nums.getD i 0)).sum = robAux nums := by\n  intro n\n  induction n with\n  | zero =>\n    intro nums hn\n    cases nums with\n    | nil => exact \u27e8[], by simp, by simp, by simp [robAux_nil]\u27e9\n    | cons a r => simp at hn\n  | succ n ih =>\n    intro nums hn\n    cases nums with\n    | nil => exact \u27e8[], by simp, by simp, by simp [robAux_nil]\u27e9\n    | cons a rest =>\n      have hdrop1 : (a :: rest).drop 1 = rest := by\n        rw [List.drop_succ_cons, List.drop_zero]\n      have hdrop2 : (a :: rest).drop 2 = rest.drop 1 := by\n        rw [List.drop_succ_cons]\n      have hlen1 : rest.length \u2264 n := by\n        simp only [List.length_cons] at hn; omega\n      have hlen2 : (rest.drop 1).length \u2264 n := by\n        simp only [List.length_drop]; omega\n      rcases le_total (a + robAux (rest.drop 1)) (robAux rest) with hcase | hcase\n      \u00b7 obtain \u27e8l\u2080, hb, hpp, hsum\u27e9 := ih rest hlen1\n        rw [\u2190 hdrop1] at hb hsum\n        obtain \u27e8q1, q2, q3\u27e9 := shift_up (a :: rest) 1 l\u2080 hb hpp\n        refine \u27e8l\u2080.map (fun x => x + 1), q1, q2, ?_\u27e9\n        rw [q3, hsum, hdrop1, robAux_cons, max_eq_right hcase]\n      \u00b7 obtain \u27e8l\u2080, hb, hpp, hsum\u27e9 := ih (rest.drop 1) hlen2\n        rw [\u2190 hdrop2] at hb hsum\n        obtain \u27e8q1, q2, q3\u27e9 := shift_up (a :: rest) 2 l\u2080 hb hpp\n        refine \u27e80 :: l\u2080.map (fun x => x + 2), ?_, ?_, ?_\u27e9\n        \u00b7 intro x hx\n          rcases List.mem_cons.mp hx with rfl | hx\n          \u00b7 simp\n          \u00b7 exact q1 x hx\n        \u00b7 refine List.pairwise_cons.mpr \u27e8?_, q2\u27e9\n          intro y hy\n          simp only [List.mem_map] at hy\n          obtain \u27e8z, _, rfl\u27e9 := hy\n          omega\n        \u00b7 simp only [List.map_cons, List.sum_cons, List.getD_cons_zero]\n          rw [q3, hsum, hdrop2, robAux_cons, max_eq_left hcase]\n-- !benchmark @end lemma\n\n-- Proof that the implementation satisfies the postcondition\ntheorem rob_postcond_satisfied (nums : List Nat) (h_precond : rob_precond nums) :\n    rob_postcond nums (rob nums h_precond) h_precond := by\n  -- !benchmark @start proof\n  simp only [rob_postcond, rob, seq_u64_to_int]\n  constructor\n  \u00b7 intro houses hv\n    rw [total_loot_eq]\n    rw [valid_iff] at hv\n    exact robAux_ge nums.length nums le_rfl houses hv.1 hv.2\n  \u00b7 obtain \u27e8l, h1, h2, h3\u27e9 := robAux_ex nums.length nums le_rfl\n    exact \u27e8l, (valid_iff l nums.length).mpr \u27e8h1, h2\u27e9, by rw [total_loot_eq]; exact h3\u27e9\n  -- !benchmark @end proof\n",
+      "comment": "`LEAN VERIFIED` \u2014 the proof compiles with no errors (only two `unused variable h_precond` warnings, which come from the given skeleton's signatures, since the precondition isn't needed for correctness here).\n\n**What I did**\n\n*Implementation* (`auxcode` + `code`):\n- `robPair : List Nat \u2192 Nat \u00d7 Nat` \u2014 structurally recursive DP returning `(best loot when index 0 is robbed, best loot when index 0 is skipped)`.\n- `robAux l = max (robPair l).1 (robPair l).2`, and `rob nums _ = robAux nums`.\n\n*Key lemmas* (`lemma` section):\n- `total_loot_eq` \u2014 rewrites the `foldl` into `(l.map (v.getD \u00b7 0)).sum`.\n- `valid_iff` \u2014 `is_valid_robbery houses n \u2194 (\u2200 x \u2208 houses, x < n) \u2227 houses.Pairwise (\u00b7 + 2 \u2264 \u00b7)`. This is the crux: it converts the index-based conditions (`getD i 0` / `getD (i+1) 0`) into a structural form usable by list induction (proved via `mem_iff_getD` and `adj_iff`).\n- `getD_drop`, `sum_shift`, `shift_up`, `shift_down` \u2014 relate valid robbery plans for `nums` with plans for `nums.drop k`, shifting indices by `k` and preserving both validity and loot.\n- `robAux_cons : robAux (a :: rest) = max (a + robAux (rest.drop 1)) (robAux rest)` \u2014 the DP recurrence in the form the induction needs.\n- `robAux_ge` (optimality) and `robAux_ex` (achievability), both by induction on a bound `n` on `nums.length`. In `robAux_ge`, a plan `h :: t` splits on `h = 0` (shift the tail down by 2 into `rest.drop 1`) versus `h \u2265 1` (shift everything down by 1 into `rest`); `robAux_ex` builds the witness by shifting an IH witness up by 1 or by 2 and prepending `0`.\n\n*Proof section*: combines `valid_iff` + `total_loot_eq` with the two lemmas.\n\nEverything outside the four marker regions is unchanged, and there is no `sorry`/`axiom`/`partial`/`native_decide`-style bypass."
+    },
+    "verifier_response": {
+      "verified": true,
+      "feedback": "Verified successfully.",
+      "raw": {
+        "stdout": "claude_code_house_robber_final_1786244297700.lean:31:27: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_house_robber_final_1786244297700.lean:38:51: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+        "stderr": "",
+        "returncode": 0
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": true,
+        "verifier_response": {
+          "verified": true,
+          "feedback": "Verified successfully.",
+          "raw": {
+            "stdout": "claude_code_house_robber_final_1786244297700.lean:31:27: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_house_robber_final_1786244297700.lean:38:51: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\n",
+            "stderr": "",
+            "returncode": 0
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "7a84af80-d05d-4c94-b67b-080b4e80c2ec",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 1.1670472499999998,
+          "duration_ms": 350869,
+          "duration_api_ms": 341047,
+          "num_turns": 11,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/house_robber/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "e07bd74aad244bc089fa101591e541f31dde093cb8bfdd0c3049019de3576739",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 21850,
+            "seconds_to_first_progress": 290.383,
+            "seconds_to_first_check": 298.028,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 190317,
+      "output": 32972,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "7a84af80-d05d-4c94-b67b-080b4e80c2ec",
+      "subtype": "success",
+      "provider_subtype": "success",
+      "is_error": false,
+      "total_cost_usd": 1.1670472499999998,
+      "duration_ms": 350869,
+      "duration_api_ms": 341047,
+      "num_turns": 11,
+      "returncode": 0,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/house_robber/agent_events.jsonl",
+      "pass_number": 1,
+      "prompt_kind": "initial",
+      "prompt_sha256": "e07bd74aad244bc089fa101591e541f31dde093cb8bfdd0c3049019de3576739",
+      "budget_usd": null,
+      "lastdance_profile": "api",
+      "features": {
+        "profile": "api",
+        "algorithm_plan": false,
+        "lemma_plan": false,
+        "leansearch": false,
+        "semantic_audit": false,
+        "semantic_reminder": false,
+        "early_check": false,
+        "feedback_mode": "exact",
+        "backtracking": false,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": false,
+          "progress_governor": false,
+          "pre_edit_timeout_seconds": 300,
+          "pre_edit_thinking_tokens": 12000,
+          "post_edit_check_timeout_seconds": 180,
+          "planning_mode": false,
+          "diagnostic_wrapper": false,
+          "rescue_mode": false
+        },
+        "governor_stop_reason": null,
+        "max_thinking_tokens_observed": 21850,
+        "seconds_to_first_progress": 290.383,
+        "seconds_to_first_check": 298.028,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 1,
+      "total_sessions": 1,
+      "selected_session": 1,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "7a84af80-d05d-4c94-b67b-080b4e80c2ec",
+          "subtype": "success",
+          "provider_subtype": "success",
+          "is_error": false,
+          "total_cost_usd": 1.1670472499999998,
+          "duration_ms": 350869,
+          "duration_api_ms": 341047,
+          "num_turns": 11,
+          "returncode": 0,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/house_robber/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "e07bd74aad244bc089fa101591e541f31dde093cb8bfdd0c3049019de3576739",
+          "budget_usd": null,
+          "lastdance_profile": "api",
+          "features": {
+            "profile": "api",
+            "algorithm_plan": false,
+            "lemma_plan": false,
+            "leansearch": false,
+            "semantic_audit": false,
+            "semantic_reminder": false,
+            "early_check": false,
+            "feedback_mode": "exact",
+            "backtracking": false,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": false,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false,
+              "rescue_mode": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 21850,
+            "seconds_to_first_progress": 290.383,
+            "seconds_to_first_check": 298.028,
+            "pending_tool_recovery": []
+          }
+        }
+      ],
+      "compiler_checks_observed": 2,
+      "max_compiler_checks": 15
+    },
+    "provenance": {
+      "schema_version": 1,
+      "ownership": {
+        "model_owned_sections": [
+          "auxcode",
+          "code",
+          "lemma",
+          "proof"
+        ],
+        "teacher_owned": "all source outside the four marker regions",
+        "teacher_owned_sorry_present": false,
+        "model_section_ranges": {
+          "auxcode": {
+            "start_line": 20,
+            "end_line": 28
+          },
+          "code": {
+            "start_line": 32,
+            "end_line": 34
+          },
+          "lemma": {
+            "start_line": 48,
+            "end_line": 326
+          },
+          "proof": {
+            "start_line": 331,
+            "end_line": 340
+          }
+        }
+      },
+      "hashes": {
+        "original_sha256": "53b8f423754f05f41aa808861d278de30e5203f8853d1bb2bf97acbbeedd84ba",
+        "candidate_sha256": "c2ed29da3f1e791a5f272b6e43bd6300c11d1b21f8d0009d638b3f7c5e556735",
+        "merged_sha256": "c2ed29da3f1e791a5f272b6e43bd6300c11d1b21f8d0009d638b3f7c5e556735",
+        "model_sections_sha256": {
+          "auxcode": "acb939af9233c52b190de0db5a040554c3aad86eea917b290ae8caed1f35b70d",
+          "code": "a627179aaf28f545f21cf4eb72dce004c87b13838cf29e6805cd76730306819b",
+          "lemma": "7ace92b9bca3cf98dd1f2154b40a41d0382c458e923fb9d6e561cc931c078faa",
+          "proof": "03864aa89f80670e4b929f90b96ee7f4be4e6cc6a2a648d816baa1d0966cc3ce"
+        }
+      }
+    },
+    "targeted_diagnostics": [],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/house_robber/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": null,
+      "proof_state": null,
+      "leansearch_queries": null,
+      "checkpoints": null,
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/claude_code_api_equivalent_fail9/house_robber/.lastdance/prompts"
+    }
+  }
+}

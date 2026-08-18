@@ -8,9 +8,17 @@ from src.eval.verus_eval import VerusEval
 from src.llm.providers import GeminiProvider, OpenAICompatibleProvider, VLLMProvider
 
 from src.eval.semantic_eval import SemanticEval
+from src.eval.prompt.semantic_check_prompt import (
+    SEMANTIC_PROVENANCE_ADDENDUM,
+    SEMANTIC_SYS_PROMPT,
+)
 
 def run_task(args):
-    system_prompt = ""
+    system_prompt = (
+        SEMANTIC_SYS_PROMPT + SEMANTIC_PROVENANCE_ADDENDUM
+        if args.provenance_aware
+        else ""
+    )
     
     if args.model.lower().split('/')[-1].startswith("gpt-oss"):
         assert args.url, "url must be provided"
@@ -92,6 +100,7 @@ def run_task(args):
         "model": args.model,
         "temperature": args.temperature,
         "reasoning_effort": args.reasoning_effort,
+        "provenance_aware": args.provenance_aware,
     }
     if isinstance(new_results, list):
         for item in new_results:
@@ -119,6 +128,11 @@ if __name__ == "__main__":
         default="medium",
     )
     argparser.add_argument("--debug", action="store_true")
+    argparser.add_argument(
+        "--provenance-aware",
+        action="store_true",
+        help="Tell the judge which marker regions are model-owned",
+    )
     argparser.add_argument("--cfg_path", type=str, default="algoveri/test/config_test.yaml")
     argparser.add_argument("--results_root", type=str, default="test_results")
     argparser.add_argument("--language", type=str, default="lean")

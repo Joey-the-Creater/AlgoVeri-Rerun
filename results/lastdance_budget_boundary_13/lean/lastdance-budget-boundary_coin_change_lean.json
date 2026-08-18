@@ -1,0 +1,242 @@
+{
+  "verified": true,
+  "details": {
+    "rounds": 18,
+    "llm_response": {
+      "code": "import Mathlib\n\n-- Precondition definitions\n@[reducible, simp]\ndef coin_change_precond (coins : List Nat) (amount : Nat) : Prop :=\n  coins.length > 0 \u2227\n  coins.length \u2264 100 \u2227\n  amount \u2264 10000 \u2227\n  \u2200 i, i < coins.length \u2192 (coins.getD i 0 > 0 \u2227 coins.getD i 0 \u2264 10000)\n\n-- !benchmark @start auxcode\n/-- `sumAmt counts coins` is the total value `\u03a3 counts[i] * coins[i]` (Nat version). -/\ndef sumAmt : List Nat \u2192 List Nat \u2192 Nat\n  | [], _ => 0\n  | _, [] => 0\n  | k :: ks, c :: cs => k * c + sumAmt ks cs\n\n/-- `Good coins n a`: some count-vector uses exactly `n` coins and totals `a`. -/\ndef Good (coins : List Nat) (n a : Nat) : Prop :=\n  \u2203 cn : List Nat, cn.length = coins.length \u2227 cn.sum = n \u2227 sumAmt cn coins = a\n\n/-- `v` is exactly the optimum for amount `a` (`none` = unreachable). -/\ndef IsBest (coins : List Nat) (a : Nat) : Option Nat \u2192 Prop\n  | none => \u2200 n, \u00ac Good coins n a\n  | some m => Good coins m a \u2227 \u2200 n, Good coins n a \u2192 m \u2264 n\n\n/-- Minimum on `Option Nat` with `none` as `+\u221e`. -/\ndef MinOpt : Option Nat \u2192 Option Nat \u2192 Option Nat\n  | none, y => y\n  | some x, none => some x\n  | some x, some y => some (min x y)\n\n/-- Relaxation candidate for denomination `c` at amount `a = prev.length`:\n    entry `c - 1` of `prev` holds the optimum for amount `a - c`. -/\ndef candOf (prev : List (Option Nat)) (c : Nat) : Option Nat :=\n  if 1 \u2264 c \u2227 c \u2264 prev.length then (prev.getD (c - 1) none).map (\u00b7 + 1) else none\n\n/-- Minimum over all denominations of the relaxation candidates. -/\ndef cands (prev : List (Option Nat)) : List Nat \u2192 Option Nat\n  | [] => none\n  | c :: cs => MinOpt (candOf prev c) (cands prev cs)\n\n/-- DP table for amounts `0 .. N-1`; entry `j` is the optimum for amount `N - 1 - j`. -/\ndef dpTable (coins : List Nat) : Nat \u2192 List (Option Nat)\n  | 0 => []\n  | (n + 1) =>\n      (if n = 0 then some 0 else cands (dpTable coins n) coins) :: dpTable coins n\n-- !benchmark @end auxcode\n\n-- Main function definition\ndef coin_change (coins : List Nat) (amount : Nat)\n    (h_precond : coin_change_precond coins amount) : Int :=\n  -- !benchmark @start code\n  match (dpTable coins (amount + 1)).getD 0 none with\n  | some m => (m : Int)\n  | none => -1\n  -- !benchmark @end code\n\n/-! ## Postcondition auxiliary definitions -/\ndef listNatToInt (s : List Nat) : List Int :=\n  s.map (fun x => (x : Int))\n\ndef total_amount (counts : List Int) (coins : List Int) : Int :=\n  (counts.zip coins).foldl (fun acc pair => acc + pair.1 * pair.2) 0\n\ndef total_coins (counts : List Int) : Int :=\n  counts.foldl (fun acc c => acc + c) 0\n\ndef is_valid_change (counts : List Int) (coins : List Int) (amount : Int) : Prop :=\n  counts.length = coins.length \u2227\n  (\u2200 i, i < counts.length \u2192 counts.getD i 0 \u2265 0) \u2227\n  total_amount counts coins = amount\n\n-- Postcondition definitions\n@[reducible, simp]\ndef coin_change_postcond (coins : List Nat) (amount : Nat) (result : Int)\n    (h_precond : coin_change_precond coins amount) : Prop :=\n  -- !benchmark @start postcond\n  (result \u2260 -1 \u2192\n    (\u2203 counts : List Int,\n        is_valid_change counts (listNatToInt coins) (amount : Int) \u2227\n        total_coins counts = result) \u2227\n    (\u2200 counts : List Int,\n        is_valid_change counts (listNatToInt coins) (amount : Int) \u2192\n        total_coins counts \u2265 result))\n  \u2227\n  (result = -1 \u2192\n    \u2200 counts : List Int,\n      is_valid_change counts (listNatToInt coins) (amount : Int) \u2192 False)\n  -- !benchmark @end postcond\n\n\n-- !benchmark @start lemma\n\n/-! ### Basic facts about `sumAmt` / `Good` -/\n\ntheorem sumAmt_zero : \u2200 (cn coins : List Nat), cn.sum = 0 \u2192 sumAmt cn coins = 0 := by\n  intro cn\n  induction cn with\n  | nil => intro coins _; cases coins <;> rfl\n  | cons k ks ih =>\n    intro coins h\n    cases coins with\n    | nil => rfl\n    | cons c cs =>\n      rw [List.sum_cons] at h\n      have hk : k = 0 := by omega\n      have hs : ks.sum = 0 := by omega\n      simp only [sumAmt, hk, ih cs hs, Nat.zero_mul, Nat.add_zero]\n\ntheorem good_zero (coins : List Nat) : Good coins 0 0 := by\n  refine \u27e8List.replicate coins.length 0, by simp, by simp, ?_\u27e9\n  exact sumAmt_zero _ _ (by simp)\n\ntheorem good_zero_amount (coins : List Nat) (a : Nat) (h : Good coins 0 a) : a = 0 := by\n  obtain \u27e8cn, _, hs, ha\u27e9 := h\n  rw [\u2190 ha, sumAmt_zero cn coins hs]\n\ntheorem sumAmt_succ : \u2200 (coins : List Nat) (c : Nat), c \u2208 coins \u2192\n    \u2200 cn : List Nat, cn.length = coins.length \u2192\n      \u2203 cn', cn'.length = coins.length \u2227 cn'.sum = cn.sum + 1 \u2227\n        sumAmt cn' coins = sumAmt cn coins + c := by\n  intro coins\n  induction coins with\n  | nil => intro c hc; simp at hc\n  | cons d cs ih =>\n    intro c hc cn hl\n    cases cn with\n    | nil => simp at hl\n    | cons k ks =>\n      simp only [List.length_cons, Nat.add_right_cancel_iff] at hl\n      rcases List.mem_cons.mp hc with rfl | h\n      \u00b7 refine \u27e8(k + 1) :: ks, by simp [hl], by simp only [List.sum_cons]; omega, ?_\u27e9\n        simp only [sumAmt]\n        ring\n      \u00b7 obtain \u27e8ks', hl', hs', ha'\u27e9 := ih c h ks hl\n        refine \u27e8k :: ks', by simp [hl'], by simp only [List.sum_cons, hs']; omega, ?_\u27e9\n        simp only [sumAmt, ha']\n        ring\n\ntheorem sumAmt_pred : \u2200 (coins : List Nat) (cn : List Nat), cn.length = coins.length \u2192\n    1 \u2264 cn.sum \u2192\n      \u2203 c \u2208 coins, \u2203 cn', cn'.length = coins.length \u2227 cn'.sum + 1 = cn.sum \u2227\n        sumAmt cn' coins + c = sumAmt cn coins := by\n  intro coins\n  induction coins with\n  | nil =>\n    intro cn hl h\n    simp only [List.length_nil, List.length_eq_zero_iff] at hl\n    subst hl\n    simp at h\n  | cons d cs ih =>\n    intro cn hl h\n    cases cn with\n    | nil => simp at hl\n    | cons k ks =>\n      simp only [List.length_cons, Nat.add_right_cancel_iff] at hl\n      rw [List.sum_cons] at h\n      by_cases hk : 1 \u2264 k\n      \u00b7 refine \u27e8d, by simp, (k - 1) :: ks, by simp [hl], ?_, ?_\u27e9\n        \u00b7 simp only [List.sum_cons]; omega\n        \u00b7 simp only [sumAmt]\n          have hkk : k - 1 + 1 = k := by omega\n          calc (k - 1) * d + sumAmt ks cs + d = ((k - 1) + 1) * d + sumAmt ks cs := by ring\n            _ = k * d + sumAmt ks cs := by rw [hkk]\n      \u00b7 have hks : 1 \u2264 ks.sum := by omega\n        obtain \u27e8c, hc, ks', hl', hs', ha'\u27e9 := ih ks hl hks\n        refine \u27e8c, by simp [hc], k :: ks', by simp [hl'], ?_, ?_\u27e9\n        \u00b7 simp only [List.sum_cons]; omega\n        \u00b7 simp only [sumAmt]\n          calc k * d + sumAmt ks' cs + c = k * d + (sumAmt ks' cs + c) := by ring\n            _ = k * d + sumAmt ks cs := by rw [ha']\n\ntheorem good_succ (coins : List Nat) (c : Nat) (hc : c \u2208 coins) (n a : Nat)\n    (h : Good coins n a) : Good coins (n + 1) (a + c) := by\n  obtain \u27e8cn, hl, hs, ha\u27e9 := h\n  obtain \u27e8cn', hl', hs', ha'\u27e9 := sumAmt_succ coins c hc cn hl\n  exact \u27e8cn', hl', by omega, by rw [ha', ha]\u27e9\n\ntheorem good_pred (coins : List Nat) (n a : Nat) (h : Good coins (n + 1) a) :\n    \u2203 c \u2208 coins, \u2203 a', a' + c = a \u2227 Good coins n a' := by\n  obtain \u27e8cn, hl, hs, ha\u27e9 := h\n  obtain \u27e8c, hc, cn', hl', hs', ha'\u27e9 := sumAmt_pred coins cn hl (by omega)\n  exact \u27e8c, hc, sumAmt cn' coins, by omega, cn', hl', by omega, rfl\u27e9\n\n/-! ### Facts about the relaxation `cands` -/\n\ntheorem cands_le : \u2200 (prev : List (Option Nat)) (coins : List Nat) (c : Nat), c \u2208 coins \u2192\n    \u2200 k, candOf prev c = some k \u2192 \u2203 m, cands prev coins = some m \u2227 m \u2264 k := by\n  intro prev coins\n  induction coins with\n  | nil => intro c hc; simp at hc\n  | cons d ds ih =>\n    intro c hc k hk\n    simp only [cands]\n    rcases List.mem_cons.mp hc with rfl | h\n    \u00b7 rw [hk]\n      cases hr : cands prev ds with\n      | none => exact \u27e8k, rfl, le_refl k\u27e9\n      | some y => exact \u27e8min k y, rfl, min_le_left _ _\u27e9\n    \u00b7 obtain \u27e8m, hm, hle\u27e9 := ih c h k hk\n      rw [hm]\n      cases hd : candOf prev d with\n      | none => exact \u27e8m, rfl, hle\u27e9\n      | some x => exact \u27e8min x m, rfl, le_trans (min_le_right x m) hle\u27e9\n\ntheorem cands_mem : \u2200 (prev : List (Option Nat)) (coins : List Nat) (m : Nat),\n    cands prev coins = some m \u2192 \u2203 c \u2208 coins, candOf prev c = some m := by\n  intro prev coins\n  induction coins with\n  | nil => intro m hm; simp [cands] at hm\n  | cons d ds ih =>\n    intro m hm\n    simp only [cands] at hm\n    cases hd : candOf prev d with\n    | none =>\n      rw [hd] at hm\n      simp only [MinOpt] at hm\n      obtain \u27e8c, hc, hc2\u27e9 := ih m hm\n      exact \u27e8c, by simp [hc], hc2\u27e9\n    | some x =>\n      rw [hd] at hm\n      cases hr : cands prev ds with\n      | none =>\n        rw [hr] at hm\n        simp only [MinOpt] at hm\n        refine \u27e8d, by simp, ?_\u27e9\n        rw [hd]; exact hm\n      | some y =>\n        rw [hr] at hm\n        simp only [MinOpt, Option.some.injEq] at hm\n        rcases le_total x y with hxy | hxy\n        \u00b7 refine \u27e8d, by simp, ?_\u27e9\n          rw [hd]; congr 1; omega\n        \u00b7 obtain \u27e8c, hc, hc2\u27e9 := ih y hr\n          refine \u27e8c, by simp [hc], ?_\u27e9\n          rw [hc2]; congr 1; omega\n\ntheorem cands_best (coins : List Nat) (hpos : \u2200 c \u2208 coins, 0 < c) (a : Nat) (ha : 0 < a)\n    (prev : List (Option Nat)) (hlen : prev.length = a)\n    (hprev : \u2200 j, j < a \u2192 IsBest coins (a - 1 - j) (prev.getD j none)) :\n    IsBest coins a (cands prev coins) := by\n  have key : \u2200 c \u2208 coins, c \u2264 a \u2192 IsBest coins (a - c) (prev.getD (c - 1) none) := by\n    intro c hc hca\n    have h1 : 0 < c := hpos c hc\n    have h2 : c - 1 < a := by omega\n    have h3 : a - 1 - (c - 1) = a - c := by omega\n    have := hprev (c - 1) h2\n    rwa [h3] at this\n  have hcand : \u2200 c \u2208 coins, c \u2264 a \u2192 candOf prev c = (prev.getD (c - 1) none).map (\u00b7 + 1) := by\n    intro c hc hca\n    unfold candOf\n    rw [hlen, if_pos \u27e8hpos c hc, hca\u27e9]\n  cases hcv : cands prev coins with\n  | none =>\n    show \u2200 n, \u00ac Good coins n a\n    intro n hgood\n    cases n with\n    | zero => exact absurd (good_zero_amount coins a hgood) (by omega)\n    | succ n =>\n      obtain \u27e8c, hc, a', ha', hg'\u27e9 := good_pred coins n a hgood\n      have hca : c \u2264 a := by omega\n      have hbest := key c hc hca\n      have haa : a' = a - c := by omega\n      subst haa\n      cases hp : prev.getD (c - 1) none with\n      | none => rw [hp] at hbest; exact hbest n hg'\n      | some k =>\n        have hco : candOf prev c = some (k + 1) := by rw [hcand c hc hca, hp]; rfl\n        obtain \u27e8m, hm, _\u27e9 := cands_le prev coins c hc (k + 1) hco\n        rw [hcv] at hm\n        exact Option.noConfusion hm\n  | some m =>\n    show Good coins m a \u2227 \u2200 n, Good coins n a \u2192 m \u2264 n\n    obtain \u27e8c, hc, hcc\u27e9 := cands_mem prev coins m hcv\n    have hc1 : 0 < c := hpos c hc\n    have hca : c \u2264 a := by\n      by_contra hcon\n      unfold candOf at hcc\n      rw [hlen, if_neg (by omega)] at hcc\n      exact Option.noConfusion hcc\n    rw [hcand c hc hca] at hcc\n    have hbest := key c hc hca\n    cases hp : prev.getD (c - 1) none with\n    | none =>\n      rw [hp] at hcc\n      simp at hcc\n    | some k =>\n      rw [hp] at hcc\n      have hcc2 : k + 1 = m := by simp at hcc; omega\n      rw [hp] at hbest\n      obtain \u27e8hgk, hmink\u27e9 := hbest\n      constructor\n      \u00b7 have hgs := good_succ coins c hc k (a - c) hgk\n        have harith : a - c + c = a := by omega\n        rw [harith] at hgs\n        rw [\u2190 hcc2]\n        exact hgs\n      \u00b7 intro n hgn\n        cases n with\n        | zero => exact absurd (good_zero_amount coins a hgn) (by omega)\n        | succ n =>\n          obtain \u27e8c', hc', a'', ha'', hg''\u27e9 := good_pred coins n a hgn\n          have hca' : c' \u2264 a := by omega\n          have hb' := key c' hc' hca'\n          have haa' : a'' = a - c' := by omega\n          subst haa'\n          cases hp' : prev.getD (c' - 1) none with\n          | none => rw [hp'] at hb'; exact absurd hg'' (hb' n)\n          | some k' =>\n            rw [hp'] at hb'\n            have hk'n : k' \u2264 n := hb'.2 n hg''\n            have hco' : candOf prev c' = some (k' + 1) := by rw [hcand c' hc' hca', hp']; rfl\n            obtain \u27e8m', hm', hle'\u27e9 := cands_le prev coins c' hc' (k' + 1) hco'\n            rw [hcv] at hm'\n            have hmm : m = m' := by injection hm'\n            omega\n\n/-! ### The DP table is exact -/\n\ntheorem dpTable_length (coins : List Nat) (n : Nat) : (dpTable coins n).length = n := by\n  induction n with\n  | zero => rfl\n  | succ n ih => simp [dpTable, ih]\n\ntheorem dpTable_spec (coins : List Nat) (hpos : \u2200 c \u2208 coins, 0 < c) :\n    \u2200 N, \u2200 j, j < N \u2192 IsBest coins (N - 1 - j) ((dpTable coins N).getD j none) := by\n  intro N\n  induction N with\n  | zero => intro j hj; omega\n  | succ N ih =>\n    intro j hj\n    cases j with\n    | zero =>\n      have harith : N + 1 - 1 - 0 = N := by omega\n      rw [harith]\n      simp only [dpTable, List.getD_cons_zero]\n      by_cases hN : N = 0\n      \u00b7 subst hN\n        rw [if_pos rfl]\n        exact \u27e8good_zero coins, fun n _ => Nat.zero_le n\u27e9\n      \u00b7 rw [if_neg hN]\n        exact cands_best coins hpos N (by omega) (dpTable coins N)\n          (dpTable_length coins N) ih\n    | succ j =>\n      have harith : N + 1 - 1 - (j + 1) = N - 1 - j := by omega\n      rw [harith]\n      simp only [dpTable, List.getD_cons_succ]\n      exact ih j (by omega)\n\n/-! ### Bridging `List Int` count vectors and `List Nat` count vectors -/\n\ntheorem listNatToInt_nil : listNatToInt [] = [] := by simp [listNatToInt]\n\ntheorem listNatToInt_cons (k : Nat) (ks : List Nat) :\n    listNatToInt (k :: ks) = (k : Int) :: listNatToInt ks := by simp [listNatToInt]\n\ntheorem listNatToInt_length (l : List Nat) : (listNatToInt l).length = l.length := by\n  simp [listNatToInt]\n\ntheorem total_coins_aux : \u2200 (cn : List Nat) (acc : Nat),\n    (listNatToInt cn).foldl (fun a c => a + c) (acc : Int)\n      = ((acc + cn.sum : Nat) : Int) := by\n  intro cn\n  induction cn with\n  | nil => intro acc; simp [listNatToInt_nil]\n  | cons k ks ih =>\n    intro acc\n    rw [listNatToInt_cons, List.foldl_cons, List.sum_cons,\n      show ((acc : Int) + (k : Int)) = ((acc + k : Nat) : Int) by push_cast; ring,\n      ih (acc + k)]\n    push_cast; ring\n\ntheorem total_coins_map (cn : List Nat) :\n    total_coins (listNatToInt cn) = ((cn.sum : Nat) : Int) := by\n  unfold total_coins\n  have h := total_coins_aux cn 0\n  simp only [Nat.cast_zero, Nat.zero_add] at h\n  exact h\n\ntheorem total_amount_aux : \u2200 (cn coins : List Nat) (acc : Nat),\n    ((listNatToInt cn).zip (listNatToInt coins)).foldl\n        (fun a p => a + p.1 * p.2) (acc : Int)\n      = ((acc + sumAmt cn coins : Nat) : Int) := by\n  intro cn\n  induction cn with\n  | nil => intro coins acc; simp [listNatToInt_nil, sumAmt]\n  | cons k ks ih =>\n    intro coins acc\n    cases coins with\n    | nil => simp [listNatToInt_nil, sumAmt]\n    | cons c cs =>\n      rw [listNatToInt_cons, listNatToInt_cons, List.zip_cons_cons, List.foldl_cons,\n        show ((acc : Int) + (k : Int) * (c : Int)) = ((acc + k * c : Nat) : Int) by\n          push_cast; ring, ih cs (acc + k * c)]\n      simp only [sumAmt]\n      push_cast; ring\n\ntheorem total_amount_map (cn coins : List Nat) :\n    total_amount (listNatToInt cn) (listNatToInt coins)\n      = ((sumAmt cn coins : Nat) : Int) := by\n  unfold total_amount\n  have h := total_amount_aux cn coins 0\n  simp only [Nat.cast_zero, Nat.zero_add] at h\n  exact h\n\ntheorem getD_map_nonneg (cn : List Nat) :\n    \u2200 i, ((listNatToInt cn).getD i 0) \u2265 0 := by\n  induction cn with\n  | nil => intro i; simp [listNatToInt_nil]\n  | cons k ks ih =>\n    intro i\n    rw [listNatToInt_cons]\n    cases i with\n    | zero => simp\n    | succ i => simpa [List.getD_cons_succ] using ih i\n\ntheorem nonneg_of_getD : \u2200 (l : List Int), (\u2200 i, i < l.length \u2192 l.getD i 0 \u2265 0) \u2192\n    \u2200 x \u2208 l, 0 \u2264 x := by\n  intro l\n  induction l with\n  | nil => intro _ x hx; simp at hx\n  | cons a as ih =>\n    intro h x hx\n    rcases List.mem_cons.mp hx with rfl | hx\n    \u00b7 simpa using h 0 (by simp)\n    \u00b7 refine ih (fun i hi => ?_) x hx\n      simpa [List.getD_cons_succ] using h (i + 1) (by simp only [List.length_cons]; omega)\n\ntheorem pos_of_getD : \u2200 (l : List Nat), (\u2200 i, i < l.length \u2192 l.getD i 0 > 0) \u2192\n    \u2200 x \u2208 l, 0 < x := by\n  intro l\n  induction l with\n  | nil => intro _ x hx; simp at hx\n  | cons a as ih =>\n    intro h x hx\n    rcases List.mem_cons.mp hx with rfl | hx\n    \u00b7 simpa using h 0 (by simp)\n    \u00b7 refine ih (fun i hi => ?_) x hx\n      simpa [List.getD_cons_succ] using h (i + 1) (by simp only [List.length_cons]; omega)\n\ntheorem map_toNat_cast : \u2200 (l : List Int), (\u2200 x \u2208 l, 0 \u2264 x) \u2192\n    listNatToInt (l.map Int.toNat) = l := by\n  intro l\n  induction l with\n  | nil => intro _; simp [listNatToInt_nil]\n  | cons a as ih =>\n    intro h\n    rw [List.map_cons, listNatToInt_cons, ih (fun x hx => h x (by simp [hx])),\n      Int.toNat_of_nonneg (h a (by simp))]\n\ntheorem good_to_valid (coins : List Nat) (amount n : Nat) (h : Good coins n amount) :\n    \u2203 counts : List Int, is_valid_change counts (listNatToInt coins) (amount : Int) \u2227\n      total_coins counts = (n : Int) := by\n  obtain \u27e8cn, hl, hs, ha\u27e9 := h\n  refine \u27e8listNatToInt cn, \u27e8?_, ?_, ?_\u27e9, ?_\u27e9\n  \u00b7 rw [listNatToInt_length, listNatToInt_length, hl]\n  \u00b7 intro i _; exact getD_map_nonneg cn i\n  \u00b7 rw [total_amount_map, ha]\n  \u00b7 rw [total_coins_map, hs]\n\ntheorem valid_to_good (coins : List Nat) (amount : Nat) (counts : List Int)\n    (h : is_valid_change counts (listNatToInt coins) (amount : Int)) :\n    \u2203 n : Nat, Good coins n amount \u2227 total_coins counts = (n : Int) := by\n  obtain \u27e8hlen, hnn, hamt\u27e9 := h\n  have hnn' : \u2200 x \u2208 counts, 0 \u2264 x := nonneg_of_getD counts hnn\n  have hmap : listNatToInt (counts.map Int.toNat) = counts :=\n    map_toNat_cast counts hnn'\n  have hl : (counts.map Int.toNat).length = coins.length := by\n    rw [List.length_map, hlen, listNatToInt_length]\n  have h1 : total_amount counts (listNatToInt coins)\n      = ((sumAmt (counts.map Int.toNat) coins : Nat) : Int) := by\n    conv_lhs => rw [\u2190 hmap]\n    exact total_amount_map _ coins\n  rw [hamt] at h1\n  have h2 : sumAmt (counts.map Int.toNat) coins = amount := by exact_mod_cast h1.symm\n  have h3 : total_coins counts = (((counts.map Int.toNat).sum : Nat) : Int) := by\n    conv_lhs => rw [\u2190 hmap]\n    exact total_coins_map _\n  exact \u27e8(counts.map Int.toNat).sum, \u27e8counts.map Int.toNat, hl, rfl, h2\u27e9, h3\u27e9\n\n-- !benchmark @end lemma\n\n-- Proof content\ntheorem coin_change_postcond_satisfied (coins : List Nat) (amount : Nat)\n    (h_precond : coin_change_precond coins amount) :\n    coin_change_postcond coins amount (coin_change coins amount h_precond) h_precond := by\n  -- !benchmark @start proof\n  have hpos : \u2200 c \u2208 coins, 0 < c :=\n    pos_of_getD coins (fun i hi => (h_precond.2.2.2 i hi).1)\n  have hspec := dpTable_spec coins hpos (amount + 1) 0 (by omega)\n  have harith : amount + 1 - 1 - 0 = amount := by omega\n  rw [harith] at hspec\n  simp only [coin_change_postcond, coin_change]\n  cases hv : (dpTable coins (amount + 1)).getD 0 none with\n  | none =>\n    rw [hv] at hspec\n    simp only [hv]\n    refine \u27e8fun hne => absurd rfl hne, ?_\u27e9\n    intro _ counts hvalid\n    obtain \u27e8n, hgood, _\u27e9 := valid_to_good coins amount counts hvalid\n    exact hspec n hgood\n  | some m =>\n    rw [hv] at hspec\n    simp only [hv]\n    obtain \u27e8hgood, hmin\u27e9 := hspec\n    refine \u27e8fun _ => \u27e8good_to_valid coins amount m hgood, ?_\u27e9, ?_\u27e9\n    \u00b7 intro counts hvalid\n      obtain \u27e8n, hg, hc\u27e9 := valid_to_good coins amount counts hvalid\n      rw [hc]\n      exact_mod_cast hmin n hg\n    \u00b7 intro hcontra\n      exfalso\n      omega\n  -- !benchmark @end proof\n",
+      "comment": ""
+    },
+    "verifier_response": {
+      "verified": true,
+      "feedback": "Verified successfully.",
+      "raw": {
+        "stdout": "claude_code_coin_change_final_1786088922930.lean:52:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_coin_change_final_1786088922930.lean:77:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_coin_change_final_1786088922930.lean:498:15: warning: This simp argument is unused:\n  hv\n\nHint: Omit it from the simp argument list.\n  simp only \u0335[\u0335h\u0335v\u0335]\u0335\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_coin_change_final_1786088922930.lean:505:15: warning: This simp argument is unused:\n  hv\n\nHint: Omit it from the simp argument list.\n  simp only \u0335[\u0335h\u0335v\u0335]\u0335\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\n",
+        "stderr": "",
+        "returncode": 0
+      }
+    },
+    "history": [
+      {
+        "compiler_pass": 1,
+        "verified": true,
+        "verifier_response": {
+          "verified": true,
+          "feedback": "Verified successfully.",
+          "raw": {
+            "stdout": "claude_code_coin_change_final_1786088922930.lean:52:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_coin_change_final_1786088922930.lean:77:5: warning: unused variable `h_precond`\n\nNote: This linter can be disabled with `set_option linter.unusedVariables false`\nclaude_code_coin_change_final_1786088922930.lean:498:15: warning: This simp argument is unused:\n  hv\n\nHint: Omit it from the simp argument list.\n  simp only \u0335[\u0335h\u0335v\u0335]\u0335\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\nclaude_code_coin_change_final_1786088922930.lean:505:15: warning: This simp argument is unused:\n  hv\n\nHint: Omit it from the simp argument list.\n  simp only \u0335[\u0335h\u0335v\u0335]\u0335\n\nNote: This linter can be disabled with `set_option linter.unusedSimpArgs false`\n",
+            "stderr": "",
+            "returncode": 0
+          }
+        },
+        "agent": {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "e0532f87-8226-4e46-9889-e4df1e8086cb",
+          "subtype": "error_max_budget_usd",
+          "is_error": true,
+          "total_cost_usd": 2.0323132499999996,
+          "duration_ms": 531441,
+          "duration_api_ms": 508701,
+          "num_turns": 19,
+          "returncode": 1,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/coin_change/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "884bbe3eba0c17e20d10311c8078d87756a26ba29a4d77e85991d23dce3b1388",
+          "budget_usd": 2.0,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 28550,
+            "seconds_to_first_progress": 403.145,
+            "seconds_to_first_check": 413.454,
+            "pending_tool_recovery": []
+          }
+        }
+      }
+    ],
+    "tokens": {
+      "input": 668219,
+      "output": 49237,
+      "reasoning": 0
+    },
+    "agent": {
+      "kind": "claude-code",
+      "cli_version": "2.1.220 (Claude Code)",
+      "model": "claude-opus-5",
+      "effort": "medium",
+      "session_id": "e0532f87-8226-4e46-9889-e4df1e8086cb",
+      "subtype": "error_max_budget_usd",
+      "is_error": true,
+      "total_cost_usd": 2.0323132499999996,
+      "duration_ms": 531441,
+      "duration_api_ms": 508701,
+      "num_turns": 19,
+      "returncode": 1,
+      "timed_out": false,
+      "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/coin_change/agent_events.jsonl",
+      "pass_number": 1,
+      "prompt_kind": "initial",
+      "prompt_sha256": "884bbe3eba0c17e20d10311c8078d87756a26ba29a4d77e85991d23dce3b1388",
+      "budget_usd": 2.0,
+      "lastdance_profile": "robust",
+      "features": {
+        "profile": "robust",
+        "algorithm_plan": true,
+        "lemma_plan": true,
+        "leansearch": true,
+        "semantic_audit": true,
+        "semantic_reminder": true,
+        "early_check": true,
+        "feedback_mode": "structured",
+        "backtracking": true,
+        "stagnation_threshold": 2
+      },
+      "run_control": {
+        "control": {
+          "recover_pending_tool": true,
+          "progress_governor": false,
+          "pre_edit_timeout_seconds": 300,
+          "pre_edit_thinking_tokens": 12000,
+          "post_edit_check_timeout_seconds": 180,
+          "planning_mode": false,
+          "diagnostic_wrapper": false
+        },
+        "governor_stop_reason": null,
+        "max_thinking_tokens_observed": 28550,
+        "seconds_to_first_progress": 403.145,
+        "seconds_to_first_check": 413.454,
+        "pending_tool_recovery": []
+      },
+      "compiler_passes": 1,
+      "total_sessions": 1,
+      "selected_session": 1,
+      "sessions": [
+        {
+          "kind": "claude-code",
+          "cli_version": "2.1.220 (Claude Code)",
+          "model": "claude-opus-5",
+          "effort": "medium",
+          "session_id": "e0532f87-8226-4e46-9889-e4df1e8086cb",
+          "subtype": "error_max_budget_usd",
+          "is_error": true,
+          "total_cost_usd": 2.0323132499999996,
+          "duration_ms": 531441,
+          "duration_api_ms": 508701,
+          "num_turns": 19,
+          "returncode": 1,
+          "timed_out": false,
+          "event_log": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/coin_change/agent_events.jsonl",
+          "pass_number": 1,
+          "prompt_kind": "initial",
+          "prompt_sha256": "884bbe3eba0c17e20d10311c8078d87756a26ba29a4d77e85991d23dce3b1388",
+          "budget_usd": 2.0,
+          "lastdance_profile": "robust",
+          "features": {
+            "profile": "robust",
+            "algorithm_plan": true,
+            "lemma_plan": true,
+            "leansearch": true,
+            "semantic_audit": true,
+            "semantic_reminder": true,
+            "early_check": true,
+            "feedback_mode": "structured",
+            "backtracking": true,
+            "stagnation_threshold": 2
+          },
+          "run_control": {
+            "control": {
+              "recover_pending_tool": true,
+              "progress_governor": false,
+              "pre_edit_timeout_seconds": 300,
+              "pre_edit_thinking_tokens": 12000,
+              "post_edit_check_timeout_seconds": 180,
+              "planning_mode": false,
+              "diagnostic_wrapper": false
+            },
+            "governor_stop_reason": null,
+            "max_thinking_tokens_observed": 28550,
+            "seconds_to_first_progress": 403.145,
+            "seconds_to_first_check": 413.454,
+            "pending_tool_recovery": []
+          }
+        }
+      ]
+    },
+    "provenance": {
+      "schema_version": 1,
+      "ownership": {
+        "model_owned_sections": [
+          "auxcode",
+          "code",
+          "lemma",
+          "proof"
+        ],
+        "teacher_owned": "all source outside the four marker regions",
+        "teacher_owned_sorry_present": false,
+        "model_section_ranges": {
+          "auxcode": {
+            "start_line": 11,
+            "end_line": 48
+          },
+          "code": {
+            "start_line": 53,
+            "end_line": 57
+          },
+          "lemma": {
+            "start_line": 93,
+            "end_line": 482
+          },
+          "proof": {
+            "start_line": 488,
+            "end_line": 515
+          }
+        }
+      },
+      "hashes": {
+        "original_sha256": "ae0e31883b3b90c4afd3f59b44350a82731272910ffca4d29d3ae59064cbd883",
+        "candidate_sha256": "269e0258208a1f90684d8d7b9487188a1f618fd29f23a367b51d96b8fb6fef0e",
+        "merged_sha256": "269e0258208a1f90684d8d7b9487188a1f618fd29f23a367b51d96b8fb6fef0e",
+        "model_sections_sha256": {
+          "auxcode": "438566bd2b3d9f950b89ae6e6d55b7d0a8d6bee8b30d23d599030ffcf2430742",
+          "code": "226685b9689df58719f9723c0914140cf8c9ad3836ab77422fdcde58cafb4928",
+          "lemma": "f700cfe386545f6514455f812893b2c1fed2b7855a08c08f98fda8a26cb22a91",
+          "proof": "267bce053af8c47d0af53b559b587870cdc069e8a631696ed5292d251f772dc0"
+        }
+      }
+    },
+    "targeted_diagnostics": [],
+    "lastdance_artifacts": {
+      "ledger": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/coin_change/.lastdance/run_ledger.jsonl",
+      "algorithm_plan": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/coin_change/AlgorithmPlan.md",
+      "proof_state": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/coin_change/ProofState.md",
+      "leansearch_queries": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/coin_change/.lastdance/leansearch_queries.jsonl",
+      "checkpoints": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/coin_change/.lastdance/checkpoints/manifest.jsonl",
+      "prompts": "/home/jumpyjoey/algoveri/.agent_runs/lastdance_budget_boundary_13/coin_change/.lastdance/prompts"
+    }
+  }
+}
