@@ -55,9 +55,11 @@ an adaptive per-task budget.
 
 ## Published directories
 
-- `results/full_three`: generation outputs for GPT-5.5, GPT-5.6 Sol, and
-  adaptive-thinking Opus 5.
-- `results/full_three_semantic`: the corresponding GPT-5.4 semantic judgments.
+- `results/full_three`: code & proof generation outputs for GPT-5.5, GPT-5.6 Sol, and
+  adaptive-thinking Opus 5. No semantic judge performed.
+- `results/full_three_semantic`: starting from the outputs in `results/full_three`,
+  run the semantic judge with GPT-5.4. For example, `results/full_three_semantic/lean/gpt-5.5_lca_lean.json`
+  is the result of running the semantic judge on `results/full_three/lean/gpt-5.5_lca_lean.json`.
 - `results/full_opus_no_thinking`: thinking-disabled Opus 5 generation outputs.
 - `results/full_opus_no_thinking_semantic`: GPT-5.4 judgments for the
   thinking-disabled outputs.
